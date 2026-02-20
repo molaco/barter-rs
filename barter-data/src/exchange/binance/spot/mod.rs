@@ -1,4 +1,6 @@
 use super::{Binance, ExchangeServer};
+#[cfg(feature = "rest")]
+use crate::exchange::RestExchangeServer;
 use crate::{
     exchange::{
         StreamSelector,
@@ -35,6 +37,19 @@ impl ExchangeServer for BinanceServerSpot {
 
     fn websocket_url() -> &'static str {
         WEBSOCKET_BASE_URL_BINANCE_SPOT
+    }
+}
+
+#[cfg(feature = "rest")]
+impl RestExchangeServer for BinanceServerSpot {
+    const ID: ExchangeId = ExchangeId::BinanceSpot;
+
+    fn rest_base_url() -> &'static str {
+        "https://api.binance.com"
+    }
+
+    fn klines_path() -> &'static str {
+        "/api/v3/klines"
     }
 }
 

@@ -34,6 +34,10 @@ pub mod futures;
 /// into an exchange [`Connector`] specific market used for generating [`Connector::requests`].
 pub mod market;
 
+/// Generic REST client for Binance exchange variants.
+#[cfg(feature = "rest")]
+pub mod rest;
+
 /// [`ExchangeServer`] and [`StreamSelector`] implementations for
 /// [`BinanceSpot`](spot::BinanceSpot).
 pub mod spot;

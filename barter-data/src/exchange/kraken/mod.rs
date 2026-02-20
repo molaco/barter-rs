@@ -38,6 +38,10 @@ pub mod message;
 /// [`Validator`](barter_integration) for [`Kraken`].
 pub mod subscription;
 
+/// Generic REST client for Kraken exchange.
+#[cfg(feature = "rest")]
+pub mod rest;
+
 /// Public trade types for [`Kraken`].
 pub mod trade;
 

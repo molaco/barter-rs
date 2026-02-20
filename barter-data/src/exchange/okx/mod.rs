@@ -32,6 +32,10 @@ pub mod market;
 /// [`Validator`](barter_integration::Validator) for [`Okx`].
 pub mod subscription;
 
+/// REST client for fetching historical kline/candlestick data from OKX.
+#[cfg(feature = "rest")]
+pub mod rest;
+
 /// Public trade types for [`Okx`].
 pub mod trade;
 

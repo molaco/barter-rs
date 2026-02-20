@@ -147,6 +147,18 @@ pub trait ExchangeServer: Default + Debug + Clone + Send {
     fn websocket_url() -> &'static str;
 }
 
+/// Used when an exchange has different REST API base URLs for different
+/// [`InstrumentKind`](barter_instrument::instrument::kind::InstrumentKind) markets.
+pub trait RestExchangeServer: Default + Debug + Clone + Send {
+    const ID: ExchangeId;
+
+    /// Base URL for REST API (e.g., "https://api.binance.com")
+    fn rest_base_url() -> &'static str;
+
+    /// Path to the klines endpoint (e.g., "/api/v3/klines")
+    fn klines_path() -> &'static str;
+}
+
 /// Defines the frequency and construction function for custom
 /// [`WebSocket`](barter_integration::protocol::websocket::WebSocket) pings - used for exchanges
 /// that require additional application-level pings.

@@ -32,6 +32,10 @@ pub mod market;
 /// [`Validator`](barter_integration::Validator) for [`Coinbase`].
 pub mod subscription;
 
+/// Generic REST client for Coinbase exchange.
+#[cfg(feature = "rest")]
+pub mod rest;
+
 /// Public trade types for [`Coinbase`].
 pub mod trade;
 

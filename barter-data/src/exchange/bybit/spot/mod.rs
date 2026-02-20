@@ -1,4 +1,6 @@
 use super::{Bybit, ExchangeServer};
+#[cfg(feature = "rest")]
+use crate::exchange::RestExchangeServer;
 use barter_instrument::exchange::ExchangeId;
 use std::fmt::Display;
 
@@ -19,6 +21,26 @@ impl ExchangeServer for BybitServerSpot {
 
     fn websocket_url() -> &'static str {
         WEBSOCKET_BASE_URL_BYBIT_SPOT
+    }
+}
+
+#[cfg(feature = "rest")]
+impl RestExchangeServer for BybitServerSpot {
+    const ID: ExchangeId = ExchangeId::BybitSpot;
+
+    fn rest_base_url() -> &'static str {
+        "https://api.bybit.com"
+    }
+
+    fn klines_path() -> &'static str {
+        "/v5/market/kline"
+    }
+}
+
+#[cfg(feature = "rest")]
+impl super::rest::BybitCategory for BybitServerSpot {
+    fn category() -> &'static str {
+        "spot"
     }
 }
 

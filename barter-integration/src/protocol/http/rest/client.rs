@@ -138,4 +138,24 @@ impl<'a, Strategy, Parser> RestClient<'a, Strategy, Parser> {
             parser,
         }
     }
+
+    /// Construct a new [`Self`] using the provided configuration and a pre-built
+    /// [`reqwest::Client`].
+    ///
+    /// Use this when you need custom client configuration (timeouts, connection
+    /// pooling, TLS settings, etc.) instead of the defaults from
+    /// [`reqwest::Client::new()`].
+    pub fn with_http_client<Url: Into<Cow<'a, str>>>(
+        base_url: Url,
+        strategy: Strategy,
+        parser: Parser,
+        http_client: reqwest::Client,
+    ) -> Self {
+        Self {
+            http_client,
+            base_url: base_url.into(),
+            strategy,
+            parser,
+        }
+    }
 }

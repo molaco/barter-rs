@@ -1,5 +1,7 @@
 use self::liquidation::BinanceLiquidation;
 use super::{Binance, ExchangeServer};
+#[cfg(feature = "rest")]
+use crate::exchange::RestExchangeServer;
 use crate::{
     NoInitialSnapshots,
     exchange::{
@@ -42,6 +44,19 @@ impl ExchangeServer for BinanceServerFuturesUsd {
 
     fn websocket_url() -> &'static str {
         WEBSOCKET_BASE_URL_BINANCE_FUTURES_USD
+    }
+}
+
+#[cfg(feature = "rest")]
+impl RestExchangeServer for BinanceServerFuturesUsd {
+    const ID: ExchangeId = ExchangeId::BinanceFuturesUsd;
+
+    fn rest_base_url() -> &'static str {
+        "https://fapi.binance.com"
+    }
+
+    fn klines_path() -> &'static str {
+        "/fapi/v1/klines"
     }
 }
 

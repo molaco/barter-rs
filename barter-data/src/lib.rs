@@ -163,6 +163,10 @@ pub mod books;
 /// [`futures_usd`](exchange::binance::futures::l2::BinanceFuturesUsdOrderBooksL2Transformer).
 pub mod transformer;
 
+/// REST API client for fetching historical kline/candlestick data from exchanges.
+#[cfg(feature = "rest")]
+pub mod rest;
+
 /// Convenient type alias for an [`ExchangeStream`] utilizing a tungstenite
 /// [`WebSocket`](barter_integration::protocol::websocket::WebSocket).
 pub type ExchangeWsStream<Parser, Transformer> = ExchangeStream<Parser, WsStream, Transformer>;

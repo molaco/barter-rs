@@ -59,6 +59,10 @@ pub mod trade;
 /// [`BybitFuturesUsd`](futures::BybitPerpetualsUsd).
 pub mod book;
 
+/// REST API client and kline fetching for Bybit.
+#[cfg(feature = "rest")]
+pub mod rest;
+
 /// Convenient type alias for a Bybit [`ExchangeWsStream`] using [`WebSocketSerdeParser`](barter_integration::protocol::websocket::WebSocketSerdeParser).
 pub type BybitWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
 
