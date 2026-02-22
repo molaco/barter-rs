@@ -2,6 +2,7 @@
 
 use barter_data::{
     exchange::binance::{
+        futures::BinanceServerFuturesUsd,
         rest::{BinanceHttpParser, BinanceRestClient},
         spot::BinanceServerSpot,
     },
@@ -261,5 +262,118 @@ async fn test_http_parser_binance_api_error() {
     assert!(
         err_msg.contains("Invalid symbol"),
         "DataError should contain the Binance error message, got: {err_msg}"
+    );
+}
+
+// ===========================================================================
+// Binance Futures USD tests
+// ===========================================================================
+
+/// Helper: start a mock server and create a `BinanceRestClient<BinanceServerFuturesUsd>`
+/// whose base URL points at the mock server.
+async fn setup_futures() -> (MockServer, BinanceRestClient<BinanceServerFuturesUsd>) {
+    let mock_server = MockServer::start().await;
+    let client =
+        BinanceRestClient::<BinanceServerFuturesUsd>::with_base_url(mock_server.uri());
+    (mock_server, client)
+}
+
+// ---------------------------------------------------------------------------
+// Futures Test 1: fetch_klines returns a single batch of 3 candles
+// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn test_futures_fetch_klines() {
+    let (mock_server, client) = setup_futures().await;
+
+    Mock::given(method("GET"))
+        .and(path("/fapi/v1/klines"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(three_klines_json()),
+        )
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let request = KlineRequest {
+        market: "BTCUSDT".to_string(),
+        interval: Interval::H1,
+        start: None,
+        end: None,
+        limit: None,
+    };
+
+    let candles = client.fetch_klines(request).await.unwrap();
+
+    assert_eq!(candles.len(), 3);
+
+    // First candle
+    assert_eq!(
+        candles[0].open_time,
+        DateTime::from_timestamp_millis(1609459200000).unwrap()
+    );
+    assert_eq!(
+        candles[0].close_time,
+        DateTime::from_timestamp_millis(1609545599999).unwrap()
+    );
+    assert!((candles[0].open - 29000.0).abs() < 1e-6);
+    assert!((candles[0].high - 29500.0).abs() < 1e-6);
+    assert!((candles[0].low - 28800.0).abs() < 1e-6);
+    assert!((candles[0].close - 29200.0).abs() < 1e-6);
+    assert!((candles[0].volume - 1000.0).abs() < 1e-6);
+    assert!((candles[0].quote_volume.unwrap() - 29000000.0).abs() < 1e-6);
+    assert_eq!(candles[0].trade_count, 5000);
+
+    // Second candle
+    assert_eq!(
+        candles[1].open_time,
+        DateTime::from_timestamp_millis(1609545600000).unwrap()
+    );
+    assert!((candles[1].open - 29200.0).abs() < 1e-6);
+    assert!((candles[1].close - 29800.0).abs() < 1e-6);
+
+    // Third candle
+    assert_eq!(
+        candles[2].open_time,
+        DateTime::from_timestamp_millis(1609632000000).unwrap()
+    );
+    assert!((candles[2].open - 29800.0).abs() < 1e-6);
+    assert!((candles[2].close - 30100.0).abs() < 1e-6);
+}
+
+// ---------------------------------------------------------------------------
+// Futures Test 2: fetch_klines propagates a Binance API error (HTTP 400)
+// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn test_futures_fetch_klines_api_error() {
+    let (mock_server, client) = setup_futures().await;
+
+    Mock::given(method("GET"))
+        .and(path("/fapi/v1/klines"))
+        .respond_with(
+            ResponseTemplate::new(400)
+                .set_body_json(json!({"code": -1121, "msg": "Invalid symbol."})),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let request = KlineRequest {
+        market: "INVALID".to_string(),
+        interval: Interval::H1,
+        start: None,
+        end: None,
+        limit: None,
+    };
+
+    let result = client.fetch_klines(request).await;
+    assert!(result.is_err());
+
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("-1121"),
+        "error should contain Binance error code, got: {err_msg}"
+    );
+    assert!(
+        err_msg.contains("Invalid symbol"),
+        "error should contain Binance error message, got: {err_msg}"
     );
 }
