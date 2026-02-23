@@ -66,18 +66,21 @@ where
     let input = <&str as serde::Deserialize>::deserialize(deserializer)?;
     let mut tokens = input.split('.');
 
-    match (tokens.next(), tokens.next(), tokens.next()) {
-        (Some("publicTrade"), Some(market), None) => Ok(SubscriptionId::from(format!(
+    match (tokens.next(), tokens.next(), tokens.next(), tokens.next()) {
+        (Some("publicTrade"), Some(market), None, None) => Ok(SubscriptionId::from(format!(
             "{}|{market}",
-            BybitChannel::TRADES.0
+            BybitChannel::trades().0
         ))),
-        (Some("orderbook"), Some("1"), Some(market)) => Ok(SubscriptionId::from(format!(
+        (Some("orderbook"), Some("1"), Some(market), None) => Ok(SubscriptionId::from(format!(
             "{}|{market}",
-            BybitChannel::ORDER_BOOK_L1.0,
+            BybitChannel::order_book_l1().0,
         ))),
-        (Some("orderbook"), Some("50"), Some(market)) => Ok(SubscriptionId::from(format!(
+        (Some("orderbook"), Some("50"), Some(market), None) => Ok(SubscriptionId::from(format!(
             "{}|{market}",
-            BybitChannel::ORDER_BOOK_L2.0,
+            BybitChannel::order_book_l2().0,
+        ))),
+        (Some("kline"), Some(interval), Some(market), None) => Ok(SubscriptionId::from(format!(
+            "kline.{interval}|{market}",
         ))),
         _ => Err(Error::invalid_value(
             Unexpected::Str(input),

@@ -5,10 +5,10 @@ use barter_instrument::{
     exchange::ExchangeId,
     instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind},
 };
+use candle::Interval;
 use barter_integration::{
     Validator, error::SocketError, protocol::websocket::WsMessage, subscription::SubscriptionId,
 };
-use derive_more::Display;
 use fnv::FnvHashMap;
 use serde::{Deserialize, Serialize};
 use smol_str::{ToSmolStr, format_smolstr};
@@ -78,7 +78,7 @@ where
 }
 
 #[derive(
-    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Display, Deserialize, Serialize,
+    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize,
 )]
 pub enum SubKind {
     PublicTrades,
@@ -86,7 +86,20 @@ pub enum SubKind {
     OrderBooksL2,
     OrderBooksL3,
     Liquidations,
-    Candles,
+    Candles(Interval),
+}
+
+impl std::fmt::Display for SubKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SubKind::PublicTrades => write!(f, "PublicTrades"),
+            SubKind::OrderBooksL1 => write!(f, "OrderBooksL1"),
+            SubKind::OrderBooksL2 => write!(f, "OrderBooksL2"),
+            SubKind::OrderBooksL3 => write!(f, "OrderBooksL3"),
+            SubKind::Liquidations => write!(f, "Liquidations"),
+            SubKind::Candles(interval) => write!(f, "Candles({interval})"),
+        }
+    }
 }
 
 impl<Exchange, S, Kind> From<(Exchange, S, S, MarketDataInstrumentKind, Kind)>
@@ -273,6 +286,23 @@ pub fn exchange_supports_instrument_kind_sub_kind(
         (GateioOptions, Option { .. }, PublicTrades) => true,
         (Kraken, Spot, PublicTrades | OrderBooksL1) => true,
         (Okx, Spot | Future { .. } | Perpetual | Option { .. }, PublicTrades) => true,
+
+        // Candles (WebSocket)
+        (BinanceSpot, Spot, Candles(_)) => true,
+        (BinanceFuturesUsd, Perpetual, Candles(_)) => true,
+        (Bitfinex, Spot, Candles(_)) => true,
+        (Bitmex, Perpetual, Candles(_)) => true,
+        (BybitSpot, Spot, Candles(_)) => true,
+        (BybitPerpetualsUsd, Perpetual, Candles(_)) => true,
+        (Coinbase, Spot, Candles(_)) => true,
+        (GateioSpot, Spot, Candles(_)) => true,
+        (GateioFuturesUsd, Future { .. }, Candles(_)) => true,
+        (GateioFuturesBtc, Future { .. }, Candles(_)) => true,
+        (GateioPerpetualsUsd, Perpetual, Candles(_)) => true,
+        (GateioPerpetualsBtc, Perpetual, Candles(_)) => true,
+        (GateioOptions, Option { .. }, Candles(_)) => true,
+        (Kraken, Spot, Candles(_)) => true,
+        (Okx, Spot | Future { .. } | Perpetual | Option { .. }, Candles(_)) => true,
 
         (_, _, _) => false,
     }

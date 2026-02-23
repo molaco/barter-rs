@@ -1,33 +1,10 @@
-use crate::subscription::candle::{Candle, Interval};
+use crate::subscription::candle::Candle;
 use barter_integration::{de::extract_next, protocol::http::rest::RestRequest};
 use chrono::DateTime;
 use serde::Serialize;
 use std::borrow::Cow;
 
-/// Convert a normalised [`Interval`] to the Bybit API interval string.
-///
-/// Bybit interval format: "1" (1m), "3", "5", "15", "30", "60" (1h),
-/// "120" (2h), "240" (4h), "360" (6h), "720" (12h), "D", "W", "M".
-///
-/// Note: Bybit does not have a 3-day interval. [`Interval::D3`] falls back to "D".
-pub fn bybit_interval(interval: Interval) -> &'static str {
-    match interval {
-        Interval::M1 => "1",
-        Interval::M3 => "3",
-        Interval::M5 => "5",
-        Interval::M15 => "15",
-        Interval::M30 => "30",
-        Interval::H1 => "60",
-        Interval::H2 => "120",
-        Interval::H4 => "240",
-        Interval::H6 => "360",
-        Interval::H12 => "720",
-        Interval::D1 => "D",
-        Interval::D3 => "D", // Bybit has no 3-day interval; fall back to daily
-        Interval::W1 => "W",
-        Interval::Month1 => "M",
-    }
-}
+pub use crate::exchange::bybit::bybit_interval;
 
 /// REST request to fetch kline/candlestick data from the Bybit API.
 ///
@@ -243,6 +220,7 @@ impl TryFrom<BybitKlineRaw> for Candle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::subscription::candle::Interval;
 
     #[test]
     fn test_bybit_interval_mapping() {

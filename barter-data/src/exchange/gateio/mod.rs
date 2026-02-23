@@ -50,6 +50,28 @@ pub mod message;
 /// [`GateioPerpetualBtc`](perpetual::GateioPerpetualsBtc).
 pub mod subscription;
 
+use crate::{error::DataError, subscription::candle::Interval};
+
+/// Convert a normalised [`Interval`] to the GateIO API interval string.
+///
+/// GateIO supports: 10s, 1m, 5m, 15m, 30m, 1h, 4h, 8h, 1d, 7d, 30d.
+pub fn gateio_interval(interval: Interval) -> Result<&'static str, DataError> {
+    match interval {
+        Interval::M1 => Ok("1m"),
+        Interval::M5 => Ok("5m"),
+        Interval::M15 => Ok("15m"),
+        Interval::M30 => Ok("30m"),
+        Interval::H1 => Ok("1h"),
+        Interval::H4 => Ok("4h"),
+        Interval::D1 => Ok("1d"),
+        Interval::W1 => Ok("7d"),
+        Interval::Month1 => Ok("30d"),
+        unsupported => Err(DataError::Socket(format!(
+            "GateIO does not support interval: {unsupported}"
+        ))),
+    }
+}
+
 /// Convenient type alias using [`WebSocketSerdeParser`](barter_integration::protocol::websocket::WebSocketSerdeParser).
 pub type GateiotWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
 

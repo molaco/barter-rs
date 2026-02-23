@@ -1,12 +1,13 @@
 use self::{
-    channel::OkxChannel, market::OkxMarket, subscription::OkxSubResponse, trade::OkxTrades,
+    candle::OkxKline, channel::OkxChannel, market::OkxMarket, subscription::OkxSubResponse,
+    trade::OkxTrades,
 };
 use crate::{
     ExchangeWsStream, NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, PingInterval, StreamSelector},
     instrument::InstrumentData,
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::trade::PublicTrades,
+    subscription::{candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -19,6 +20,9 @@ use derive_more::Display;
 use serde_json::json;
 use std::time::Duration;
 use url::Url;
+
+/// WebSocket candle/kline types for [`Okx`].
+pub mod candle;
 
 /// Defines the type that translates a Barter [`Subscription`](crate::subscription::Subscription)
 /// into an exchange [`Connector`] specific channel used for generating [`Connector::requests`].
@@ -38,6 +42,31 @@ pub mod rest;
 
 /// Public trade types for [`Okx`].
 pub mod trade;
+
+use crate::subscription::candle::Interval;
+
+/// Convert a normalised [`Interval`] to the OKX API interval string.
+///
+/// OKX uses uppercase letters for hours (`H`) and days (`D`), unlike most
+/// other exchanges.
+pub fn okx_interval(interval: Interval) -> &'static str {
+    match interval {
+        Interval::M1 => "1m",
+        Interval::M3 => "3m",
+        Interval::M5 => "5m",
+        Interval::M15 => "15m",
+        Interval::M30 => "30m",
+        Interval::H1 => "1H",
+        Interval::H2 => "2H",
+        Interval::H4 => "4H",
+        Interval::H6 => "6H",
+        Interval::H12 => "12H",
+        Interval::D1 => "1D",
+        Interval::D3 => "3D",
+        Interval::W1 => "1W",
+        Interval::Month1 => "1M",
+    }
+}
 
 /// [`Okx`] server base url.
 ///
@@ -107,4 +136,12 @@ where
 {
     type SnapFetcher = NoInitialSnapshots;
     type Stream = OkxWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, OkxTrades>>;
+}
+
+impl<Instrument> StreamSelector<Instrument, Candles> for Okx
+where
+    Instrument: InstrumentData,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Stream = OkxWsStream<StatelessTransformer<Self, Instrument::Key, Candles, OkxKline>>;
 }

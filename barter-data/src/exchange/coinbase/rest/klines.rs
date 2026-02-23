@@ -1,31 +1,10 @@
-use crate::{
-    error::DataError,
-    subscription::candle::{Candle, Interval},
-};
+use crate::subscription::candle::{Candle, Interval};
 use barter_integration::protocol::http::rest::RestRequest;
 use chrono::{DateTime, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
-/// Convert a normalised [`Interval`] to the Coinbase API granularity string.
-///
-/// Returns an error for intervals not supported by the Coinbase API
-/// (3m, 4h, 12h, 3d, 1w, 1M).
-pub fn coinbase_interval(interval: Interval) -> Result<&'static str, DataError> {
-    match interval {
-        Interval::M1 => Ok("ONE_MINUTE"),
-        Interval::M5 => Ok("FIVE_MINUTES"),
-        Interval::M15 => Ok("FIFTEEN_MINUTES"),
-        Interval::M30 => Ok("THIRTY_MINUTES"),
-        Interval::H1 => Ok("ONE_HOUR"),
-        Interval::H2 => Ok("TWO_HOURS"),
-        Interval::H6 => Ok("SIX_HOURS"),
-        Interval::D1 => Ok("ONE_DAY"),
-        unsupported => Err(DataError::Socket(format!(
-            "Coinbase does not support interval: {unsupported}"
-        ))),
-    }
-}
+pub use crate::exchange::coinbase::coinbase_interval;
 
 /// Return the [`TimeDelta`] duration for a given [`Interval`].
 ///

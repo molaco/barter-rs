@@ -5,9 +5,15 @@ use serde::{Deserialize, Serialize};
 /// Barter [`Subscription`](super::Subscription) [`SubscriptionKind`] that yields [`Candle`]
 /// [`MarketEvent<T>`](crate::event::MarketEvent) events.
 #[derive(
-    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default, Deserialize, Serialize,
+    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize,
 )]
-pub struct Candles;
+pub struct Candles(pub Interval);
+
+impl Default for Candles {
+    fn default() -> Self {
+        Self(Interval::M1)
+    }
+}
 
 impl SubscriptionKind for Candles {
     type Event = Candle;
@@ -19,7 +25,7 @@ impl SubscriptionKind for Candles {
 
 impl std::fmt::Display for Candles {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
+        write!(f, "candles_{}", self.0)
     }
 }
 

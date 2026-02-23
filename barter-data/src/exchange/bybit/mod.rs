@@ -10,6 +10,7 @@ use crate::{
     subscription::{
         Map,
         book::{OrderBooksL1, OrderBooksL2},
+        candle::Candles,
         trade::PublicTrades,
     },
     transformer::stateless::StatelessTransformer,
@@ -20,6 +21,7 @@ use barter_integration::{
     protocol::websocket::{WebSocketSerdeParser, WsMessage},
 };
 use book::{BybitOrderBookMessage, l2::BybitOrderBooksL2Transformer};
+use candle::BybitKline;
 use serde::de::{Error, Unexpected};
 use std::{fmt::Debug, marker::PhantomData, time::Duration};
 use tokio::time;
@@ -58,6 +60,37 @@ pub mod trade;
 /// Orderbook types common to both [`BybitSpot`](spot::BybitSpot) and
 /// [`BybitFuturesUsd`](futures::BybitPerpetualsUsd).
 pub mod book;
+
+/// WebSocket candle/kline types common to both [`BybitSpot`](spot::BybitSpot) and
+/// [`BybitPerpetualsUsd`](futures::BybitPerpetualsUsd).
+pub mod candle;
+
+use crate::subscription::candle::Interval;
+
+/// Convert a normalised [`Interval`] to the Bybit API interval string.
+///
+/// Bybit interval format: "1" (1m), "3", "5", "15", "30", "60" (1h),
+/// "120" (2h), "240" (4h), "360" (6h), "720" (12h), "D", "W", "M".
+///
+/// Note: Bybit does not have a 3-day interval. [`Interval::D3`] falls back to "D".
+pub fn bybit_interval(interval: Interval) -> &'static str {
+    match interval {
+        Interval::M1 => "1",
+        Interval::M3 => "3",
+        Interval::M5 => "5",
+        Interval::M15 => "15",
+        Interval::M30 => "30",
+        Interval::H1 => "60",
+        Interval::H2 => "120",
+        Interval::H4 => "240",
+        Interval::H6 => "360",
+        Interval::H12 => "720",
+        Interval::D1 => "D",
+        Interval::D3 => "D",
+        Interval::W1 => "W",
+        Interval::Month1 => "M",
+    }
+}
 
 /// REST API client and kline fetching for Bybit.
 #[cfg(feature = "rest")]
@@ -133,6 +166,16 @@ where
     type SnapFetcher = NoInitialSnapshots;
     type Stream =
         BybitWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, BybitTrade>>;
+}
+
+impl<Instrument, Server> StreamSelector<Instrument, Candles> for Bybit<Server>
+where
+    Instrument: InstrumentData,
+    Server: ExchangeServer + Debug + Send + Sync,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Stream =
+        BybitWsStream<StatelessTransformer<Self, Instrument::Key, Candles, BybitKline>>;
 }
 
 impl<Instrument, Server> StreamSelector<Instrument, OrderBooksL1> for Bybit<Server>

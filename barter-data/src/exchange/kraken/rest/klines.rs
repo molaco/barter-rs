@@ -1,46 +1,9 @@
-use crate::{error::DataError, subscription::candle::Interval};
+use crate::{error::DataError, subscription::candle::Candle};
 use barter_integration::{de::extract_next, protocol::http::rest::RestRequest};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
-use crate::subscription::candle::Candle;
-
-/// Convert a normalised [`Interval`] to the Kraken API integer-minutes interval.
-///
-/// Kraken supports: 1, 5, 15, 30, 60, 240, 1440, 10080, 21600.
-/// Returns a [`DataError`] for unsupported intervals (3m, 2h, 6h, 12h, 3d, 1M).
-pub fn kraken_interval(interval: Interval) -> Result<u32, DataError> {
-    match interval {
-        Interval::M1 => Ok(1),
-        Interval::M5 => Ok(5),
-        Interval::M15 => Ok(15),
-        Interval::M30 => Ok(30),
-        Interval::H1 => Ok(60),
-        Interval::H4 => Ok(240),
-        Interval::D1 => Ok(1440),
-        Interval::W1 => Ok(10080),
-        // Kraken's 21600-minute interval (half-month) has no direct Interval variant;
-        // these intervals are unsupported by Kraken:
-        Interval::M3 => Err(DataError::Socket(
-            "Kraken does not support 3m interval".to_string(),
-        )),
-        Interval::H2 => Err(DataError::Socket(
-            "Kraken does not support 2h interval".to_string(),
-        )),
-        Interval::H6 => Err(DataError::Socket(
-            "Kraken does not support 6h interval".to_string(),
-        )),
-        Interval::H12 => Err(DataError::Socket(
-            "Kraken does not support 12h interval".to_string(),
-        )),
-        Interval::D3 => Err(DataError::Socket(
-            "Kraken does not support 3d interval".to_string(),
-        )),
-        Interval::Month1 => Err(DataError::Socket(
-            "Kraken does not support 1M interval".to_string(),
-        )),
-    }
-}
+pub use crate::exchange::kraken::kraken_interval;
 
 /// Top-level Kraken OHLC response.
 ///
@@ -277,6 +240,7 @@ impl RestRequest for GetKrakenOhlc {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::subscription::candle::Interval;
 
     #[test]
     fn test_kraken_interval_supported() {

@@ -25,6 +25,7 @@ use crate::{
     subscription::{
         SubKind, Subscription,
         book::{OrderBookEvent, OrderBookL1, OrderBooksL1, OrderBooksL2},
+        candle::{Candle, Candles},
         liquidation::{Liquidation, Liquidations},
         trade::{PublicTrade, PublicTrades},
     },
@@ -60,6 +61,8 @@ pub struct DynamicStreams<InstrumentKey> {
     >,
     pub liquidations:
         VecMap<ExchangeId, UnboundedReceiverStream<MarketStreamResult<InstrumentKey, Liquidation>>>,
+    pub candles:
+        VecMap<ExchangeId, UnboundedReceiverStream<MarketStreamResult<InstrumentKey, Candle>>>,
 }
 
 impl<InstrumentKey> DynamicStreams<InstrumentKey> {
@@ -97,6 +100,7 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         Subscription<BybitPerpetualsUsd, Instrument, OrderBooksL1>: Identifier<BybitMarket>,
         Subscription<BybitPerpetualsUsd, Instrument, OrderBooksL2>: Identifier<BybitMarket>,
         Subscription<Coinbase, Instrument, PublicTrades>: Identifier<CoinbaseMarket>,
+        Subscription<Coinbase, Instrument, Candles>: Identifier<CoinbaseMarket>,
         Subscription<GateioSpot, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<GateioFuturesUsd, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<GateioFuturesBtc, Instrument, PublicTrades>: Identifier<GateioMarket>,
@@ -105,7 +109,13 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         Subscription<GateioOptions, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<Kraken, Instrument, PublicTrades>: Identifier<KrakenMarket>,
         Subscription<Kraken, Instrument, OrderBooksL1>: Identifier<KrakenMarket>,
+        Subscription<Kraken, Instrument, Candles>: Identifier<KrakenMarket>,
         Subscription<Okx, Instrument, PublicTrades>: Identifier<OkxMarket>,
+        Subscription<Okx, Instrument, Candles>: Identifier<OkxMarket>,
+        Subscription<BinanceSpot, Instrument, Candles>: Identifier<BinanceMarket>,
+        Subscription<BinanceFuturesUsd, Instrument, Candles>: Identifier<BinanceMarket>,
+        Subscription<BybitSpot, Instrument, Candles>: Identifier<BybitMarket>,
+        Subscription<BybitPerpetualsUsd, Instrument, Candles>: Identifier<BybitMarket>,
     {
         // Validate & dedup Subscription batches
         let batches = validate_batches(subscription_batches)?;
@@ -447,6 +457,26 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             ))
                                         })
                                     }
+                                    (ExchangeId::Coinbase, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        Coinbase,
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
                                     (ExchangeId::GateioSpot, SubKind::PublicTrades) => {
                                         init_market_stream(
                                             STREAM_RECONNECTION_POLICY,
@@ -623,6 +653,126 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             ),
                                         )
                                     }),
+                                    (ExchangeId::BinanceSpot, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        BinanceSpot::default(),
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::BinanceFuturesUsd, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        BinanceFuturesUsd::default(),
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::Okx, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        Okx,
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::BybitSpot, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        BybitSpot::default(),
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::BybitPerpetualsUsd, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        BybitPerpetualsUsd::default(),
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::Kraken, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        Kraken,
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
                                     (exchange, sub_kind) => {
                                         Err(DataError::Unsupported { exchange, sub_kind })
                                     }
@@ -657,6 +807,12 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
             liquidations: channels
                 .rxs
                 .liquidations
+                .into_iter()
+                .map(|(exchange, rx)| (exchange, rx.into_stream()))
+                .collect(),
+            candles: channels
+                .rxs
+                .candles
                 .into_iter()
                 .map(|(exchange, rx)| (exchange, rx.into_stream()))
                 .collect(),
@@ -737,6 +893,26 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         )
     }
 
+    /// Remove an exchange [`Candle`] `Stream` from the [`DynamicStreams`] collection.
+    ///
+    /// Note that calling this method will permanently remove this `Stream` from [`Self`].
+    pub fn select_candles(
+        &mut self,
+        exchange: ExchangeId,
+    ) -> Option<UnboundedReceiverStream<MarketStreamResult<InstrumentKey, Candle>>> {
+        self.candles.remove(&exchange)
+    }
+
+    /// Select and merge every exchange [`Candle`] `Stream` using
+    /// [`SelectAll`](futures_util::stream::select_all::select_all).
+    pub fn select_all_candles(
+        &mut self,
+    ) -> SelectAll<UnboundedReceiverStream<MarketStreamResult<InstrumentKey, Candle>>> {
+        futures_util::stream::select_all::select_all(
+            std::mem::take(&mut self.candles).into_values(),
+        )
+    }
+
     /// Select and merge every exchange `Stream` for every data type using [`select_all`](futures_util::stream::select_all::select_all)
     ///
     /// Note that using [`MarketStreamResult<Instrument, DataKind>`] as the `Output` is suitable for most
@@ -749,12 +925,14 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         MarketStreamResult<InstrumentKey, OrderBookL1>: Into<Output>,
         MarketStreamResult<InstrumentKey, OrderBookEvent>: Into<Output>,
         MarketStreamResult<InstrumentKey, Liquidation>: Into<Output>,
+        MarketStreamResult<InstrumentKey, Candle>: Into<Output>,
     {
         let Self {
             trades,
             l1s,
             l2s,
             liquidations,
+            candles,
         } = self;
 
         let trades = trades
@@ -773,7 +951,11 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
             .into_values()
             .map(|stream| stream.map(MarketStreamResult::into).boxed());
 
-        let all = trades.chain(l1s).chain(l2s).chain(liquidations);
+        let candles = candles
+            .into_values()
+            .map(|stream| stream.map(MarketStreamResult::into).boxed());
+
+        let all = trades.chain(l1s).chain(l2s).chain(liquidations).chain(candles);
 
         futures_util::stream::select_all::select_all(all)
     }
@@ -869,6 +1051,16 @@ where
                         rxs.liquidations.insert(sub.exchange, rx);
                     }
                 }
+                SubKind::Candles(_) => {
+                    if let (None, None) = (
+                        txs.candles.get(&sub.exchange),
+                        rxs.candles.get(&sub.exchange),
+                    ) {
+                        let (tx, rx) = mpsc_unbounded();
+                        txs.candles.insert(sub.exchange, tx);
+                        rxs.candles.insert(sub.exchange, rx);
+                    }
+                }
                 unsupported => return Err(DataError::UnsupportedSubKind(unsupported)),
             }
         }
@@ -886,6 +1078,7 @@ struct Txs<InstrumentKey> {
     l2s: FnvHashMap<ExchangeId, UnboundedTx<MarketStreamResult<InstrumentKey, OrderBookEvent>>>,
     liquidations:
         FnvHashMap<ExchangeId, UnboundedTx<MarketStreamResult<InstrumentKey, Liquidation>>>,
+    candles: FnvHashMap<ExchangeId, UnboundedTx<MarketStreamResult<InstrumentKey, Candle>>>,
 }
 
 impl<InstrumentKey> Default for Txs<InstrumentKey> {
@@ -895,6 +1088,7 @@ impl<InstrumentKey> Default for Txs<InstrumentKey> {
             l1s: Default::default(),
             l2s: Default::default(),
             liquidations: Default::default(),
+            candles: Default::default(),
         }
     }
 }
@@ -905,6 +1099,7 @@ struct Rxs<InstrumentKey> {
     l2s: FnvHashMap<ExchangeId, UnboundedRx<MarketStreamResult<InstrumentKey, OrderBookEvent>>>,
     liquidations:
         FnvHashMap<ExchangeId, UnboundedRx<MarketStreamResult<InstrumentKey, Liquidation>>>,
+    candles: FnvHashMap<ExchangeId, UnboundedRx<MarketStreamResult<InstrumentKey, Candle>>>,
 }
 
 impl<InstrumentKey> Default for Rxs<InstrumentKey> {
@@ -914,6 +1109,7 @@ impl<InstrumentKey> Default for Rxs<InstrumentKey> {
             l1s: Default::default(),
             l2s: Default::default(),
             liquidations: Default::default(),
+            candles: Default::default(),
         }
     }
 }

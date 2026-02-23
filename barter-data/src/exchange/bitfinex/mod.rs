@@ -62,6 +62,29 @@ pub mod trade;
 /// Custom `SubscriptionValidator` implementation for [`Bitfinex`].
 pub mod validator;
 
+use crate::{error::DataError, subscription::candle::Interval};
+
+/// Convert a normalised [`Interval`] to the Bitfinex API interval string.
+///
+/// Bitfinex supports: 1m, 5m, 15m, 30m, 1h, 3h, 6h, 12h, 1D, 1W, 14D, 1M.
+pub fn bitfinex_interval(interval: Interval) -> Result<&'static str, DataError> {
+    match interval {
+        Interval::M1 => Ok("1m"),
+        Interval::M5 => Ok("5m"),
+        Interval::M15 => Ok("15m"),
+        Interval::M30 => Ok("30m"),
+        Interval::H1 => Ok("1h"),
+        Interval::H6 => Ok("6h"),
+        Interval::H12 => Ok("12h"),
+        Interval::D1 => Ok("1D"),
+        Interval::W1 => Ok("1W"),
+        Interval::Month1 => Ok("1M"),
+        unsupported => Err(DataError::Socket(format!(
+            "Bitfinex does not support interval: {unsupported}"
+        ))),
+    }
+}
+
 /// [`Bitfinex`] server base url.
 ///
 /// See docs: <https://docs.bitfinex.com/docs/ws-general>

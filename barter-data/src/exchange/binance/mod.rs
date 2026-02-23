@@ -1,13 +1,13 @@
 use self::{
-    book::l1::BinanceOrderBookL1, channel::BinanceChannel, market::BinanceMarket,
-    subscription::BinanceSubResponse, trade::BinanceTrade,
+    book::l1::BinanceOrderBookL1, candle::BinanceKline, channel::BinanceChannel,
+    market::BinanceMarket, subscription::BinanceSubResponse, trade::BinanceTrade,
 };
 use crate::{
     ExchangeWsStream, NoInitialSnapshots,
     exchange::{Connector, ExchangeServer, ExchangeSub, StreamSelector},
     instrument::InstrumentData,
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{Map, book::OrderBooksL1, trade::PublicTrades},
+    subscription::{Map, book::OrderBooksL1, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -21,6 +21,10 @@ use url::Url;
 /// OrderBook types common to both [`BinanceSpot`](spot::BinanceSpot) and
 /// [`BinanceFuturesUsd`](futures::BinanceFuturesUsd).
 pub mod book;
+
+/// WebSocket candle/kline types common to both [`BinanceSpot`](spot::BinanceSpot) and
+/// [`BinanceFuturesUsd`](futures::BinanceFuturesUsd).
+pub mod candle;
 
 /// Defines the type that translates a Barter [`Subscription`](crate::subscription::Subscription)
 /// into an exchange [`Connector`] specific channel used for generating [`Connector::requests`].
@@ -50,6 +54,28 @@ pub mod subscription;
 /// Public trade types common to both [`BinanceSpot`](spot::BinanceSpot) and
 /// [`BinanceFuturesUsd`](futures::BinanceFuturesUsd).
 pub mod trade;
+
+use crate::subscription::candle::Interval;
+
+/// Convert a normalised [`Interval`] to the Binance API interval string.
+pub fn binance_interval(interval: Interval) -> &'static str {
+    match interval {
+        Interval::M1 => "1m",
+        Interval::M3 => "3m",
+        Interval::M5 => "5m",
+        Interval::M15 => "15m",
+        Interval::M30 => "30m",
+        Interval::H1 => "1h",
+        Interval::H2 => "2h",
+        Interval::H4 => "4h",
+        Interval::H6 => "6h",
+        Interval::H12 => "12h",
+        Interval::D1 => "1d",
+        Interval::D3 => "3d",
+        Interval::W1 => "1w",
+        Interval::Month1 => "1M",
+    }
+}
 
 /// Convenient type alias for a Binance [`ExchangeWsStream`] using [`WebSocketSerdeParser`].
 pub type BinanceWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
@@ -117,6 +143,16 @@ where
     type SnapFetcher = NoInitialSnapshots;
     type Stream =
         BinanceWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, BinanceTrade>>;
+}
+
+impl<Instrument, Server> StreamSelector<Instrument, Candles> for Binance<Server>
+where
+    Instrument: InstrumentData,
+    Server: ExchangeServer + Debug + Send + Sync,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Stream =
+        BinanceWsStream<StatelessTransformer<Self, Instrument::Key, Candles, BinanceKline>>;
 }
 
 impl<Instrument, Server> StreamSelector<Instrument, OrderBooksL1> for Binance<Server>

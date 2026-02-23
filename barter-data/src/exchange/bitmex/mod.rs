@@ -41,6 +41,23 @@ pub mod subscription;
 /// Public trade types for [`Bitmex`].
 pub mod trade;
 
+use crate::{error::DataError, subscription::candle::Interval};
+
+/// Convert a normalised [`Interval`] to the BitMEX API interval string.
+///
+/// BitMEX only supports 4 intervals: 1m, 5m, 1h, 1d.
+pub fn bitmex_interval(interval: Interval) -> Result<&'static str, DataError> {
+    match interval {
+        Interval::M1 => Ok("1m"),
+        Interval::M5 => Ok("5m"),
+        Interval::H1 => Ok("1h"),
+        Interval::D1 => Ok("1d"),
+        unsupported => Err(DataError::Socket(format!(
+            "BitMEX does not support interval: {unsupported}"
+        ))),
+    }
+}
+
 /// Convenient type alias for a Bitmex [`ExchangeWsStream`] using [`WebSocketSerdeParser`](barter_integration::protocol::websocket::WebSocketSerdeParser).
 pub type BitmexWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
 

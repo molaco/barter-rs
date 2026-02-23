@@ -1,13 +1,13 @@
 use self::{
-    channel::CoinbaseChannel, market::CoinbaseMarket, subscription::CoinbaseSubResponse,
-    trade::CoinbaseTrade,
+    candle::CoinbaseKline, channel::CoinbaseChannel, market::CoinbaseMarket,
+    subscription::CoinbaseSubResponse, trade::CoinbaseTrade,
 };
 use crate::{
     ExchangeWsStream, NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, StreamSelector},
     instrument::InstrumentData,
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::trade::PublicTrades,
+    subscription::{candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -19,6 +19,9 @@ use barter_macro::{DeExchange, SerExchange};
 use derive_more::Display;
 use serde_json::json;
 use url::Url;
+
+/// WebSocket candle types for [`Coinbase`].
+pub mod candle;
 
 /// Defines the type that translates a Barter [`Subscription`](crate::subscription::Subscription)
 /// into an exchange [`Connector`] specific channel used for generating [`Connector::requests`].
@@ -38,6 +41,28 @@ pub mod rest;
 
 /// Public trade types for [`Coinbase`].
 pub mod trade;
+
+use crate::{error::DataError, subscription::candle::Interval};
+
+/// Convert a normalised [`Interval`] to the Coinbase REST API granularity string.
+///
+/// Returns an error for intervals not supported by the Coinbase API
+/// (3m, 4h, 12h, 3d, 1w, 1M).
+pub fn coinbase_interval(interval: Interval) -> Result<&'static str, DataError> {
+    match interval {
+        Interval::M1 => Ok("ONE_MINUTE"),
+        Interval::M5 => Ok("FIVE_MINUTES"),
+        Interval::M15 => Ok("FIFTEEN_MINUTES"),
+        Interval::M30 => Ok("THIRTY_MINUTES"),
+        Interval::H1 => Ok("ONE_HOUR"),
+        Interval::H2 => Ok("TWO_HOURS"),
+        Interval::H6 => Ok("SIX_HOURS"),
+        Interval::D1 => Ok("ONE_DAY"),
+        unsupported => Err(DataError::Socket(format!(
+            "Coinbase does not support interval: {unsupported}"
+        ))),
+    }
+}
 
 /// [`Coinbase`] server base url.
 ///
@@ -102,4 +127,13 @@ where
     type SnapFetcher = NoInitialSnapshots;
     type Stream =
         CoinbaseWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, CoinbaseTrade>>;
+}
+
+impl<Instrument> StreamSelector<Instrument, Candles> for Coinbase
+where
+    Instrument: InstrumentData,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Stream =
+        CoinbaseWsStream<StatelessTransformer<Self, Instrument::Key, Candles, CoinbaseKline>>;
 }

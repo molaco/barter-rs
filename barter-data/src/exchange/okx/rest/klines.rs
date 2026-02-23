@@ -4,28 +4,7 @@ use chrono::{DateTime, TimeDelta};
 use serde::Serialize;
 use std::borrow::Cow;
 
-/// Convert a normalised [`Interval`] to the OKX API interval string.
-///
-/// OKX uses uppercase letters for hours (`H`) and days (`D`), unlike most
-/// other exchanges.
-pub fn okx_interval(interval: Interval) -> &'static str {
-    match interval {
-        Interval::M1 => "1m",
-        Interval::M3 => "3m",
-        Interval::M5 => "5m",
-        Interval::M15 => "15m",
-        Interval::M30 => "30m",
-        Interval::H1 => "1H",
-        Interval::H2 => "2H",
-        Interval::H4 => "4H",
-        Interval::H6 => "6H",
-        Interval::H12 => "12H",
-        Interval::D1 => "1D",
-        Interval::D3 => "3D",
-        Interval::W1 => "1W",
-        Interval::Month1 => "1M",
-    }
-}
+pub use crate::exchange::okx::okx_interval;
 
 /// Return the duration of one candle for the given [`Interval`].
 ///
@@ -295,6 +274,7 @@ pub const OKX_HISTORY_KLINES_PATH: &str = "/api/v5/market/history-candles";
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::subscription::candle::Interval;
 
     #[test]
     fn test_okx_interval_mapping() {

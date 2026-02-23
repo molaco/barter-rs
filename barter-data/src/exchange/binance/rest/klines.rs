@@ -1,28 +1,10 @@
-use crate::subscription::candle::{Candle, Interval};
+use crate::subscription::candle::Candle;
 use barter_integration::{de::extract_next, protocol::http::rest::RestRequest};
 use chrono::DateTime;
 use serde::Serialize;
 use std::borrow::Cow;
 
-/// Convert a normalised [`Interval`] to the Binance API interval string.
-pub fn binance_interval(interval: Interval) -> &'static str {
-    match interval {
-        Interval::M1 => "1m",
-        Interval::M3 => "3m",
-        Interval::M5 => "5m",
-        Interval::M15 => "15m",
-        Interval::M30 => "30m",
-        Interval::H1 => "1h",
-        Interval::H2 => "2h",
-        Interval::H4 => "4h",
-        Interval::H6 => "6h",
-        Interval::H12 => "12h",
-        Interval::D1 => "1d",
-        Interval::D3 => "3d",
-        Interval::W1 => "1w",
-        Interval::Month1 => "1M",
-    }
-}
+pub use crate::exchange::binance::binance_interval;
 
 /// REST request to fetch kline/candlestick data from a Binance API variant.
 ///
@@ -209,6 +191,7 @@ impl TryFrom<BinanceKlineRaw> for Candle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::subscription::candle::Interval;
 
     #[test]
     fn test_binance_interval_mapping() {
