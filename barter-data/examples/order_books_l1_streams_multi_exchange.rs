@@ -15,7 +15,7 @@ async fn main() {
 
     // Initialise OrderBooksL1 Streams for various exchanges
     // '--> each call to StreamBuilder::subscribe() initialises a separate WebSocket connection
-    let streams = Streams::<OrderBooksL1>::builder()
+    let (streams, _handles) = Streams::<OrderBooksL1>::builder()
         .subscribe([
             (BinanceSpot::default(), "btc", "usdt", MarketDataInstrumentKind::Spot, OrderBooksL1),
             (BinanceSpot::default(), "eth", "usd", MarketDataInstrumentKind::Spot, OrderBooksL1),

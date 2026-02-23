@@ -15,7 +15,7 @@ async fn main() {
 
     // Initialise PublicTrades Streams for BinanceFuturesUsd only
     // '--> each call to StreamBuilder::subscribe() creates a separate WebSocket connection
-    let streams = Streams::<PublicTrades>::builder()
+    let (streams, _handles) = Streams::<PublicTrades>::builder()
 
         // Separate WebSocket connection for BTC_USDT stream since it's very high volume
         .subscribe([

@@ -53,7 +53,7 @@ impl<Output> MultiStreamBuilder<Output> {
     where
         Output:
             From<MarketStreamResult<InstrumentKey, Kind::Event>> + Debug + Clone + Send + 'static,
-        InstrumentKey: Debug + Send + 'static,
+        InstrumentKey: Debug + Send + Sync + 'static,
         Kind: SubscriptionKind + 'static,
         Kind::Event: Send,
     {
@@ -71,9 +71,9 @@ impl<Output> MultiStreamBuilder<Output> {
 
         // Init Streams<Kind::Event> & send mapped Outputs to the associated exchange_tx
         self.futures.push(Box::pin(async move {
-            builder
-                .init()
-                .await?
+            let (streams, _handles) = builder.init().await?;
+
+            streams
                 .streams
                 .into_iter()
                 .for_each(|(exchange, exchange_rx)| {

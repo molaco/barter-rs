@@ -130,6 +130,30 @@ where
         )]
     }
 
+    fn unsubscribe_requests(
+        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+    ) -> Vec<WsMessage> {
+        let stream_names = exchange_subs
+            .into_iter()
+            .map(|sub| {
+                format!(
+                    "{}{}",
+                    sub.market.as_ref().to_lowercase(),
+                    sub.channel.as_ref()
+                )
+            })
+            .collect::<Vec<String>>();
+
+        vec![WsMessage::text(
+            serde_json::json!({
+                "method": "UNSUBSCRIBE",
+                "params": stream_names,
+                "id": 1
+            })
+            .to_string(),
+        )]
+    }
+
     fn expected_responses<InstrumentKey>(_: &Map<InstrumentKey>) -> usize {
         1
     }
@@ -203,6 +227,7 @@ where
 mod tests {
     use super::*;
     use crate::subscription::candle::Interval;
+    use smol_str::SmolStr;
 
     #[test]
     fn test_binance_interval_mapping() {
@@ -220,5 +245,35 @@ mod tests {
         assert_eq!(binance_interval(Interval::D3), "3d");
         assert_eq!(binance_interval(Interval::W1), "1w");
         assert_eq!(binance_interval(Interval::Month1), "1M");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests() {
+        use spot::BinanceSpot;
+
+        let exchange_subs = vec![
+            ExchangeSub {
+                channel: BinanceChannel(SmolStr::new_static("@trade")),
+                market: BinanceMarket(SmolStr::new_static("BTCUSDT")),
+            },
+            ExchangeSub {
+                channel: BinanceChannel(SmolStr::new_static("@kline_1m")),
+                market: BinanceMarket(SmolStr::new_static("ETHUSDT")),
+            },
+        ];
+
+        let messages = BinanceSpot::unsubscribe_requests(exchange_subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+
+        assert_eq!(payload["method"], "UNSUBSCRIBE");
+        assert_eq!(payload["id"], 1);
+
+        let params = payload["params"].as_array().unwrap();
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0], "btcusdt@trade");
+        assert_eq!(params[1], "ethusdt@kline_1m");
     }
 }

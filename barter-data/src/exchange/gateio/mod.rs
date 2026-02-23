@@ -120,6 +120,25 @@ where
             })
             .collect()
     }
+
+    fn unsubscribe_requests(
+        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+    ) -> Vec<WsMessage> {
+        exchange_subs
+            .into_iter()
+            .map(|ExchangeSub { channel, market }| {
+                WsMessage::text(
+                    json!({
+                        "time": chrono::Utc::now().timestamp_millis(),
+                        "channel": channel.as_ref(),
+                        "event": "unsubscribe",
+                        "payload": [market.as_ref()]
+                    })
+                    .to_string(),
+                )
+            })
+            .collect()
+    }
 }
 
 impl<'de, Server> serde::Deserialize<'de> for Gateio<Server>
@@ -157,7 +176,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::exchange::subscription::ExchangeSub;
     use crate::subscription::candle::Interval;
+    use smol_str::SmolStr;
 
     #[test]
     fn test_gateio_interval_supported() {
@@ -179,5 +200,114 @@ mod tests {
         assert!(gateio_interval(Interval::H6).is_err());
         assert!(gateio_interval(Interval::H12).is_err());
         assert!(gateio_interval(Interval::D3).is_err());
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_spot_trades() {
+        use spot::GateioSpot;
+
+        let subs = vec![ExchangeSub {
+            channel: GateioChannel(SmolStr::new("spot.trades")),
+            market: GateioMarket(SmolStr::new("BTC_USDT")),
+        }];
+
+        let messages = GateioSpot::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["event"], "unsubscribe");
+        assert_eq!(payload["channel"], "spot.trades");
+        assert_eq!(payload["payload"][0], "BTC_USDT");
+        assert!(payload["time"].is_number());
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_perpetual_trades() {
+        use perpetual::GateioPerpetualsUsd;
+
+        let subs = vec![ExchangeSub {
+            channel: GateioChannel(SmolStr::new("futures.trades")),
+            market: GateioMarket(SmolStr::new("BTC_USDT")),
+        }];
+
+        let messages = GateioPerpetualsUsd::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["event"], "unsubscribe");
+        assert_eq!(payload["channel"], "futures.trades");
+        assert_eq!(payload["payload"][0], "BTC_USDT");
+        assert!(payload["time"].is_number());
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_futures_usd() {
+        use future::GateioFuturesUsd;
+
+        let subs = vec![ExchangeSub {
+            channel: GateioChannel(SmolStr::new("futures.trades")),
+            market: GateioMarket(SmolStr::new("BTC_USDT")),
+        }];
+
+        let messages = GateioFuturesUsd::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["event"], "unsubscribe");
+        assert_eq!(payload["channel"], "futures.trades");
+        assert_eq!(payload["payload"][0], "BTC_USDT");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_options() {
+        use option::GateioOptions;
+
+        let subs = vec![ExchangeSub {
+            channel: GateioChannel(SmolStr::new("options.trades")),
+            market: GateioMarket(SmolStr::new("BTC_USDT")),
+        }];
+
+        let messages = GateioOptions::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["event"], "unsubscribe");
+        assert_eq!(payload["channel"], "options.trades");
+        assert_eq!(payload["payload"][0], "BTC_USDT");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_multiple() {
+        use spot::GateioSpot;
+
+        let subs = vec![
+            ExchangeSub {
+                channel: GateioChannel(SmolStr::new("spot.trades")),
+                market: GateioMarket(SmolStr::new("BTC_USDT")),
+            },
+            ExchangeSub {
+                channel: GateioChannel(SmolStr::new("spot.candlesticks_1m")),
+                market: GateioMarket(SmolStr::new("ETH_USDT")),
+            },
+        ];
+
+        let messages = GateioSpot::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 2);
+
+        let payload0: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload0["event"], "unsubscribe");
+        assert_eq!(payload0["channel"], "spot.trades");
+        assert_eq!(payload0["payload"][0], "BTC_USDT");
+
+        let payload1: serde_json::Value =
+            serde_json::from_str(&messages[1].to_string()).unwrap();
+        assert_eq!(payload1["event"], "unsubscribe");
+        assert_eq!(payload1["channel"], "spot.candlesticks_1m");
+        assert_eq!(payload1["payload"][0], "ETH_USDT");
     }
 }

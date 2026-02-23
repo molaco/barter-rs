@@ -157,6 +157,38 @@ impl Connector for Kraken {
             })
             .collect()
     }
+
+    fn unsubscribe_requests(
+        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+    ) -> Vec<WsMessage> {
+        exchange_subs
+            .into_iter()
+            .map(|ExchangeSub { channel, market }| {
+                let channel_str = channel.as_ref();
+
+                let subscription = if let Some(interval_str) = channel_str.strip_prefix("ohlc-") {
+                    let interval: u32 = interval_str.parse().unwrap_or(1);
+                    json!({
+                        "name": "ohlc",
+                        "interval": interval
+                    })
+                } else {
+                    json!({
+                        "name": channel_str
+                    })
+                };
+
+                WsMessage::text(
+                    json!({
+                        "event": "unsubscribe",
+                        "pair": [market.as_ref()],
+                        "subscription": subscription
+                    })
+                    .to_string(),
+                )
+            })
+            .collect()
+    }
 }
 
 impl<Instrument> StreamSelector<Instrument, PublicTrades> for Kraken
@@ -190,7 +222,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::exchange::subscription::ExchangeSub;
     use crate::subscription::candle::Interval;
+    use smol_str::SmolStr;
 
     #[test]
     fn test_kraken_interval_supported() {
@@ -212,5 +246,69 @@ mod tests {
         assert!(kraken_interval(Interval::H12).is_err());
         assert!(kraken_interval(Interval::D3).is_err());
         assert!(kraken_interval(Interval::Month1).is_err());
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_trades() {
+        let subs = vec![ExchangeSub {
+            channel: KrakenChannel(SmolStr::new("trade")),
+            market: KrakenMarket(SmolStr::new("XBT/USD")),
+        }];
+
+        let messages = Kraken::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["event"], "unsubscribe");
+        assert_eq!(payload["pair"][0], "XBT/USD");
+        assert_eq!(payload["subscription"]["name"], "trade");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_ohlc() {
+        let subs = vec![ExchangeSub {
+            channel: KrakenChannel(SmolStr::new("ohlc-5")),
+            market: KrakenMarket(SmolStr::new("XBT/USD")),
+        }];
+
+        let messages = Kraken::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["event"], "unsubscribe");
+        assert_eq!(payload["pair"][0], "XBT/USD");
+        assert_eq!(payload["subscription"]["name"], "ohlc");
+        assert_eq!(payload["subscription"]["interval"], 5);
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_multiple() {
+        let subs = vec![
+            ExchangeSub {
+                channel: KrakenChannel(SmolStr::new("trade")),
+                market: KrakenMarket(SmolStr::new("XBT/USD")),
+            },
+            ExchangeSub {
+                channel: KrakenChannel(SmolStr::new("spread")),
+                market: KrakenMarket(SmolStr::new("ETH/USD")),
+            },
+        ];
+
+        let messages = Kraken::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 2);
+
+        let payload0: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload0["event"], "unsubscribe");
+        assert_eq!(payload0["pair"][0], "XBT/USD");
+        assert_eq!(payload0["subscription"]["name"], "trade");
+
+        let payload1: serde_json::Value =
+            serde_json::from_str(&messages[1].to_string()).unwrap();
+        assert_eq!(payload1["event"], "unsubscribe");
+        assert_eq!(payload1["pair"][0], "ETH/USD");
+        assert_eq!(payload1["subscription"]["name"], "spread");
     }
 }

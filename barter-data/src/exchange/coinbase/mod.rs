@@ -118,6 +118,24 @@ impl Connector for Coinbase {
             })
             .collect()
     }
+
+    fn unsubscribe_requests(
+        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+    ) -> Vec<WsMessage> {
+        exchange_subs
+            .into_iter()
+            .map(|ExchangeSub { channel, market }| {
+                WsMessage::text(
+                    json!({
+                        "type": "unsubscribe",
+                        "product_ids": [market.as_ref()],
+                        "channels": [channel.as_ref()],
+                    })
+                    .to_string(),
+                )
+            })
+            .collect()
+    }
 }
 
 impl<Instrument> StreamSelector<Instrument, PublicTrades> for Coinbase
@@ -141,7 +159,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::exchange::subscription::ExchangeSub;
     use crate::subscription::candle::Interval;
+    use smol_str::SmolStr;
 
     #[test]
     fn test_coinbase_interval_supported() {
@@ -163,5 +183,51 @@ mod tests {
         assert!(coinbase_interval(Interval::D3).is_err());
         assert!(coinbase_interval(Interval::W1).is_err());
         assert!(coinbase_interval(Interval::Month1).is_err());
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_trades() {
+        let subs = vec![ExchangeSub {
+            channel: CoinbaseChannel(SmolStr::new("matches")),
+            market: CoinbaseMarket(SmolStr::new("BTC-USD")),
+        }];
+
+        let messages = Coinbase::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["type"], "unsubscribe");
+        assert_eq!(payload["product_ids"][0], "BTC-USD");
+        assert_eq!(payload["channels"][0], "matches");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_multiple() {
+        let subs = vec![
+            ExchangeSub {
+                channel: CoinbaseChannel(SmolStr::new("matches")),
+                market: CoinbaseMarket(SmolStr::new("BTC-USD")),
+            },
+            ExchangeSub {
+                channel: CoinbaseChannel(SmolStr::new("candles")),
+                market: CoinbaseMarket(SmolStr::new("ETH-USD")),
+            },
+        ];
+
+        let messages = Coinbase::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 2);
+
+        let payload0: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload0["type"], "unsubscribe");
+        assert_eq!(payload0["product_ids"][0], "BTC-USD");
+        assert_eq!(payload0["channels"][0], "matches");
+
+        let payload1: serde_json::Value =
+            serde_json::from_str(&messages[1].to_string()).unwrap();
+        assert_eq!(payload1["type"], "unsubscribe");
+        assert_eq!(payload1["product_ids"][0], "ETH-USD");
+        assert_eq!(payload1["channels"][0], "candles");
     }
 }

@@ -150,6 +150,37 @@ impl Connector for Bitfinex {
             })
             .collect()
     }
+
+    fn unsubscribe_requests(
+        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+    ) -> Vec<WsMessage> {
+        // TODO: Bitfinex unsubscribe officially requires a server-assigned `chanId`:
+        //   {"event": "unsubscribe", "chanId": N}
+        // Since we don't have chanId at the Connector level, we mirror the subscribe
+        // format with "unsubscribe" using channel/symbol identifiers. Bitfinex may accept
+        // this format. If not, proper chanId-based unsubscribe will need to be handled
+        // in the transformer layer.
+        exchange_subs
+            .into_iter()
+            .map(|ExchangeSub { channel, market }| {
+                let channel_str = channel.as_ref();
+                let payload = if channel_str == "candles" {
+                    json!({
+                        "event": "unsubscribe",
+                        "channel": channel_str,
+                        "key": market.as_ref(),
+                    })
+                } else {
+                    json!({
+                        "event": "unsubscribe",
+                        "channel": channel_str,
+                        "symbol": market.as_ref(),
+                    })
+                };
+                WsMessage::text(payload.to_string())
+            })
+            .collect()
+    }
 }
 
 impl<Instrument> StreamSelector<Instrument, PublicTrades> for Bitfinex
@@ -175,7 +206,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::exchange::subscription::ExchangeSub;
     use crate::subscription::candle::Interval;
+    use smol_str::SmolStr;
 
     #[test]
     fn test_bitfinex_interval_supported() {
@@ -197,5 +230,70 @@ mod tests {
         assert!(bitfinex_interval(Interval::H2).is_err());
         assert!(bitfinex_interval(Interval::H4).is_err());
         assert!(bitfinex_interval(Interval::D3).is_err());
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_trades() {
+        let subs = vec![ExchangeSub {
+            channel: BitfinexChannel(SmolStr::new("trades")),
+            market: BitfinexMarket(SmolStr::new("tBTCUSD")),
+        }];
+
+        let messages = Bitfinex::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["event"], "unsubscribe");
+        assert_eq!(payload["channel"], "trades");
+        assert_eq!(payload["symbol"], "tBTCUSD");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_candles() {
+        let subs = vec![ExchangeSub {
+            channel: BitfinexChannel(SmolStr::new("candles")),
+            market: BitfinexMarket(SmolStr::new("trade:1m:tBTCUSD")),
+        }];
+
+        let messages = Bitfinex::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["event"], "unsubscribe");
+        assert_eq!(payload["channel"], "candles");
+        assert_eq!(payload["key"], "trade:1m:tBTCUSD");
+        // candles use "key" not "symbol"
+        assert!(payload.get("symbol").is_none());
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_multiple() {
+        let subs = vec![
+            ExchangeSub {
+                channel: BitfinexChannel(SmolStr::new("trades")),
+                market: BitfinexMarket(SmolStr::new("tBTCUSD")),
+            },
+            ExchangeSub {
+                channel: BitfinexChannel(SmolStr::new("candles")),
+                market: BitfinexMarket(SmolStr::new("trade:1m:tETHUSD")),
+            },
+        ];
+
+        let messages = Bitfinex::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 2);
+
+        let payload0: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload0["event"], "unsubscribe");
+        assert_eq!(payload0["channel"], "trades");
+        assert_eq!(payload0["symbol"], "tBTCUSD");
+
+        let payload1: serde_json::Value =
+            serde_json::from_str(&messages[1].to_string()).unwrap();
+        assert_eq!(payload1["event"], "unsubscribe");
+        assert_eq!(payload1["channel"], "candles");
+        assert_eq!(payload1["key"], "trade:1m:tETHUSD");
     }
 }

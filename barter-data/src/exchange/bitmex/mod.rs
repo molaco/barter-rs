@@ -100,6 +100,23 @@ impl Connector for Bitmex {
         )]
     }
 
+    fn unsubscribe_requests(
+        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+    ) -> Vec<WsMessage> {
+        let stream_names = exchange_subs
+            .into_iter()
+            .map(|sub| format!("{}:{}", sub.channel.as_ref(), sub.market.as_ref(),))
+            .collect::<Vec<String>>();
+
+        vec![WsMessage::text(
+            serde_json::json!({
+                "op": "unsubscribe",
+                "args": stream_names
+            })
+            .to_string(),
+        )]
+    }
+
     fn expected_responses<InstrumentKey>(_: &Map<InstrumentKey>) -> usize {
         1
     }
@@ -152,7 +169,9 @@ impl serde::Serialize for Bitmex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::exchange::subscription::ExchangeSub;
     use crate::subscription::candle::Interval;
+    use smol_str::SmolStr;
 
     #[test]
     fn test_bitmex_interval_supported() {
@@ -174,5 +193,48 @@ mod tests {
         assert!(bitmex_interval(Interval::D3).is_err());
         assert!(bitmex_interval(Interval::W1).is_err());
         assert!(bitmex_interval(Interval::Month1).is_err());
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_single() {
+        let subs = vec![ExchangeSub {
+            channel: BitmexChannel(SmolStr::new("trade")),
+            market: BitmexMarket(SmolStr::new("XBTUSD")),
+        }];
+
+        let messages = Bitmex::unsubscribe_requests(subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["op"], "unsubscribe");
+        assert_eq!(payload["args"][0], "trade:XBTUSD");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_multiple_batched() {
+        let subs = vec![
+            ExchangeSub {
+                channel: BitmexChannel(SmolStr::new("trade")),
+                market: BitmexMarket(SmolStr::new("XBTUSD")),
+            },
+            ExchangeSub {
+                channel: BitmexChannel(SmolStr::new("tradeBin1m")),
+                market: BitmexMarket(SmolStr::new("ETHUSD")),
+            },
+        ];
+
+        let messages = Bitmex::unsubscribe_requests(subs);
+        // Bitmex batches all unsubscribes into a single message
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["op"], "unsubscribe");
+
+        let args = payload["args"].as_array().unwrap();
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0], "trade:XBTUSD");
+        assert_eq!(args[1], "tradeBin1m:ETHUSD");
     }
 }

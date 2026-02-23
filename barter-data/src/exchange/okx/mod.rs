@@ -128,6 +128,18 @@ impl Connector for Okx {
             .to_string(),
         )]
     }
+
+    fn unsubscribe_requests(
+        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+    ) -> Vec<WsMessage> {
+        vec![WsMessage::text(
+            json!({
+                "op": "unsubscribe",
+                "args": &exchange_subs,
+            })
+            .to_string(),
+        )]
+    }
 }
 
 impl<Instrument> StreamSelector<Instrument, PublicTrades> for Okx
@@ -150,6 +162,7 @@ where
 mod tests {
     use super::*;
     use crate::subscription::candle::Interval;
+    use smol_str::SmolStr;
 
     #[test]
     fn test_okx_interval_mapping() {
@@ -167,5 +180,34 @@ mod tests {
         assert_eq!(okx_interval(Interval::D3), "3D");
         assert_eq!(okx_interval(Interval::W1), "1W");
         assert_eq!(okx_interval(Interval::Month1), "1M");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests() {
+        let exchange_subs = vec![
+            ExchangeSub {
+                channel: OkxChannel(SmolStr::new_static("trades")),
+                market: OkxMarket(SmolStr::new_static("BTC-USDT")),
+            },
+            ExchangeSub {
+                channel: OkxChannel(SmolStr::new_static("candle1m")),
+                market: OkxMarket(SmolStr::new_static("ETH-USDT")),
+            },
+        ];
+
+        let messages = Okx::unsubscribe_requests(exchange_subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+
+        assert_eq!(payload["op"], "unsubscribe");
+
+        let args = payload["args"].as_array().unwrap();
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0]["channel"], "trades");
+        assert_eq!(args[0]["instId"], "BTC-USDT");
+        assert_eq!(args[1]["channel"], "candle1m");
+        assert_eq!(args[1]["instId"], "ETH-USDT");
     }
 }

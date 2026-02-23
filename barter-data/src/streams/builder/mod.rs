@@ -6,6 +6,7 @@ use crate::{
     instrument::InstrumentData,
     streams::{
         consumer::{MarketStreamResult, STREAM_RECONNECTION_POLICY, init_market_stream},
+        handle::SubscriptionHandle,
         reconnect::stream::ReconnectingStream,
     },
     subscription::{Subscription, SubscriptionKind},
@@ -17,6 +18,7 @@ use std::{
     fmt::{Debug, Display},
     future::Future,
     pin::Pin,
+    sync::{Arc, Mutex},
 };
 
 /// Defines the [`MultiStreamBuilder`](multi::MultiStreamBuilder) API for ergonomically
@@ -42,6 +44,7 @@ where
 {
     pub channels: HashMap<ExchangeId, Channel<MarketStreamResult<InstrumentKey, Kind::Event>>>,
     pub futures: Vec<SubscribeFuture>,
+    pub handles: Arc<Mutex<Vec<(ExchangeId, SubscriptionHandle<InstrumentKey>)>>>,
 }
 
 impl<InstrumentKey, Kind> Debug for StreamBuilder<InstrumentKey, Kind>
@@ -66,6 +69,7 @@ where
         Self {
             channels: HashMap::new(),
             futures: Vec::new(),
+            handles: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -80,7 +84,7 @@ where
         Sub: Into<Subscription<Exchange, Instrument, Kind>>,
         Exchange: StreamSelector<Instrument, Kind> + Ord + Send + Sync + 'static,
         Instrument: InstrumentData<Key = InstrumentKey> + Ord + Display + 'static,
-        Instrument::Key: Debug + Clone + Send + 'static,
+        Instrument::Key: Debug + Clone + Send + Sync + 'static,
         Kind: Ord + Display + Send + Sync + 'static,
         Kind::Event: Clone + Send,
         Subscription<Exchange, Instrument, Kind>:
@@ -92,6 +96,7 @@ where
         // Acquire channel Sender to send Market<Kind::Event> from consumer loop to user
         // '--> Add ExchangeChannel Entry if this Exchange <--> SubscriptionKind combination is new
         let exchange_tx = self.channels.entry(Exchange::ID).or_default().tx.clone();
+        let handles = self.handles.clone();
 
         // Add Future that once awaited will yield the Result<(), SocketError> of subscribing
         self.futures.push(Box::pin(async move {
@@ -105,8 +110,19 @@ where
             subscriptions.sort();
             subscriptions.dedup();
 
+            let exchange = Exchange::ID;
+
             // Initialise a MarketEvent `ReconnectingStream`
-            let stream = init_market_stream(STREAM_RECONNECTION_POLICY, subscriptions).await?;
+            let (stream, handle) =
+                init_market_stream(STREAM_RECONNECTION_POLICY, subscriptions).await?;
+
+            // Store SubscriptionHandle if available
+            if let Some(handle) = handle {
+                handles
+                    .lock()
+                    .expect("handles mutex poisoned")
+                    .push((exchange, handle));
+            }
 
             // Forward MarketEvents to ExchangeTx
             tokio::spawn(stream.forward_to(exchange_tx));
@@ -125,17 +141,35 @@ where
     /// the [`Streams`] `HashMap` returned by this method.
     pub async fn init(
         self,
-    ) -> Result<Streams<MarketStreamResult<InstrumentKey, Kind::Event>>, DataError> {
+    ) -> Result<
+        (
+            Streams<MarketStreamResult<InstrumentKey, Kind::Event>>,
+            Vec<(ExchangeId, SubscriptionHandle<InstrumentKey>)>,
+        ),
+        DataError,
+    > {
+        let handles = self.handles.clone();
+
         // Await Stream initialisation perpetual and ensure success
         futures::future::try_join_all(self.futures).await?;
 
+        // Extract collected SubscriptionHandles (all futures are done, so only our Arc remains)
+        let handles = handles
+            .lock()
+            .expect("handles mutex poisoned")
+            .drain(..)
+            .collect::<Vec<_>>();
+
         // Construct Streams using each ExchangeChannel receiver
-        Ok(Streams {
-            streams: self
-                .channels
-                .into_iter()
-                .map(|(exchange, channel)| (exchange, channel.rx))
-                .collect(),
-        })
+        Ok((
+            Streams {
+                streams: self
+                    .channels
+                    .into_iter()
+                    .map(|(exchange, channel)| (exchange, channel.rx))
+                    .collect(),
+            },
+            handles,
+        ))
     }
 }

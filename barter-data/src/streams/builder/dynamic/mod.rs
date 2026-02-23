@@ -21,6 +21,7 @@ use crate::{
     instrument::InstrumentData,
     streams::{
         consumer::{MarketStreamResult, STREAM_RECONNECTION_POLICY, init_market_stream},
+        handle::SubscriptionHandle,
         reconnect::stream::ReconnectingStream,
     },
     subscription::{
@@ -43,7 +44,7 @@ use futures_util::{StreamExt, future::try_join_all};
 use itertools::Itertools;
 use std::{
     fmt::{Debug, Display},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use vecmap::VecMap;
@@ -64,6 +65,7 @@ pub struct DynamicStreams<InstrumentKey> {
         VecMap<ExchangeId, UnboundedReceiverStream<MarketStreamResult<InstrumentKey, Liquidation>>>,
     pub candles:
         VecMap<ExchangeId, UnboundedReceiverStream<MarketStreamResult<InstrumentKey, Candle>>>,
+    pub handles: Vec<(ExchangeId, SubscriptionHandle<InstrumentKey>)>,
 }
 
 impl<InstrumentKey> DynamicStreams<InstrumentKey> {
@@ -84,7 +86,7 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         SubIter: IntoIterator<Item = Sub>,
         Sub: Into<Subscription<ExchangeId, Instrument, SubKind>>,
         Instrument: InstrumentData<Key = InstrumentKey> + Ord + Display + 'static,
-        InstrumentKey: Debug + Clone + Send + 'static,
+        InstrumentKey: Debug + Clone + Send + Sync + 'static,
         Subscription<BinanceSpot, Instrument, PublicTrades>: Identifier<BinanceMarket>,
         Subscription<BinanceSpot, Instrument, OrderBooksL1>: Identifier<BinanceMarket>,
         Subscription<BinanceSpot, Instrument, OrderBooksL2>: Identifier<BinanceMarket>,
@@ -134,6 +136,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         // Generate required Channels from Subscription batches
         let channels = Channels::try_from(&batches)?;
 
+        // Shared collector for SubscriptionHandles from all init_market_stream calls
+        let collected_handles: Arc<Mutex<Vec<(ExchangeId, SubscriptionHandle<InstrumentKey>)>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
         let futures =
             batches.into_iter().map(|mut batch| {
                 batch.sort_unstable_by_key(|sub| (sub.exchange, sub.kind));
@@ -146,6 +152,7 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                         .map(|((exchange, sub_kind), subs)| {
                             let subs = subs.into_iter().collect::<Vec<_>>();
                             let txs = Arc::clone(&channels.txs);
+                            let collected_handles = Arc::clone(&collected_handles);
                             async move {
                                 match (exchange, sub_kind) {
                                     (ExchangeId::BinanceSpot, SubKind::PublicTrades) => {
@@ -162,7 +169,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -182,7 +192,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.l1s.get(&exchange).unwrap().clone(),
                                             ))
@@ -202,7 +215,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.l2s.get(&exchange).unwrap().clone(),
                                             ))
@@ -222,7 +238,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -242,7 +261,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.l1s.get(&exchange).unwrap().clone(),
                                             ))
@@ -262,7 +284,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.l2s.get(&exchange).unwrap().clone(),
                                             ))
@@ -282,7 +307,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.liquidations.get(&exchange).unwrap().clone(),
                                             ))
@@ -302,7 +330,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -322,7 +353,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -342,7 +376,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -362,7 +399,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -382,7 +422,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.l1s.get(&exchange).unwrap().clone(),
                                             ))
@@ -402,7 +445,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.l2s.get(&exchange).unwrap().clone(),
                                             ))
@@ -422,7 +468,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -442,7 +491,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.l1s.get(&exchange).unwrap().clone(),
                                             ))
@@ -462,7 +514,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.l2s.get(&exchange).unwrap().clone(),
                                             ))
@@ -482,7 +537,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -502,7 +560,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -522,7 +583,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -542,7 +606,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -562,7 +629,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -582,7 +652,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -602,7 +675,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -622,7 +698,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -642,7 +721,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -662,7 +744,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
                                             ))
@@ -682,7 +767,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.l1s.get(&exchange).unwrap().clone(),
                                             ))
@@ -697,7 +785,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             .collect(),
                                     )
                                     .await
-                                    .map(|stream| {
+                                    .map(|(stream, handle)| {
+                                        if let Some(handle) = handle {
+                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                        }
                                         tokio::spawn(
                                             stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
@@ -718,7 +809,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -738,7 +832,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -758,7 +855,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -778,7 +878,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -798,7 +901,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -818,7 +924,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -838,7 +947,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -858,7 +970,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -878,7 +993,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -898,7 +1016,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -918,7 +1039,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -938,7 +1062,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -958,7 +1085,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -978,7 +1108,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .collect(),
                                         )
                                         .await
-                                        .map(|stream| {
+                                        .map(|(stream, handle)| {
+                                            if let Some(handle) = handle {
+                                                collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
+                                            }
                                             tokio::spawn(stream.forward_to(
                                                 txs.candles.get(&exchange).unwrap().clone(),
                                             ))
@@ -995,6 +1128,13 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
             });
 
         try_join_all(futures).await?;
+
+        // Extract collected SubscriptionHandles
+        let handles = collected_handles
+            .lock()
+            .expect("handles mutex poisoned")
+            .drain(..)
+            .collect::<Vec<_>>();
 
         Ok(Self {
             trades: channels
@@ -1027,6 +1167,7 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                 .into_iter()
                 .map(|(exchange, rx)| (exchange, rx.into_stream()))
                 .collect(),
+            handles,
         })
     }
 
@@ -1130,7 +1271,7 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
     /// use cases.
     pub fn select_all<Output>(self) -> impl Stream<Item = Output>
     where
-        InstrumentKey: Send + 'static,
+        InstrumentKey: Send + Sync + 'static,
         Output: 'static,
         MarketStreamResult<InstrumentKey, PublicTrade>: Into<Output>,
         MarketStreamResult<InstrumentKey, OrderBookL1>: Into<Output>,
@@ -1144,6 +1285,7 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
             l2s,
             liquidations,
             candles,
+            handles: _,
         } = self;
 
         let trades = trades

@@ -53,7 +53,7 @@
 //!     // Initialise PublicTrades Streams for various exchanges
 //!     // '--> each call to StreamBuilder::subscribe() initialises a separate WebSocket connection
 //!
-//!     let streams = Streams::<PublicTrades>::builder()
+//!     let (streams, _handles) = Streams::<PublicTrades>::builder()
 //!         .subscribe([
 //!             (BinanceSpot::default(), "btc", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
 //!             (BinanceSpot::default(), "eth", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
@@ -96,6 +96,7 @@ use crate::{
     event::MarketEvent,
     exchange::{Connector, PingInterval},
     instrument::InstrumentData,
+    streams::handle::SubscriptionHandle,
     subscriber::{Subscribed, Subscriber},
     subscription::{Subscription, SubscriptionKind},
     transformer::ExchangeTransformer,
@@ -191,7 +192,7 @@ where
 {
     async fn init<SnapFetcher>(
         subscriptions: &[Subscription<Exchange, Instrument, Kind>],
-    ) -> Result<Self, DataError>
+    ) -> Result<(Self, Option<SubscriptionHandle<Instrument::Key>>), DataError>
     where
         SnapFetcher: SnapshotFetcher<Exchange, Kind>,
         Subscription<Exchange, Instrument, Kind>:
@@ -230,7 +231,7 @@ where
 {
     async fn init<SnapFetcher>(
         subscriptions: &[Subscription<Exchange, Instrument, Kind>],
-    ) -> Result<Self, DataError>
+    ) -> Result<(Self, Option<SubscriptionHandle<Instrument::Key>>), DataError>
     where
         SnapFetcher: SnapshotFetcher<Exchange, Kind>,
         Subscription<Exchange, Instrument, Kind>:
@@ -270,6 +271,17 @@ where
         let mut transformer =
             Transformer::init(instrument_map, &initial_snapshots, ws_sink_tx).await?;
 
+        // Build SubscriptionHandle from transformer's shared state (if supported)
+        let handle = match (
+            transformer.shared_instrument_map(),
+            transformer.ws_sink_tx(),
+        ) {
+            (Some(instrument_map), Some(ws_sink_tx)) => {
+                Some(SubscriptionHandle::new(ws_sink_tx, instrument_map))
+            }
+            _ => None,
+        };
+
         // Process any buffered active subscription events received during Subscription validation
         let mut processed = process_buffered_events::<Parser, Transformer>(
             &mut transformer,
@@ -279,7 +291,7 @@ where
         // Extend buffered events with any initial snapshot events
         processed.extend(initial_snapshots.into_iter().map(Ok));
 
-        Ok(ExchangeWsStream::new(ws_stream, transformer, processed))
+        Ok((ExchangeWsStream::new(ws_stream, transformer, processed), handle))
     }
 }
 

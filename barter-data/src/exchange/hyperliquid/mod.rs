@@ -135,6 +135,24 @@ impl Connector for Hyperliquid {
             .collect()
     }
 
+    fn unsubscribe_requests(
+        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+    ) -> Vec<WsMessage> {
+        exchange_subs
+            .into_iter()
+            .map(|sub| {
+                let subscription = serde_json::to_value(&sub)
+                    .expect("failed to serialize ExchangeSub");
+
+                let mut payload = serde_json::Map::new();
+                payload.insert("method".to_string(), json!("unsubscribe"));
+                payload.insert("subscription".to_string(), subscription);
+
+                WsMessage::text(serde_json::Value::Object(payload).to_string())
+            })
+            .collect()
+    }
+
     fn expected_responses<InstrumentKey>(map: &Map<InstrumentKey>) -> usize {
         map.0.len()
     }
@@ -164,6 +182,7 @@ where
 mod tests {
     use super::*;
     use crate::subscription::candle::Interval;
+    use smol_str::SmolStr;
 
     #[test]
     fn test_hyperliquid_interval_supported() {
@@ -181,5 +200,68 @@ mod tests {
         assert_eq!(hyperliquid_interval(Interval::D3).unwrap(), "3d");
         assert_eq!(hyperliquid_interval(Interval::W1).unwrap(), "1w");
         assert_eq!(hyperliquid_interval(Interval::Month1).unwrap(), "1M");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_trades() {
+        let exchange_subs = vec![ExchangeSub {
+            channel: HyperliquidChannel(SmolStr::new_static("trades")),
+            market: HyperliquidMarket(SmolStr::new_static("BTC")),
+        }];
+
+        let messages = Hyperliquid::unsubscribe_requests(exchange_subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+
+        assert_eq!(payload["method"], "unsubscribe");
+        assert_eq!(payload["subscription"]["type"], "trades");
+        assert_eq!(payload["subscription"]["coin"], "BTC");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_candles() {
+        use smol_str::format_smolstr;
+
+        let exchange_subs = vec![ExchangeSub {
+            channel: HyperliquidChannel(format_smolstr!("candle.1m")),
+            market: HyperliquidMarket(SmolStr::new_static("ETH")),
+        }];
+
+        let messages = Hyperliquid::unsubscribe_requests(exchange_subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+
+        assert_eq!(payload["method"], "unsubscribe");
+        assert_eq!(payload["subscription"]["type"], "candle");
+        assert_eq!(payload["subscription"]["coin"], "ETH");
+        assert_eq!(payload["subscription"]["interval"], "1m");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests_multiple() {
+        let exchange_subs = vec![
+            ExchangeSub {
+                channel: HyperliquidChannel(SmolStr::new_static("trades")),
+                market: HyperliquidMarket(SmolStr::new_static("BTC")),
+            },
+            ExchangeSub {
+                channel: HyperliquidChannel(SmolStr::new_static("trades")),
+                market: HyperliquidMarket(SmolStr::new_static("ETH")),
+            },
+        ];
+
+        let messages = Hyperliquid::unsubscribe_requests(exchange_subs);
+        // Hyperliquid sends one message per subscription
+        assert_eq!(messages.len(), 2);
+
+        for msg in &messages {
+            let payload: serde_json::Value =
+                serde_json::from_str(&msg.to_string()).unwrap();
+            assert_eq!(payload["method"], "unsubscribe");
+        }
     }
 }

@@ -5,6 +5,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use barter_integration::{Transformer, protocol::websocket::WsMessage};
+use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 
 /// Generic stateless [`ExchangeTransformer`] often used for transforming
@@ -28,4 +29,16 @@ where
         initial_snapshots: &[MarketEvent<InstrumentKey, Kind::Event>],
         ws_sink_tx: mpsc::UnboundedSender<WsMessage>,
     ) -> Result<Self, DataError>;
+
+    /// Returns a shared reference to the instrument map, if supported.
+    /// Used by [`SubscriptionHandle`](crate::streams::handle::SubscriptionHandle) for dynamic
+    /// subscription management.
+    fn shared_instrument_map(&self) -> Option<Arc<RwLock<Map<InstrumentKey>>>> {
+        None
+    }
+
+    /// Returns the WebSocket sink sender for sending messages to the exchange.
+    fn ws_sink_tx(&self) -> Option<mpsc::UnboundedSender<WsMessage>> {
+        None
+    }
 }

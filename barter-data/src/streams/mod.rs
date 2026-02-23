@@ -9,6 +9,10 @@ use futures::Stream;
 /// [`MarketStream`](super::MarketStream) [`Streams`].
 pub mod builder;
 
+/// [`SubscriptionHandle`](handle::SubscriptionHandle) for dynamic runtime subscribe/unsubscribe
+/// on live connections.
+pub mod handle;
+
 /// Central consumer loop functionality used by the [`StreamBuilder`] to
 /// drive a re-connecting [`MarketStream`](super::MarketStream).
 pub mod consumer;

@@ -153,6 +153,23 @@ where
         )]
     }
 
+    fn unsubscribe_requests(
+        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+    ) -> Vec<WsMessage> {
+        let stream_names = exchange_subs
+            .into_iter()
+            .map(|sub| format!("{}.{}", sub.channel.as_ref(), sub.market.as_ref()))
+            .collect::<Vec<String>>();
+
+        vec![WsMessage::text(
+            serde_json::json!({
+                "op": "unsubscribe",
+                "args": stream_names
+            })
+            .to_string(),
+        )]
+    }
+
     fn expected_responses<InstrumentKey>(_: &Map<InstrumentKey>) -> usize {
         1
     }
@@ -235,6 +252,7 @@ where
 mod tests {
     use super::*;
     use crate::subscription::candle::Interval;
+    use smol_str::SmolStr;
 
     #[test]
     fn test_bybit_interval_mapping() {
@@ -252,5 +270,34 @@ mod tests {
         assert_eq!(bybit_interval(Interval::D3), "D");
         assert_eq!(bybit_interval(Interval::W1), "W");
         assert_eq!(bybit_interval(Interval::Month1), "M");
+    }
+
+    #[test]
+    fn test_unsubscribe_requests() {
+        use spot::BybitSpot;
+
+        let exchange_subs = vec![
+            ExchangeSub {
+                channel: BybitChannel(SmolStr::new_static("publicTrade")),
+                market: BybitMarket(SmolStr::new_static("BTCUSDT")),
+            },
+            ExchangeSub {
+                channel: BybitChannel(SmolStr::new_static("kline.1")),
+                market: BybitMarket(SmolStr::new_static("ETHUSDT")),
+            },
+        ];
+
+        let messages = BybitSpot::unsubscribe_requests(exchange_subs);
+        assert_eq!(messages.len(), 1);
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&messages[0].to_string()).unwrap();
+
+        assert_eq!(payload["op"], "unsubscribe");
+
+        let args = payload["args"].as_array().unwrap();
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0], "publicTrade.BTCUSDT");
+        assert_eq!(args[1], "kline.1.ETHUSDT");
     }
 }

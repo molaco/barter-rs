@@ -124,6 +124,14 @@ where
     /// subscription payloads sent to the exchange server.
     fn requests(exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage>;
 
+    /// Defines how to translate a collection of [`ExchangeSub`]s into the [`WsMessage`]
+    /// unsubscription payloads sent to the exchange server.
+    ///
+    /// Default implementation returns an empty vec (no unsubscribe support).
+    fn unsubscribe_requests(_exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage> {
+        vec![]
+    }
+
     /// Number of `Subscription` responses expected from the
     /// exchange server in responses to the requests send. Used to validate all
     /// `Subscription`s were accepted.

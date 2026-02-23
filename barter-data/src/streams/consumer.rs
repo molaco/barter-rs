@@ -5,6 +5,7 @@ use crate::{
     exchange::StreamSelector,
     instrument::InstrumentData,
     streams::{
+        handle::SubscriptionHandle,
         reconnect,
         reconnect::stream::{
             ReconnectingStream, ReconnectionBackoffPolicy, init_reconnecting_stream,
@@ -17,6 +18,7 @@ use derive_more::Constructor;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::sync::{Arc, Mutex};
 use tracing::info;
 
 /// Default [`ReconnectionBackoffPolicy`] for a [`reconnecting`](`ReconnectingStream`) [`MarketStream`].
@@ -44,7 +46,13 @@ pub type MarketStreamEvent<InstrumentKey, Kind> =
 pub async fn init_market_stream<Exchange, Instrument, Kind>(
     policy: ReconnectionBackoffPolicy,
     subscriptions: Vec<Subscription<Exchange, Instrument, Kind>>,
-) -> Result<impl Stream<Item = MarketStreamResult<Instrument::Key, Kind::Event>>, DataError>
+) -> Result<
+    (
+        impl Stream<Item = MarketStreamResult<Instrument::Key, Kind::Event>>,
+        Option<SubscriptionHandle<Instrument::Key>>,
+    ),
+    DataError,
+>
 where
     Exchange: StreamSelector<Instrument, Kind>,
     Instrument: InstrumentData + Display,
@@ -69,14 +77,34 @@ where
         "MarketStream with auto reconnect initialising"
     );
 
-    Ok(init_reconnecting_stream(move || {
+    // Use a oneshot channel to capture the SubscriptionHandle from the first init call.
+    // On reconnects, subsequent handles are discarded (stale handle is a Phase 3 TODO).
+    let (handle_tx, handle_rx) = tokio::sync::oneshot::channel();
+    let handle_tx = Arc::new(Mutex::new(Some(handle_tx)));
+
+    let stream = init_reconnecting_stream(move || {
         let subscriptions = subscriptions.clone();
-        async move { Exchange::Stream::init::<Exchange::SnapFetcher>(&subscriptions).await }
+        let handle_tx = handle_tx.clone();
+        async move {
+            let (stream, handle) =
+                Exchange::Stream::init::<Exchange::SnapFetcher>(&subscriptions).await?;
+
+            // Send handle on first init only (oneshot sender is consumed)
+            if let Some(tx) = handle_tx.lock().expect("handle_tx mutex poisoned").take() {
+                let _ = tx.send(handle);
+            }
+
+            Ok::<_, DataError>(stream)
+        }
     })
     .await?
     .with_reconnect_backoff(policy, stream_key)
     .with_termination_on_error(|error| error.is_terminal(), stream_key)
-    .with_reconnection_events(exchange))
+    .with_reconnection_events(exchange);
+
+    let handle = handle_rx.await.ok().flatten();
+
+    Ok((stream, handle))
 }
 
 #[derive(

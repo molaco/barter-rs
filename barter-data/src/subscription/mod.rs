@@ -359,6 +359,16 @@ impl<T> Map<T> {
             .get_mut(id)
             .ok_or_else(|| SocketError::Unidentifiable(SubscriptionId(id.as_ref().to_smolstr())))
     }
+
+    /// Insert a new entry into the map.
+    pub fn insert(&mut self, id: SubscriptionId, value: T) -> Option<T> {
+        self.0.insert(id, value)
+    }
+
+    /// Remove an entry from the map.
+    pub fn remove(&mut self, id: &SubscriptionId) -> Option<T> {
+        self.0.remove(id)
+    }
 }
 
 #[cfg(test)]

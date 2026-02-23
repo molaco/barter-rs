@@ -108,9 +108,8 @@ where
     );
 
     // Initialise merged OrderBookL2 Stream
-    let stream = stream_builder
-        .init()
-        .await?
+    let (streams, _handles) = stream_builder.init().await?;
+    let stream = streams
         .select_all()
         .with_error_handler(|error| {
             warn!(
