@@ -153,3 +153,31 @@ where
         serializer.serialize_str(Self::ID.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::Interval;
+
+    #[test]
+    fn test_gateio_interval_supported() {
+        assert_eq!(gateio_interval(Interval::M1).unwrap(), "1m");
+        assert_eq!(gateio_interval(Interval::M5).unwrap(), "5m");
+        assert_eq!(gateio_interval(Interval::M15).unwrap(), "15m");
+        assert_eq!(gateio_interval(Interval::M30).unwrap(), "30m");
+        assert_eq!(gateio_interval(Interval::H1).unwrap(), "1h");
+        assert_eq!(gateio_interval(Interval::H4).unwrap(), "4h");
+        assert_eq!(gateio_interval(Interval::D1).unwrap(), "1d");
+        assert_eq!(gateio_interval(Interval::W1).unwrap(), "7d");
+        assert_eq!(gateio_interval(Interval::Month1).unwrap(), "30d");
+    }
+
+    #[test]
+    fn test_gateio_interval_unsupported() {
+        assert!(gateio_interval(Interval::M3).is_err());
+        assert!(gateio_interval(Interval::H2).is_err());
+        assert!(gateio_interval(Interval::H6).is_err());
+        assert!(gateio_interval(Interval::H12).is_err());
+        assert!(gateio_interval(Interval::D3).is_err());
+    }
+}

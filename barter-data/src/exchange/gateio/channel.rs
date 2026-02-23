@@ -78,3 +78,65 @@ impl AsRef<str> for GateioChannel {
         self.0.as_str()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::{Candles, Interval};
+    use crate::exchange::gateio::spot::GateioSpot;
+    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+
+    fn candles_channel_spot(interval: Interval) -> GateioChannel {
+        let sub: Subscription<GateioSpot, MarketDataInstrument, Candles> = Subscription::new(
+            GateioSpot::default(),
+            MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
+            Candles(interval),
+        );
+        sub.id()
+    }
+
+    #[test]
+    fn test_candles_channel_spot_m1() {
+        assert_eq!(candles_channel_spot(Interval::M1).as_ref(), "spot.candlesticks_1m");
+    }
+
+    #[test]
+    fn test_candles_channel_spot_m5() {
+        assert_eq!(candles_channel_spot(Interval::M5).as_ref(), "spot.candlesticks_5m");
+    }
+
+    #[test]
+    fn test_candles_channel_spot_m15() {
+        assert_eq!(candles_channel_spot(Interval::M15).as_ref(), "spot.candlesticks_15m");
+    }
+
+    #[test]
+    fn test_candles_channel_spot_m30() {
+        assert_eq!(candles_channel_spot(Interval::M30).as_ref(), "spot.candlesticks_30m");
+    }
+
+    #[test]
+    fn test_candles_channel_spot_h1() {
+        assert_eq!(candles_channel_spot(Interval::H1).as_ref(), "spot.candlesticks_1h");
+    }
+
+    #[test]
+    fn test_candles_channel_spot_h4() {
+        assert_eq!(candles_channel_spot(Interval::H4).as_ref(), "spot.candlesticks_4h");
+    }
+
+    #[test]
+    fn test_candles_channel_spot_d1() {
+        assert_eq!(candles_channel_spot(Interval::D1).as_ref(), "spot.candlesticks_1d");
+    }
+
+    #[test]
+    fn test_candles_channel_spot_w1() {
+        assert_eq!(candles_channel_spot(Interval::W1).as_ref(), "spot.candlesticks_7d");
+    }
+
+    #[test]
+    fn test_candles_channel_spot_month1() {
+        assert_eq!(candles_channel_spot(Interval::Month1).as_ref(), "spot.candlesticks_30d");
+    }
+}

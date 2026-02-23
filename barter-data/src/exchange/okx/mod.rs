@@ -145,3 +145,27 @@ where
     type SnapFetcher = NoInitialSnapshots;
     type Stream = OkxWsStream<StatelessTransformer<Self, Instrument::Key, Candles, OkxKline>>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::Interval;
+
+    #[test]
+    fn test_okx_interval_mapping() {
+        assert_eq!(okx_interval(Interval::M1), "1m");
+        assert_eq!(okx_interval(Interval::M3), "3m");
+        assert_eq!(okx_interval(Interval::M5), "5m");
+        assert_eq!(okx_interval(Interval::M15), "15m");
+        assert_eq!(okx_interval(Interval::M30), "30m");
+        assert_eq!(okx_interval(Interval::H1), "1H");
+        assert_eq!(okx_interval(Interval::H2), "2H");
+        assert_eq!(okx_interval(Interval::H4), "4H");
+        assert_eq!(okx_interval(Interval::H6), "6H");
+        assert_eq!(okx_interval(Interval::H12), "12H");
+        assert_eq!(okx_interval(Interval::D1), "1D");
+        assert_eq!(okx_interval(Interval::D3), "3D");
+        assert_eq!(okx_interval(Interval::W1), "1W");
+        assert_eq!(okx_interval(Interval::Month1), "1M");
+    }
+}

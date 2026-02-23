@@ -358,4 +358,111 @@ mod tests {
 
         assert!(market_iter.0.is_empty());
     }
+
+    #[test]
+    fn test_deserialize_kraken_kline_missing_ohlc_data() {
+        // Array with channelID but missing OHLC data array
+        let input = r#"[42]"#;
+
+        assert!(serde_json::from_str::<KrakenKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_kraken_kline_too_few_ohlc_fields() {
+        // OHLC array with fewer than 9 elements
+        let input = r#"
+            [
+                42,
+                [
+                    "1672502400.000000",
+                    "1672502459.000000",
+                    "16850.00000"
+                ],
+                "ohlc-1",
+                "XBT/USD"
+            ]
+        "#;
+
+        assert!(serde_json::from_str::<KrakenKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_kraken_kline_missing_pair() {
+        // Missing the pair string (4th element)
+        let input = r#"
+            [
+                42,
+                [
+                    "1672502400.000000",
+                    "1672502459.000000",
+                    "16850.00000",
+                    "16860.00000",
+                    "16845.00000",
+                    "16855.50000",
+                    "16852.50000",
+                    "12.34500000",
+                    150
+                ],
+                "ohlc-1"
+            ]
+        "#;
+
+        assert!(serde_json::from_str::<KrakenKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_kraken_kline_invalid_price_field() {
+        // Non-string open price
+        let input = r#"
+            [
+                42,
+                [
+                    "1672502400.000000",
+                    "1672502459.000000",
+                    12345,
+                    "16860.00000",
+                    "16845.00000",
+                    "16855.50000",
+                    "16852.50000",
+                    "12.34500000",
+                    150
+                ],
+                "ohlc-1",
+                "XBT/USD"
+            ]
+        "#;
+
+        assert!(serde_json::from_str::<KrakenKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_kraken_kline_to_candle_zero_volume() {
+        let kline = KrakenKline::Data(KrakenKlineInner {
+            subscription_id: SubscriptionId::from("ohlc-1|XBT/USD"),
+            open_time: datetime_utc_from_epoch_duration(
+                std::time::Duration::from_secs_f64(1672502400.0),
+            ),
+            close_time: datetime_utc_from_epoch_duration(
+                std::time::Duration::from_secs_f64(1672502459.0),
+            ),
+            open: 16850.0,
+            high: 16860.0,
+            low: 16845.0,
+            close: 16855.5,
+            vwap: 0.0,
+            volume: 0.0,
+            trade_count: 0,
+        });
+
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::Kraken, "instrument_key", kline));
+
+        let events: Vec<_> = market_iter.0.into_iter().collect();
+        assert_eq!(events.len(), 1);
+
+        let event = events.into_iter().next().unwrap().unwrap();
+        assert_eq!(event.kind.volume, 0.0);
+        assert_eq!(event.kind.quote_volume, None);
+        assert_eq!(event.kind.trade_count, 0);
+    }
 }

@@ -171,3 +171,31 @@ where
         StatelessTransformer<Self, Instrument::Key, Candles, BitfinexCandleMessage>,
     >;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::Interval;
+
+    #[test]
+    fn test_bitfinex_interval_supported() {
+        assert_eq!(bitfinex_interval(Interval::M1).unwrap(), "1m");
+        assert_eq!(bitfinex_interval(Interval::M5).unwrap(), "5m");
+        assert_eq!(bitfinex_interval(Interval::M15).unwrap(), "15m");
+        assert_eq!(bitfinex_interval(Interval::M30).unwrap(), "30m");
+        assert_eq!(bitfinex_interval(Interval::H1).unwrap(), "1h");
+        assert_eq!(bitfinex_interval(Interval::H6).unwrap(), "6h");
+        assert_eq!(bitfinex_interval(Interval::H12).unwrap(), "12h");
+        assert_eq!(bitfinex_interval(Interval::D1).unwrap(), "1D");
+        assert_eq!(bitfinex_interval(Interval::W1).unwrap(), "1W");
+        assert_eq!(bitfinex_interval(Interval::Month1).unwrap(), "1M");
+    }
+
+    #[test]
+    fn test_bitfinex_interval_unsupported() {
+        assert!(bitfinex_interval(Interval::M3).is_err());
+        assert!(bitfinex_interval(Interval::H2).is_err());
+        assert!(bitfinex_interval(Interval::H4).is_err());
+        assert!(bitfinex_interval(Interval::D3).is_err());
+    }
+}

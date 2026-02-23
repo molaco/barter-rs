@@ -201,4 +201,141 @@ mod tests {
         let events: Vec<_> = market_iter.0.into_iter().collect();
         assert_eq!(events.len(), 1);
     }
+
+    #[test]
+    fn test_deserialize_okx_kline_missing_arg() {
+        let input = r#"
+        {
+            "data": [
+                ["1672502400000","16850","16860","16845","16855.5","12.345","208000","208000","1"]
+            ]
+        }
+        "#;
+
+        assert!(serde_json::from_str::<OkxKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_okx_kline_missing_inst_id() {
+        let input = r#"
+        {
+            "arg": {"channel": "candle1m"},
+            "data": [
+                ["1672502400000","16850","16860","16845","16855.5","12.345","208000","208000","1"]
+            ]
+        }
+        "#;
+
+        assert!(serde_json::from_str::<OkxKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_okx_kline_missing_data() {
+        let input = r#"
+        {
+            "arg": {"channel": "candle1m", "instId": "BTC-USDT"}
+        }
+        "#;
+
+        assert!(serde_json::from_str::<OkxKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_okx_kline_empty_data_array() {
+        let input = r#"
+        {
+            "arg": {"channel": "candle1m", "instId": "BTC-USDT"},
+            "data": []
+        }
+        "#;
+
+        let kline: OkxKline = serde_json::from_str(input).unwrap();
+        assert!(kline.data.is_empty());
+
+        // Converting empty data should produce empty MarketIter
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::Okx, "instrument_key", kline));
+        assert!(market_iter.0.is_empty());
+    }
+
+    #[test]
+    fn test_okx_kline_too_few_fields_filtered_out() {
+        // OKX conversion requires at least 9 fields; fewer should be filtered out
+        let kline = OkxKline {
+            arg: OkxKlineArg {
+                channel: "candle1m".to_string(),
+                inst_id: "BTC-USDT".to_string(),
+            },
+            data: vec![vec![
+                "1672502400000".to_string(),
+                "16850".to_string(),
+                "16860".to_string(),
+            ]],
+        };
+
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::Okx, "instrument_key", kline));
+        assert!(market_iter.0.is_empty());
+    }
+
+    #[test]
+    fn test_okx_kline_to_candle_zero_volume() {
+        let kline = OkxKline {
+            arg: OkxKlineArg {
+                channel: "candle1m".to_string(),
+                inst_id: "BTC-USDT".to_string(),
+            },
+            data: vec![vec![
+                "1672502400000".to_string(),
+                "16850".to_string(),
+                "16860".to_string(),
+                "16845".to_string(),
+                "16855.5".to_string(),
+                "0".to_string(),
+                "0".to_string(),
+                "0".to_string(),
+                "0".to_string(),
+            ]],
+        };
+
+        let expected_open_time =
+            datetime_utc_from_epoch_duration(Duration::from_millis(1672502400000));
+
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::Okx, "instrument_key", kline));
+
+        let events: Vec<_> = market_iter.0.into_iter().collect();
+        assert_eq!(events.len(), 1);
+
+        let event = events.into_iter().next().unwrap().unwrap();
+        assert_eq!(event.kind.open_time, expected_open_time);
+        assert_eq!(event.kind.volume, 0.0);
+        assert_eq!(event.kind.quote_volume, Some(0.0));
+        assert_eq!(event.kind.trade_count, 0);
+    }
+
+    #[test]
+    fn test_okx_kline_unparseable_price_filtered_out() {
+        let kline = OkxKline {
+            arg: OkxKlineArg {
+                channel: "candle1m".to_string(),
+                inst_id: "BTC-USDT".to_string(),
+            },
+            data: vec![vec![
+                "1672502400000".to_string(),
+                "not_a_number".to_string(),
+                "16860".to_string(),
+                "16845".to_string(),
+                "16855.5".to_string(),
+                "12.345".to_string(),
+                "208000".to_string(),
+                "208000".to_string(),
+                "1".to_string(),
+            ]],
+        };
+
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::Okx, "instrument_key", kline));
+        assert!(market_iter.0.is_empty());
+    }
 }

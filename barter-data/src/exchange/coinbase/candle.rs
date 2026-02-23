@@ -303,4 +303,143 @@ mod tests {
         let events: Vec<_> = market_iter.0.into_iter().collect();
         assert_eq!(events.len(), 2);
     }
+
+    #[test]
+    fn test_deserialize_coinbase_kline_missing_events() {
+        let input = r#"
+        {
+            "channel":"candles",
+            "timestamp":"2023-06-09T20:19:35.396Z",
+            "sequence_num":0
+        }
+        "#;
+
+        assert!(serde_json::from_str::<CoinbaseKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_coinbase_kline_missing_product_id() {
+        let input = r#"
+        {
+            "channel":"candles",
+            "timestamp":"2023-06-09T20:19:35.396Z",
+            "sequence_num":0,
+            "events":[{
+                "type":"snapshot",
+                "candles":[{
+                    "start":"1688998200",
+                    "high":"1867.72",
+                    "low":"1865.63",
+                    "open":"1867.38",
+                    "close":"1866.81",
+                    "volume":"0.20269406"
+                }]
+            }]
+        }
+        "#;
+
+        assert!(serde_json::from_str::<CoinbaseKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_coinbase_kline_invalid_start_timestamp() {
+        let input = r#"
+        {
+            "channel":"candles",
+            "timestamp":"2023-06-09T20:19:35.396Z",
+            "sequence_num":0,
+            "events":[{
+                "type":"snapshot",
+                "candles":[{
+                    "start":"not_a_timestamp",
+                    "high":"1867.72",
+                    "low":"1865.63",
+                    "open":"1867.38",
+                    "close":"1866.81",
+                    "volume":"0.20269406",
+                    "product_id":"ETH-USD"
+                }]
+            }]
+        }
+        "#;
+
+        assert!(serde_json::from_str::<CoinbaseKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_coinbase_kline_empty_events_array() {
+        let input = r#"
+        {
+            "channel":"candles",
+            "timestamp":"2023-06-09T20:19:35.396Z",
+            "sequence_num":0,
+            "events":[]
+        }
+        "#;
+
+        let kline: CoinbaseKline = serde_json::from_str(input).unwrap();
+        assert!(kline.events.is_empty());
+
+        // Converting empty events should produce empty MarketIter
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::Coinbase, "instrument_key", kline));
+        assert!(market_iter.0.is_empty());
+    }
+
+    #[test]
+    fn test_coinbase_kline_empty_candles_array() {
+        let input = r#"
+        {
+            "channel":"candles",
+            "timestamp":"2023-06-09T20:19:35.396Z",
+            "sequence_num":0,
+            "events":[{
+                "type":"snapshot",
+                "candles":[]
+            }]
+        }
+        "#;
+
+        let kline: CoinbaseKline = serde_json::from_str(input).unwrap();
+        assert!(kline.events[0].candles.is_empty());
+
+        // Converting empty candles should produce empty MarketIter
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::Coinbase, "instrument_key", kline));
+        assert!(market_iter.0.is_empty());
+    }
+
+    #[test]
+    fn test_coinbase_kline_to_candle_zero_volume() {
+        let open_time = DateTime::from_timestamp(1688998200, 0).unwrap();
+        let close_time = open_time + Duration::seconds(300);
+
+        let kline = CoinbaseKline {
+            events: vec![CoinbaseKlineEvent {
+                event_type: "update".to_string(),
+                candles: vec![CoinbaseKlineData {
+                    start: open_time,
+                    high: 1867.72,
+                    low: 1865.63,
+                    open: 1867.38,
+                    close: 1866.81,
+                    volume: 0.0,
+                    product_id: "ETH-USD".to_string(),
+                }],
+            }],
+        };
+
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::Coinbase, "instrument_key", kline));
+
+        let events: Vec<_> = market_iter.0.into_iter().collect();
+        assert_eq!(events.len(), 1);
+
+        let event = events.into_iter().next().unwrap().unwrap();
+        assert_eq!(event.kind.open_time, open_time);
+        assert_eq!(event.kind.close_time, close_time);
+        assert_eq!(event.kind.volume, 0.0);
+        assert_eq!(event.kind.quote_volume, None);
+        assert_eq!(event.kind.trade_count, 0);
+    }
 }

@@ -198,3 +198,27 @@ where
         serializer.serialize_str(Self::ID.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::Interval;
+
+    #[test]
+    fn test_binance_interval_mapping() {
+        assert_eq!(binance_interval(Interval::M1), "1m");
+        assert_eq!(binance_interval(Interval::M3), "3m");
+        assert_eq!(binance_interval(Interval::M5), "5m");
+        assert_eq!(binance_interval(Interval::M15), "15m");
+        assert_eq!(binance_interval(Interval::M30), "30m");
+        assert_eq!(binance_interval(Interval::H1), "1h");
+        assert_eq!(binance_interval(Interval::H2), "2h");
+        assert_eq!(binance_interval(Interval::H4), "4h");
+        assert_eq!(binance_interval(Interval::H6), "6h");
+        assert_eq!(binance_interval(Interval::H12), "12h");
+        assert_eq!(binance_interval(Interval::D1), "1d");
+        assert_eq!(binance_interval(Interval::D3), "3d");
+        assert_eq!(binance_interval(Interval::W1), "1w");
+        assert_eq!(binance_interval(Interval::Month1), "1M");
+    }
+}

@@ -94,3 +94,70 @@ impl AsRef<str> for BinanceChannel {
         self.0.as_str()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::{Candles, Interval};
+    use crate::exchange::binance::spot::BinanceSpot;
+    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+
+    fn candles_channel(interval: Interval) -> BinanceChannel {
+        let sub: Subscription<BinanceSpot, MarketDataInstrument, Candles> = Subscription::new(
+            BinanceSpot::default(),
+            MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
+            Candles(interval),
+        );
+        sub.id()
+    }
+
+    #[test]
+    fn test_candles_channel_m1() {
+        assert_eq!(candles_channel(Interval::M1).as_ref(), "@kline_1m");
+    }
+
+    #[test]
+    fn test_candles_channel_m3() {
+        assert_eq!(candles_channel(Interval::M3).as_ref(), "@kline_3m");
+    }
+
+    #[test]
+    fn test_candles_channel_m5() {
+        assert_eq!(candles_channel(Interval::M5).as_ref(), "@kline_5m");
+    }
+
+    #[test]
+    fn test_candles_channel_m15() {
+        assert_eq!(candles_channel(Interval::M15).as_ref(), "@kline_15m");
+    }
+
+    #[test]
+    fn test_candles_channel_m30() {
+        assert_eq!(candles_channel(Interval::M30).as_ref(), "@kline_30m");
+    }
+
+    #[test]
+    fn test_candles_channel_h1() {
+        assert_eq!(candles_channel(Interval::H1).as_ref(), "@kline_1h");
+    }
+
+    #[test]
+    fn test_candles_channel_h4() {
+        assert_eq!(candles_channel(Interval::H4).as_ref(), "@kline_4h");
+    }
+
+    #[test]
+    fn test_candles_channel_d1() {
+        assert_eq!(candles_channel(Interval::D1).as_ref(), "@kline_1d");
+    }
+
+    #[test]
+    fn test_candles_channel_w1() {
+        assert_eq!(candles_channel(Interval::W1).as_ref(), "@kline_1w");
+    }
+
+    #[test]
+    fn test_candles_channel_month1() {
+        assert_eq!(candles_channel(Interval::Month1).as_ref(), "@kline_1M");
+    }
+}

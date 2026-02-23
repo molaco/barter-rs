@@ -230,3 +230,27 @@ where
         serializer.serialize_str(Self::ID.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::Interval;
+
+    #[test]
+    fn test_bybit_interval_mapping() {
+        assert_eq!(bybit_interval(Interval::M1), "1");
+        assert_eq!(bybit_interval(Interval::M3), "3");
+        assert_eq!(bybit_interval(Interval::M5), "5");
+        assert_eq!(bybit_interval(Interval::M15), "15");
+        assert_eq!(bybit_interval(Interval::M30), "30");
+        assert_eq!(bybit_interval(Interval::H1), "60");
+        assert_eq!(bybit_interval(Interval::H2), "120");
+        assert_eq!(bybit_interval(Interval::H4), "240");
+        assert_eq!(bybit_interval(Interval::H6), "360");
+        assert_eq!(bybit_interval(Interval::H12), "720");
+        assert_eq!(bybit_interval(Interval::D1), "D");
+        assert_eq!(bybit_interval(Interval::D3), "D");
+        assert_eq!(bybit_interval(Interval::W1), "W");
+        assert_eq!(bybit_interval(Interval::Month1), "M");
+    }
+}

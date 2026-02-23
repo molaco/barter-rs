@@ -228,4 +228,103 @@ mod tests {
         assert_eq!(event.kind.quote_volume, Some(208000.0));
         assert_eq!(event.kind.trade_count, 150);
     }
+
+    #[test]
+    fn test_deserialize_binance_kline_missing_open_price() {
+        let input = r#"
+        {
+            "e":"kline","E":1672515782136,"s":"BTCUSDT",
+            "k":{
+                "t":1672515780000,"T":1672515839999,
+                "s":"BTCUSDT","i":"1m",
+                "c":"16855.50","h":"16860.00","l":"16845.00",
+                "v":"12.345","q":"208000.00","n":150,
+                "x":false
+            }
+        }
+        "#;
+
+        assert!(serde_json::from_str::<BinanceKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_binance_kline_missing_kline_field() {
+        let input = r#"
+        {
+            "e":"kline","E":1672515782136,"s":"BTCUSDT"
+        }
+        "#;
+
+        assert!(serde_json::from_str::<BinanceKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_binance_kline_missing_symbol() {
+        let input = r#"
+        {
+            "e":"kline","E":1672515782136,"s":"BTCUSDT",
+            "k":{
+                "t":1672515780000,"T":1672515839999,
+                "i":"1m",
+                "o":"16850.00","c":"16855.50","h":"16860.00","l":"16845.00",
+                "v":"12.345","q":"208000.00","n":150,
+                "x":false
+            }
+        }
+        "#;
+
+        assert!(serde_json::from_str::<BinanceKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_binance_kline_invalid_price_string() {
+        let input = r#"
+        {
+            "e":"kline","E":1672515782136,"s":"BTCUSDT",
+            "k":{
+                "t":1672515780000,"T":1672515839999,
+                "s":"BTCUSDT","i":"1m",
+                "o":"not_a_number","c":"16855.50","h":"16860.00","l":"16845.00",
+                "v":"12.345","q":"208000.00","n":150,
+                "x":false
+            }
+        }
+        "#;
+
+        assert!(serde_json::from_str::<BinanceKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_binance_kline_to_candle_zero_volume() {
+        let kline = BinanceKline {
+            kline: BinanceKlineData {
+                symbol: "BTCUSDT".to_string(),
+                interval: "1m".to_string(),
+                open_time: datetime_utc_from_epoch_duration(Duration::from_millis(
+                    1672515780000,
+                )),
+                close_time: datetime_utc_from_epoch_duration(Duration::from_millis(
+                    1672515839999,
+                )),
+                open: 16850.0,
+                high: 16860.0,
+                low: 16845.0,
+                close: 16855.5,
+                volume: 0.0,
+                quote_volume: 0.0,
+                trade_count: 0,
+            },
+        };
+
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::BinanceSpot, "instrument_key", kline));
+
+        let events: Vec<_> = market_iter.0.into_iter().collect();
+        assert_eq!(events.len(), 1);
+
+        let event = events.into_iter().next().unwrap().unwrap();
+        assert_eq!(event.kind.volume, 0.0);
+        assert_eq!(event.kind.quote_volume, Some(0.0));
+        assert_eq!(event.kind.trade_count, 0);
+    }
 }

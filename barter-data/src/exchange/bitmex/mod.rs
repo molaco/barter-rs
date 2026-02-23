@@ -148,3 +148,31 @@ impl serde::Serialize for Bitmex {
         serializer.serialize_str(Self::ID.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::Interval;
+
+    #[test]
+    fn test_bitmex_interval_supported() {
+        assert_eq!(bitmex_interval(Interval::M1).unwrap(), "1m");
+        assert_eq!(bitmex_interval(Interval::M5).unwrap(), "5m");
+        assert_eq!(bitmex_interval(Interval::H1).unwrap(), "1h");
+        assert_eq!(bitmex_interval(Interval::D1).unwrap(), "1d");
+    }
+
+    #[test]
+    fn test_bitmex_interval_unsupported() {
+        assert!(bitmex_interval(Interval::M3).is_err());
+        assert!(bitmex_interval(Interval::M15).is_err());
+        assert!(bitmex_interval(Interval::M30).is_err());
+        assert!(bitmex_interval(Interval::H2).is_err());
+        assert!(bitmex_interval(Interval::H4).is_err());
+        assert!(bitmex_interval(Interval::H6).is_err());
+        assert!(bitmex_interval(Interval::H12).is_err());
+        assert!(bitmex_interval(Interval::D3).is_err());
+        assert!(bitmex_interval(Interval::W1).is_err());
+        assert!(bitmex_interval(Interval::Month1).is_err());
+    }
+}

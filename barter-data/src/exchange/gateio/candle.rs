@@ -234,4 +234,103 @@ mod tests {
             DateTime::<Utc>::from_timestamp(1672502400, 0).unwrap()
         );
     }
+
+    #[test]
+    fn test_deserialize_gateio_kline_missing_open() {
+        let input = r#"
+        {
+            "time": 1672502458,
+            "time_ms": 1672502458231,
+            "channel": "spot.candlesticks_1m",
+            "event": "update",
+            "result": {
+                "t": "1672502400",
+                "v": "12.345",
+                "c": "16855.5",
+                "h": "16860",
+                "l": "16845",
+                "n": "1m_BTC_USDT",
+                "a": "208000"
+            }
+        }
+        "#;
+
+        assert!(serde_json::from_str::<GateioKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_gateio_kline_missing_channel() {
+        let input = r#"
+        {
+            "time": 1672502458,
+            "time_ms": 1672502458231,
+            "event": "update",
+            "result": {
+                "t": "1672502400",
+                "v": "12.345",
+                "c": "16855.5",
+                "h": "16860",
+                "l": "16845",
+                "o": "16850",
+                "n": "1m_BTC_USDT",
+                "a": "208000"
+            }
+        }
+        "#;
+
+        assert!(serde_json::from_str::<GateioKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_deserialize_gateio_kline_invalid_price_string() {
+        let input = r#"
+        {
+            "time": 1672502458,
+            "time_ms": 1672502458231,
+            "channel": "spot.candlesticks_1m",
+            "event": "update",
+            "result": {
+                "t": "1672502400",
+                "v": "12.345",
+                "c": "not_a_number",
+                "h": "16860",
+                "l": "16845",
+                "o": "16850",
+                "n": "1m_BTC_USDT",
+                "a": "208000"
+            }
+        }
+        "#;
+
+        assert!(serde_json::from_str::<GateioKline>(input).is_err());
+    }
+
+    #[test]
+    fn test_gateio_kline_to_candle_zero_volume() {
+        let kline = GateioKline {
+            channel: "spot.candlesticks_1m".to_string(),
+            error: None,
+            data: GateioKlineInner {
+                timestamp: 1672502400,
+                open: 16850.0,
+                high: 16860.0,
+                low: 16845.0,
+                close: 16855.5,
+                volume: 0.0,
+                name: "1m_BTC_USDT".to_string(),
+                quote_volume: 0.0,
+            },
+        };
+
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::GateioSpot, "instrument_key", kline));
+
+        let events: Vec<_> = market_iter.0.into_iter().collect();
+        assert_eq!(events.len(), 1);
+
+        let event = events.into_iter().next().unwrap().unwrap();
+        assert_eq!(event.kind.volume, 0.0);
+        assert_eq!(event.kind.quote_volume, Some(0.0));
+        assert_eq!(event.kind.trade_count, 0);
+    }
 }

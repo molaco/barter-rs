@@ -41,3 +41,50 @@ impl AsRef<str> for BitfinexChannel {
         self.0.as_str()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::{Candles, Interval};
+    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+
+    fn candles_channel(interval: Interval) -> BitfinexChannel {
+        let sub: Subscription<Bitfinex, MarketDataInstrument, Candles> = Subscription::new(
+            Bitfinex,
+            MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
+            Candles(interval),
+        );
+        sub.id()
+    }
+
+    #[test]
+    fn test_candles_channel_m1() {
+        // Bitfinex always produces "candles" regardless of interval
+        assert_eq!(candles_channel(Interval::M1).as_ref(), "candles");
+    }
+
+    #[test]
+    fn test_candles_channel_m5() {
+        assert_eq!(candles_channel(Interval::M5).as_ref(), "candles");
+    }
+
+    #[test]
+    fn test_candles_channel_h1() {
+        assert_eq!(candles_channel(Interval::H1).as_ref(), "candles");
+    }
+
+    #[test]
+    fn test_candles_channel_d1() {
+        assert_eq!(candles_channel(Interval::D1).as_ref(), "candles");
+    }
+
+    #[test]
+    fn test_candles_channel_h6() {
+        assert_eq!(candles_channel(Interval::H6).as_ref(), "candles");
+    }
+
+    #[test]
+    fn test_candles_channel_w1() {
+        assert_eq!(candles_channel(Interval::W1).as_ref(), "candles");
+    }
+}

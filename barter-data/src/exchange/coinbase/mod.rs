@@ -137,3 +137,31 @@ where
     type Stream =
         CoinbaseWsStream<StatelessTransformer<Self, Instrument::Key, Candles, CoinbaseKline>>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::Interval;
+
+    #[test]
+    fn test_coinbase_interval_supported() {
+        assert_eq!(coinbase_interval(Interval::M1).unwrap(), "ONE_MINUTE");
+        assert_eq!(coinbase_interval(Interval::M5).unwrap(), "FIVE_MINUTES");
+        assert_eq!(coinbase_interval(Interval::M15).unwrap(), "FIFTEEN_MINUTES");
+        assert_eq!(coinbase_interval(Interval::M30).unwrap(), "THIRTY_MINUTES");
+        assert_eq!(coinbase_interval(Interval::H1).unwrap(), "ONE_HOUR");
+        assert_eq!(coinbase_interval(Interval::H2).unwrap(), "TWO_HOURS");
+        assert_eq!(coinbase_interval(Interval::H6).unwrap(), "SIX_HOURS");
+        assert_eq!(coinbase_interval(Interval::D1).unwrap(), "ONE_DAY");
+    }
+
+    #[test]
+    fn test_coinbase_interval_unsupported() {
+        assert!(coinbase_interval(Interval::M3).is_err());
+        assert!(coinbase_interval(Interval::H4).is_err());
+        assert!(coinbase_interval(Interval::H12).is_err());
+        assert!(coinbase_interval(Interval::D3).is_err());
+        assert!(coinbase_interval(Interval::W1).is_err());
+        assert!(coinbase_interval(Interval::Month1).is_err());
+    }
+}

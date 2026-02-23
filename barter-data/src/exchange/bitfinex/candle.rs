@@ -391,4 +391,72 @@ mod tests {
         assert_eq!(event.kind.quote_volume, None);
         assert_eq!(event.kind.trade_count, 0);
     }
+
+    #[test]
+    fn test_de_bitfinex_candle_too_few_elements() {
+        // Only 3 elements instead of 6
+        let input = r#"[1672502400000, 16850, 16855.5]"#;
+        assert!(serde_json::from_str::<BitfinexCandle>(input).is_err());
+    }
+
+    #[test]
+    fn test_de_bitfinex_candle_empty_array() {
+        let input = r#"[]"#;
+        assert!(serde_json::from_str::<BitfinexCandle>(input).is_err());
+    }
+
+    #[test]
+    fn test_de_bitfinex_candle_message_missing_payload() {
+        // Array with only channel_id
+        let input = r#"[42]"#;
+        assert!(serde_json::from_str::<BitfinexCandleMessage>(input).is_err());
+    }
+
+    #[test]
+    fn test_de_bitfinex_candle_message_invalid_payload_type() {
+        // Second element is an integer, not an array or "hb"
+        let input = r#"[42, 12345]"#;
+        assert!(serde_json::from_str::<BitfinexCandleMessage>(input).is_err());
+    }
+
+    #[test]
+    fn test_de_bitfinex_candle_message_empty_snapshot() {
+        // Snapshot with empty array of candles
+        let input = r#"[42, []]"#;
+        // Empty inner array - not an array of arrays, so treated as a candle with no elements
+        // This should fail because an empty array cannot be parsed as a BitfinexCandle
+        assert!(serde_json::from_str::<BitfinexCandleMessage>(input).is_err());
+    }
+
+    #[test]
+    fn test_bitfinex_candle_to_market_iter_zero_volume() {
+        let update = BitfinexCandleMessage {
+            channel_id: 42,
+            payload: BitfinexCandlePayload::Candle(BitfinexCandle {
+                time: datetime_utc_from_epoch_duration(Duration::from_millis(1672502400000)),
+                open: 16850.0,
+                close: 16855.5,
+                high: 16860.0,
+                low: 16845.0,
+                volume: 0.0,
+            }),
+        };
+
+        let iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::Bitfinex, "instrument_key", update));
+        let events: Vec<_> = iter.0.into_iter().collect();
+        assert_eq!(events.len(), 1);
+
+        let event = events.into_iter().next().unwrap().unwrap();
+        assert_eq!(event.kind.volume, 0.0);
+        assert_eq!(event.kind.quote_volume, None);
+        assert_eq!(event.kind.trade_count, 0);
+    }
+
+    #[test]
+    fn test_de_bitfinex_candle_message_snapshot_with_empty_inner_arrays() {
+        // Snapshot where inner arrays exist but are empty (cannot parse as candle)
+        let input = r#"[42, [[], []]]"#;
+        assert!(serde_json::from_str::<BitfinexCandleMessage>(input).is_err());
+    }
 }

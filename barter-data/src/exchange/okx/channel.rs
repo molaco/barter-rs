@@ -36,3 +36,59 @@ impl AsRef<str> for OkxChannel {
         self.0.as_str()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::{Candles, Interval};
+    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+
+    fn candles_channel(interval: Interval) -> OkxChannel {
+        let sub: Subscription<Okx, MarketDataInstrument, Candles> = Subscription::new(
+            Okx,
+            MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
+            Candles(interval),
+        );
+        sub.id()
+    }
+
+    #[test]
+    fn test_candles_channel_m1() {
+        assert_eq!(candles_channel(Interval::M1).as_ref(), "candle1m");
+    }
+
+    #[test]
+    fn test_candles_channel_m5() {
+        assert_eq!(candles_channel(Interval::M5).as_ref(), "candle5m");
+    }
+
+    #[test]
+    fn test_candles_channel_m15() {
+        assert_eq!(candles_channel(Interval::M15).as_ref(), "candle15m");
+    }
+
+    #[test]
+    fn test_candles_channel_h1() {
+        assert_eq!(candles_channel(Interval::H1).as_ref(), "candle1H");
+    }
+
+    #[test]
+    fn test_candles_channel_h4() {
+        assert_eq!(candles_channel(Interval::H4).as_ref(), "candle4H");
+    }
+
+    #[test]
+    fn test_candles_channel_d1() {
+        assert_eq!(candles_channel(Interval::D1).as_ref(), "candle1D");
+    }
+
+    #[test]
+    fn test_candles_channel_w1() {
+        assert_eq!(candles_channel(Interval::W1).as_ref(), "candle1W");
+    }
+
+    #[test]
+    fn test_candles_channel_month1() {
+        assert_eq!(candles_channel(Interval::Month1).as_ref(), "candle1M");
+    }
+}

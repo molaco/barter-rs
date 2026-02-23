@@ -72,3 +72,65 @@ impl AsRef<str> for BybitChannel {
         self.0.as_str()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::candle::{Candles, Interval};
+    use crate::exchange::bybit::spot::BybitSpot;
+    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+
+    fn candles_channel(interval: Interval) -> BybitChannel {
+        let sub: Subscription<BybitSpot, MarketDataInstrument, Candles> = Subscription::new(
+            BybitSpot::default(),
+            MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
+            Candles(interval),
+        );
+        sub.id()
+    }
+
+    #[test]
+    fn test_candles_channel_m1() {
+        assert_eq!(candles_channel(Interval::M1).as_ref(), "kline.1");
+    }
+
+    #[test]
+    fn test_candles_channel_m5() {
+        assert_eq!(candles_channel(Interval::M5).as_ref(), "kline.5");
+    }
+
+    #[test]
+    fn test_candles_channel_m15() {
+        assert_eq!(candles_channel(Interval::M15).as_ref(), "kline.15");
+    }
+
+    #[test]
+    fn test_candles_channel_m30() {
+        assert_eq!(candles_channel(Interval::M30).as_ref(), "kline.30");
+    }
+
+    #[test]
+    fn test_candles_channel_h1() {
+        assert_eq!(candles_channel(Interval::H1).as_ref(), "kline.60");
+    }
+
+    #[test]
+    fn test_candles_channel_h4() {
+        assert_eq!(candles_channel(Interval::H4).as_ref(), "kline.240");
+    }
+
+    #[test]
+    fn test_candles_channel_d1() {
+        assert_eq!(candles_channel(Interval::D1).as_ref(), "kline.D");
+    }
+
+    #[test]
+    fn test_candles_channel_w1() {
+        assert_eq!(candles_channel(Interval::W1).as_ref(), "kline.W");
+    }
+
+    #[test]
+    fn test_candles_channel_month1() {
+        assert_eq!(candles_channel(Interval::Month1).as_ref(), "kline.M");
+    }
+}
