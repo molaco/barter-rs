@@ -14,6 +14,7 @@ use crate::{
             perpetual::{GateioPerpetualsBtc, GateioPerpetualsUsd},
             spot::GateioSpot,
         },
+        hyperliquid::{Hyperliquid, market::HyperliquidMarket},
         kraken::{Kraken, market::KrakenMarket},
         okx::{Okx, market::OkxMarket},
     },
@@ -115,6 +116,8 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         Subscription<GateioPerpetualsUsd, Instrument, Candles>: Identifier<GateioMarket>,
         Subscription<GateioPerpetualsBtc, Instrument, Candles>: Identifier<GateioMarket>,
         Subscription<GateioOptions, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<Hyperliquid, Instrument, PublicTrades>: Identifier<HyperliquidMarket>,
+        Subscription<Hyperliquid, Instrument, Candles>: Identifier<HyperliquidMarket>,
         Subscription<Kraken, Instrument, PublicTrades>: Identifier<KrakenMarket>,
         Subscription<Kraken, Instrument, OrderBooksL1>: Identifier<KrakenMarket>,
         Subscription<Kraken, Instrument, Candles>: Identifier<KrakenMarket>,
@@ -625,6 +628,26 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             ))
                                         })
                                     }
+                                    (ExchangeId::Hyperliquid, SubKind::PublicTrades) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        Hyperliquid,
+                                                        sub.instrument,
+                                                        PublicTrades,
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.trades.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
                                     (ExchangeId::Kraken, SubKind::PublicTrades) => {
                                         init_market_stream(
                                             STREAM_RECONNECTION_POLICY,
@@ -928,6 +951,26 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .map(|sub| {
                                                     Subscription::new(
                                                         GateioOptions::default(),
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::Hyperliquid, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        Hyperliquid,
                                                         sub.instrument,
                                                         Candles(interval),
                                                     )

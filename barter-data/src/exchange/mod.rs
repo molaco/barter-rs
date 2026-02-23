@@ -30,6 +30,9 @@ pub mod coinbase;
 /// implementations.
 pub mod gateio;
 
+/// `Hyperliquid` [`Connector`] and [`StreamSelector`] implementations.
+pub mod hyperliquid;
+
 /// `Kraken` [`Connector`] and [`StreamSelector`] implementations.
 pub mod kraken;
 

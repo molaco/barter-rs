@@ -220,7 +220,7 @@ pub fn exchange_supports_instrument_kind(
         // Perpetual
         (
             BinanceFuturesUsd | Bitmex | Okx | BybitPerpetualsUsd | GateioPerpetualsUsd
-            | GateioPerpetualsBtc,
+            | GateioPerpetualsBtc | Hyperliquid,
             Perpetual,
         ) => true,
         (_, Perpetual) => false,
@@ -275,6 +275,7 @@ pub fn exchange_supports_instrument_kind_sub_kind(
         ) => true,
         (Bitfinex, Spot, PublicTrades) => true,
         (Bitmex, Perpetual, PublicTrades) => true,
+        (Hyperliquid, Perpetual, PublicTrades) => true,
         (BybitSpot, Spot, PublicTrades | OrderBooksL1 | OrderBooksL2) => true,
         (BybitPerpetualsUsd, Perpetual, PublicTrades | OrderBooksL1 | OrderBooksL2) => true,
         (Coinbase, Spot, PublicTrades) => true,
@@ -292,6 +293,7 @@ pub fn exchange_supports_instrument_kind_sub_kind(
         (BinanceFuturesUsd, Perpetual, Candles(_)) => true,
         (Bitfinex, Spot, Candles(_)) => true,
         (Bitmex, Perpetual, Candles(_)) => true,
+        (Hyperliquid, Perpetual, Candles(_)) => true,
         (BybitSpot, Spot, Candles(_)) => true,
         (BybitPerpetualsUsd, Perpetual, Candles(_)) => true,
         (Coinbase, Spot, Candles(_)) => true,
