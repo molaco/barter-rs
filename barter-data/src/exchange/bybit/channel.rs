@@ -10,36 +10,37 @@ use crate::{
     },
 };
 use serde::Serialize;
+use smol_str::{SmolStr, format_smolstr};
 
 /// Type that defines how to translate a Barter [`Subscription`] into a [`Bybit`]
 /// channel to be subscribed to.
 ///
 /// See docs: <https://bybit-exchange.github.io/docs/v5/ws/connect>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct BybitChannel(pub String);
+pub struct BybitChannel(pub SmolStr);
 
 impl BybitChannel {
     /// [`Bybit`] real-time trades channel name.
     ///
     /// See docs: <https://bybit-exchange.github.io/docs/v5/websocket/public/trade>
-    pub fn trades() -> Self { Self("publicTrade".into()) }
+    pub const TRADES: Self = Self(SmolStr::new_static("publicTrade"));
 
     /// [`Bybit`] real-time OrderBook Level1 (top of books) channel name.
     ///
     /// See docs: <https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook>
-    pub fn order_book_l1() -> Self { Self("orderbook.1".into()) }
+    pub const ORDER_BOOK_L1: Self = Self(SmolStr::new_static("orderbook.1"));
 
     /// [`Bybit`] OrderBook Level2 channel name (20ms delta updates).
     ///
     /// See docs: <https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook>
-    pub fn order_book_l2() -> Self { Self("orderbook.50".into()) }
+    pub const ORDER_BOOK_L2: Self = Self(SmolStr::new_static("orderbook.50"));
 }
 
 impl<Server, Instrument> Identifier<BybitChannel>
     for Subscription<Bybit<Server>, Instrument, PublicTrades>
 {
     fn id(&self) -> BybitChannel {
-        BybitChannel::trades()
+        BybitChannel::TRADES
     }
 }
 
@@ -47,7 +48,7 @@ impl<Server, Instrument> Identifier<BybitChannel>
     for Subscription<Bybit<Server>, Instrument, OrderBooksL1>
 {
     fn id(&self) -> BybitChannel {
-        BybitChannel::order_book_l1()
+        BybitChannel::ORDER_BOOK_L1
     }
 }
 
@@ -55,7 +56,7 @@ impl<Server, Instrument> Identifier<BybitChannel>
     for Subscription<Bybit<Server>, Instrument, OrderBooksL2>
 {
     fn id(&self) -> BybitChannel {
-        BybitChannel::order_book_l2()
+        BybitChannel::ORDER_BOOK_L2
     }
 }
 
@@ -63,7 +64,7 @@ impl<Server, Instrument> Identifier<BybitChannel>
     for Subscription<Bybit<Server>, Instrument, Candles>
 {
     fn id(&self) -> BybitChannel {
-        BybitChannel(format!("kline.{}", bybit_interval(self.kind.0)))
+        BybitChannel(format_smolstr!("kline.{}", bybit_interval(self.kind.0)))
     }
 }
 

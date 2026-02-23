@@ -83,6 +83,7 @@ impl<InstrumentKey> From<(ExchangeId, InstrumentKey, KrakenKline)>
                     volume: kline.volume,
                     quote_volume: None,
                     trade_count: kline.trade_count,
+                    is_closed: true,
                 },
             })]),
             KrakenKline::Event(_) => Self(vec![]),
@@ -158,7 +159,7 @@ impl<'de> serde::de::Deserialize<'de> for KrakenKlineInner {
                 // Extract pair (eg/ "XBT/USD") & map to SubscriptionId (ie/ "ohlc-1|XBT/USD")
                 let subscription_id =
                     extract_next::<SeqAccessor, String>(&mut seq, "pair").map(|pair| {
-                        ExchangeSub::from((KrakenChannel(channel_name), pair)).id()
+                        ExchangeSub::from((KrakenChannel(channel_name.into()), pair)).id()
                     })?;
 
                 // Ignore any additional elements or SerDe will fail

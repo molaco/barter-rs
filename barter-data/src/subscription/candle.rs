@@ -41,6 +41,7 @@ pub struct Candle {
     pub volume: f64,
     pub quote_volume: Option<f64>,
     pub trade_count: u64,
+    pub is_closed: bool,
 }
 
 /// Normalised candlestick interval period.

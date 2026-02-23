@@ -205,6 +205,7 @@ impl OkxKlineRaw {
             quote_volume: Some(quote_volume),
             // OKX does not return trade count in the klines response.
             trade_count: 0,
+            is_closed: true,
         })
     }
 

@@ -101,6 +101,7 @@ impl<InstrumentKey> From<(ExchangeId, InstrumentKey, GateioKline)>
                 volume: k.volume,
                 quote_volume: Some(k.quote_volume),
                 trade_count: 0,
+                is_closed: true,
             },
         })])
     }

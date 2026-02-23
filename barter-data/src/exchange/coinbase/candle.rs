@@ -87,7 +87,7 @@ impl Identifier<Option<SubscriptionId>> for CoinbaseKline {
             .and_then(|event| event.candles.first())
             .map(|candle| {
                 ExchangeSub::from((
-                    CoinbaseChannel::candles(),
+                    CoinbaseChannel::CANDLES,
                     candle.product_id.as_str(),
                 ))
                 .id()
@@ -125,6 +125,7 @@ impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, CoinbaseKline)>
                             volume: candle.volume,
                             quote_volume: None,
                             trade_count: 0,
+                            is_closed: true,
                         },
                     })
                 })

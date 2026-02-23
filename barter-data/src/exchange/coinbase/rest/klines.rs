@@ -102,6 +102,7 @@ impl CoinbaseKlineRaw {
             volume,
             quote_volume: None,
             trade_count: 0,
+            is_closed: true,
         })
     }
 }

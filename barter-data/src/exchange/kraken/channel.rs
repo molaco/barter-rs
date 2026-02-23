@@ -4,41 +4,42 @@ use crate::{
     subscription::{Subscription, book::OrderBooksL1, candle::Candles, trade::PublicTrades},
 };
 use serde::Serialize;
+use smol_str::{SmolStr, format_smolstr};
 
 /// Type that defines how to translate a Barter [`Subscription`] into a
 /// [`Kraken`] channel to be subscribed to.
 ///
 /// See docs: <https://docs.kraken.com/websockets/#message-subscribe>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct KrakenChannel(pub String);
+pub struct KrakenChannel(pub SmolStr);
 
 impl KrakenChannel {
     /// [`Kraken`] real-time trades channel name.
     ///
     /// See docs: <https://docs.kraken.com/websockets/#message-subscribe>
-    pub fn trades() -> Self { Self("trade".into()) }
+    pub const TRADES: Self = Self(SmolStr::new_static("trade"));
 
     /// [`Kraken`] real-time OrderBook Level1 (top of books) channel name.
     ///
     /// See docs: <https://docs.kraken.com/websockets/#message-subscribe>
-    pub fn order_book_l1() -> Self { Self("spread".into()) }
+    pub const ORDER_BOOK_L1: Self = Self(SmolStr::new_static("spread"));
 }
 
 impl<Instrument> Identifier<KrakenChannel> for Subscription<Kraken, Instrument, PublicTrades> {
     fn id(&self) -> KrakenChannel {
-        KrakenChannel::trades()
+        KrakenChannel::TRADES
     }
 }
 
 impl<Instrument> Identifier<KrakenChannel> for Subscription<Kraken, Instrument, OrderBooksL1> {
     fn id(&self) -> KrakenChannel {
-        KrakenChannel::order_book_l1()
+        KrakenChannel::ORDER_BOOK_L1
     }
 }
 
 impl<Instrument> Identifier<KrakenChannel> for Subscription<Kraken, Instrument, Candles> {
     fn id(&self) -> KrakenChannel {
-        KrakenChannel(format!(
+        KrakenChannel(format_smolstr!(
             "ohlc-{}",
             kraken_interval(self.kind.0).unwrap_or(1)
         ))

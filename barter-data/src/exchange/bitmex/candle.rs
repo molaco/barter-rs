@@ -87,6 +87,7 @@ impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, BitmexKline)>
                             volume: k.volume,
                             quote_volume: Some(k.foreign_notional),
                             trade_count: k.trades,
+                            is_closed: true,
                         },
                     })
                 })

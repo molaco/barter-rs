@@ -102,7 +102,7 @@ where
     D: serde::de::Deserializer<'de>,
 {
     <&str as Deserialize>::deserialize(deserializer)
-        .map(|market| ExchangeSub::from((BinanceChannel::trades(), market)).id())
+        .map(|market| ExchangeSub::from((BinanceChannel::TRADES, market)).id())
 }
 
 /// Deserialize a [`BinanceTrade`] "buyer_is_maker" boolean field to a Barter [`Side`].

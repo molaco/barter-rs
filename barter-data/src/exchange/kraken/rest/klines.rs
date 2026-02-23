@@ -193,6 +193,7 @@ impl TryFrom<KrakenKlineRaw> for Candle {
             volume,
             quote_volume: None,
             trade_count: raw.count,
+            is_closed: true,
         })
     }
 }

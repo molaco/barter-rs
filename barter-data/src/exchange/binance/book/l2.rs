@@ -101,7 +101,7 @@ where
     D: serde::de::Deserializer<'de>,
 {
     <&str as Deserialize>::deserialize(deserializer)
-        .map(|market| ExchangeSub::from((BinanceChannel::order_book_l2(), market)).id())
+        .map(|market| ExchangeSub::from((BinanceChannel::ORDER_BOOK_L2, market)).id())
 }
 
 #[cfg(test)]

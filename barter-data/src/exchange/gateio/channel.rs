@@ -10,30 +10,31 @@ use crate::{
 };
 use barter_instrument::instrument::market_data::kind::MarketDataInstrumentKind;
 use serde::Serialize;
+use smol_str::{SmolStr, format_smolstr};
 
 /// Type that defines how to translate a Barter [`Subscription`] into a
 /// [`Gateio`](super::Gateio) channel to be subscribed to.
 ///
 /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-public-channel>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct GateioChannel(pub String);
+pub struct GateioChannel(pub SmolStr);
 
 impl GateioChannel {
     /// Gateio [`MarketDataInstrumentKind::Spot`] real-time trades channel.
     ///
     /// See docs: <https://www.gate.io/docs/developers/apiv4/ws/en/#public-trades-channel>
-    pub fn spot_trades() -> Self { Self("spot.trades".into()) }
+    pub const SPOT_TRADES: Self = Self(SmolStr::new_static("spot.trades"));
 
     /// Gateio [`MarketDataInstrumentKind::Future`] & [`MarketDataInstrumentKind::Perpetual`] real-time trades channel.
     ///
     /// See docs: <https://www.gate.io/docs/developers/futures/ws/en/#trades-subscription>
     /// See docs: <https://www.gate.io/docs/developers/delivery/ws/en/#trades-subscription>
-    pub fn future_trades() -> Self { Self("futures.trades".into()) }
+    pub const FUTURE_TRADES: Self = Self(SmolStr::new_static("futures.trades"));
 
     /// Gateio [`MarketDataInstrumentKind::Option`] real-time trades channel.
     ///
     /// See docs: <https://www.gate.io/docs/developers/options/ws/en/#public-contract-trades-channel>
-    pub fn option_trades() -> Self { Self("options.trades".into()) }
+    pub const OPTION_TRADES: Self = Self(SmolStr::new_static("options.trades"));
 }
 
 impl<GateioExchange, Instrument> Identifier<GateioChannel>
@@ -43,11 +44,11 @@ where
 {
     fn id(&self) -> GateioChannel {
         match self.instrument.kind() {
-            MarketDataInstrumentKind::Spot => GateioChannel::spot_trades(),
+            MarketDataInstrumentKind::Spot => GateioChannel::SPOT_TRADES,
             MarketDataInstrumentKind::Future { .. } | MarketDataInstrumentKind::Perpetual => {
-                GateioChannel::future_trades()
+                GateioChannel::FUTURE_TRADES
             }
-            MarketDataInstrumentKind::Option { .. } => GateioChannel::option_trades(),
+            MarketDataInstrumentKind::Option { .. } => GateioChannel::OPTION_TRADES,
         }
     }
 }
@@ -61,13 +62,13 @@ where
         let interval = gateio_interval(self.kind.0).expect("validated");
         match self.instrument.kind() {
             MarketDataInstrumentKind::Spot => {
-                GateioChannel(format!("spot.candlesticks_{}", interval))
+                GateioChannel(format_smolstr!("spot.candlesticks_{}", interval))
             }
             MarketDataInstrumentKind::Future { .. } | MarketDataInstrumentKind::Perpetual => {
-                GateioChannel(format!("futures.candlesticks_{}", interval))
+                GateioChannel(format_smolstr!("futures.candlesticks_{}", interval))
             }
             MarketDataInstrumentKind::Option { .. } => {
-                GateioChannel(format!("options.candlesticks_{}", interval))
+                GateioChannel(format_smolstr!("options.candlesticks_{}", interval))
             }
         }
     }

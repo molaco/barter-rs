@@ -98,6 +98,7 @@ impl<InstrumentKey> From<(ExchangeId, InstrumentKey, BybitKline)>
                     volume: k.volume,
                     quote_volume: Some(k.turnover),
                     trade_count: 0,
+                    is_closed: k.confirm,
                 },
             })]),
             None => Self(vec![]),

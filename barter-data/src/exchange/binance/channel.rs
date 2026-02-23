@@ -10,6 +10,7 @@ use crate::{
     },
 };
 use serde::Serialize;
+use smol_str::{SmolStr, format_smolstr};
 
 /// Type that defines how to translate a Barter [`Subscription`] into a [`Binance`]
 /// channel to be subscribed to.
@@ -17,7 +18,7 @@ use serde::Serialize;
 /// See docs: <https://binance-docs.github.io/apidocs/spot/en/#websocket-market-streams>
 /// See docs: <https://binance-docs.github.io/apidocs/futures/en/#websocket-market-streams>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct BinanceChannel(pub String);
+pub struct BinanceChannel(pub SmolStr);
 
 impl BinanceChannel {
     /// [`Binance`] real-time trades channel name.
@@ -29,31 +30,31 @@ impl BinanceChannel {
     /// stream is undocumented.
     ///
     /// See discord: <https://discord.com/channels/910237311332151317/923160222711812126/975712874582388757>
-    pub fn trades() -> Self { Self("@trade".into()) }
+    pub const TRADES: Self = Self(SmolStr::new_static("@trade"));
 
     /// [`Binance`] real-time OrderBook Level1 (top of books) channel name.
     ///
     /// See docs:<https://binance-docs.github.io/apidocs/spot/en/#individual-symbol-book-ticker-streams>
     /// See docs:<https://binance-docs.github.io/apidocs/futures/en/#individual-symbol-book-ticker-streams>
-    pub fn order_book_l1() -> Self { Self("@bookTicker".into()) }
+    pub const ORDER_BOOK_L1: Self = Self(SmolStr::new_static("@bookTicker"));
 
     /// [`Binance`] OrderBook Level2 channel name (100ms delta updates).
     ///
     /// See docs: <https://binance-docs.github.io/apidocs/spot/en/#diff-depth-stream>
     /// See docs: <https://binance-docs.github.io/apidocs/futures/en/#diff-book-depth-streams>
-    pub fn order_book_l2() -> Self { Self("@depth@100ms".into()) }
+    pub const ORDER_BOOK_L2: Self = Self(SmolStr::new_static("@depth@100ms"));
 
     /// [`BinanceFuturesUsd`] liquidation orders channel name.
     ///
     /// See docs: <https://binance-docs.github.io/apidocs/futures/en/#liquidation-order-streams>
-    pub fn liquidations() -> Self { Self("@forceOrder".into()) }
+    pub const LIQUIDATIONS: Self = Self(SmolStr::new_static("@forceOrder"));
 }
 
 impl<Server, Instrument> Identifier<BinanceChannel>
     for Subscription<Binance<Server>, Instrument, PublicTrades>
 {
     fn id(&self) -> BinanceChannel {
-        BinanceChannel::trades()
+        BinanceChannel::TRADES
     }
 }
 
@@ -61,7 +62,7 @@ impl<Server, Instrument> Identifier<BinanceChannel>
     for Subscription<Binance<Server>, Instrument, OrderBooksL1>
 {
     fn id(&self) -> BinanceChannel {
-        BinanceChannel::order_book_l1()
+        BinanceChannel::ORDER_BOOK_L1
     }
 }
 
@@ -69,7 +70,7 @@ impl<Server, Instrument> Identifier<BinanceChannel>
     for Subscription<Binance<Server>, Instrument, OrderBooksL2>
 {
     fn id(&self) -> BinanceChannel {
-        BinanceChannel::order_book_l2()
+        BinanceChannel::ORDER_BOOK_L2
     }
 }
 
@@ -77,7 +78,7 @@ impl<Instrument> Identifier<BinanceChannel>
     for Subscription<BinanceFuturesUsd, Instrument, Liquidations>
 {
     fn id(&self) -> BinanceChannel {
-        BinanceChannel::liquidations()
+        BinanceChannel::LIQUIDATIONS
     }
 }
 
@@ -85,7 +86,7 @@ impl<Server, Instrument> Identifier<BinanceChannel>
     for Subscription<Binance<Server>, Instrument, Candles>
 {
     fn id(&self) -> BinanceChannel {
-        BinanceChannel(format!("@kline_{}", binance_interval(self.kind.0)))
+        BinanceChannel(format_smolstr!("@kline_{}", binance_interval(self.kind.0)))
     }
 }
 

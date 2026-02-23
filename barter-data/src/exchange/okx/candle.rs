@@ -68,6 +68,7 @@ impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, OkxKline)>
                     let close: f64 = fields[4].parse().ok()?;
                     let volume: f64 = fields[5].parse().ok()?;
                     let quote_volume: f64 = fields[7].parse().ok()?;
+                    let is_closed = fields[8] == "1";
 
                     Some(Ok(MarketEvent {
                         time_exchange: open_time,
@@ -84,6 +85,7 @@ impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, OkxKline)>
                             volume,
                             quote_volume: Some(quote_volume),
                             trade_count: 0,
+                            is_closed,
                         },
                     }))
                 })

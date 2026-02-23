@@ -75,7 +75,7 @@ where
     D: serde::de::Deserializer<'de>,
 {
     <&str as Deserialize>::deserialize(deserializer)
-        .map(|product_id| ExchangeSub::from((CoinbaseChannel::trades(), product_id)).id())
+        .map(|product_id| ExchangeSub::from((CoinbaseChannel::TRADES, product_id)).id())
 }
 
 #[cfg(test)]

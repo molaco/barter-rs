@@ -150,6 +150,7 @@ impl<InstrumentKey> From<(ExchangeId, InstrumentKey, BitfinexCandleMessage)>
                     volume: c.volume,
                     quote_volume: None,
                     trade_count: 0,
+                    is_closed: true,
                 },
             })]),
             BitfinexCandlePayload::Snapshot(_) => {

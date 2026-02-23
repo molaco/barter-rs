@@ -184,6 +184,7 @@ impl TryFrom<BinanceKlineRaw> for Candle {
             volume,
             quote_volume: Some(quote_volume),
             trade_count: raw.trade_count,
+            is_closed: true,
         })
     }
 }

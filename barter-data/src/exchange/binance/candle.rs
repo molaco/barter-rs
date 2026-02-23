@@ -9,6 +9,7 @@ use barter_instrument::exchange::ExchangeId;
 use barter_integration::subscription::SubscriptionId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use smol_str::format_smolstr;
 
 /// Binance real-time kline/candlestick message.
 ///
@@ -84,13 +85,17 @@ pub struct BinanceKlineData {
     /// Number of trades.
     #[serde(alias = "n")]
     pub trade_count: u64,
+
+    /// Whether the candle is closed/final.
+    #[serde(alias = "x")]
+    pub is_closed: bool,
 }
 
 impl Identifier<Option<SubscriptionId>> for BinanceKline {
     fn id(&self) -> Option<SubscriptionId> {
         Some(
             ExchangeSub::from((
-                BinanceChannel(format!("@kline_{}", self.kline.interval)),
+                BinanceChannel(format_smolstr!("@kline_{}", self.kline.interval)),
                 self.kline.symbol.as_str(),
             ))
             .id(),
@@ -120,6 +125,7 @@ impl<InstrumentKey> From<(ExchangeId, InstrumentKey, BinanceKline)>
                 volume: k.volume,
                 quote_volume: Some(k.quote_volume),
                 trade_count: k.trade_count,
+                is_closed: k.is_closed,
             },
         })])
     }
@@ -165,6 +171,7 @@ mod tests {
         assert_eq!(actual.kline.volume, 12.345);
         assert_eq!(actual.kline.quote_volume, 208000.00);
         assert_eq!(actual.kline.trade_count, 150);
+        assert_eq!(actual.kline.is_closed, false);
     }
 
     #[test]
@@ -210,6 +217,7 @@ mod tests {
                 volume: 12.345,
                 quote_volume: 208000.0,
                 trade_count: 150,
+                is_closed: false,
             },
         };
 
@@ -227,6 +235,7 @@ mod tests {
         assert_eq!(event.kind.volume, 12.345);
         assert_eq!(event.kind.quote_volume, Some(208000.0));
         assert_eq!(event.kind.trade_count, 150);
+        assert_eq!(event.kind.is_closed, false);
     }
 
     #[test]
@@ -313,6 +322,7 @@ mod tests {
                 volume: 0.0,
                 quote_volume: 0.0,
                 trade_count: 0,
+                is_closed: true,
             },
         };
 

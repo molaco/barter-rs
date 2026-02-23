@@ -4,35 +4,36 @@ use crate::{
     subscription::{Subscription, candle::Candles, trade::PublicTrades},
 };
 use serde::Serialize;
+use smol_str::SmolStr;
 
 /// Type that defines how to translate a Barter [`Subscription`] into a
 /// [`Bitfinex`] channel to be subscribed to.
 ///
 /// See docs: <https://docs.bitfinex.com/docs/ws-public>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct BitfinexChannel(pub String);
+pub struct BitfinexChannel(pub SmolStr);
 
 impl BitfinexChannel {
     /// [`Bitfinex`] real-time trades channel.
     ///
     /// See docs: <https://docs.bitfinex.com/reference/ws-public-trades>
-    pub fn trades() -> Self { Self("trades".into()) }
+    pub const TRADES: Self = Self(SmolStr::new_static("trades"));
 
     /// [`Bitfinex`] real-time candles channel.
     ///
     /// See docs: <https://docs.bitfinex.com/reference/ws-public-candles>
-    pub fn candles() -> Self { Self("candles".into()) }
+    pub const CANDLES: Self = Self(SmolStr::new_static("candles"));
 }
 
 impl<Instrument> Identifier<BitfinexChannel> for Subscription<Bitfinex, Instrument, PublicTrades> {
     fn id(&self) -> BitfinexChannel {
-        BitfinexChannel::trades()
+        BitfinexChannel::TRADES
     }
 }
 
 impl<Instrument> Identifier<BitfinexChannel> for Subscription<Bitfinex, Instrument, Candles> {
     fn id(&self) -> BitfinexChannel {
-        BitfinexChannel::candles()
+        BitfinexChannel::CANDLES
     }
 }
 

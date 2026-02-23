@@ -4,30 +4,31 @@ use crate::{
     subscription::{Subscription, candle::Candles, trade::PublicTrades},
 };
 use serde::Serialize;
+use smol_str::{SmolStr, format_smolstr};
 
 /// Type that defines how to translate a Barter [`Subscription`] into a
 /// [`Okx`] channel to be subscribed to.
 ///
 /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-public-channel>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct OkxChannel(pub String);
+pub struct OkxChannel(pub SmolStr);
 
 impl OkxChannel {
     /// [`Okx`] real-time trades channel.
     ///
     /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-public-channel-trades-channel>
-    pub fn trades() -> Self { Self("trades".into()) }
+    pub const TRADES: Self = Self(SmolStr::new_static("trades"));
 }
 
 impl<Instrument> Identifier<OkxChannel> for Subscription<Okx, Instrument, PublicTrades> {
     fn id(&self) -> OkxChannel {
-        OkxChannel::trades()
+        OkxChannel::TRADES
     }
 }
 
 impl<Instrument> Identifier<OkxChannel> for Subscription<Okx, Instrument, Candles> {
     fn id(&self) -> OkxChannel {
-        OkxChannel(format!("candle{}", okx_interval(self.kind.0)))
+        OkxChannel(format_smolstr!("candle{}", okx_interval(self.kind.0)))
     }
 }
 

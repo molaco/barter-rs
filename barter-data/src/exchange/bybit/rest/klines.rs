@@ -213,6 +213,7 @@ impl TryFrom<BybitKlineRaw> for Candle {
             volume,
             quote_volume: Some(turnover),
             trade_count: 0, // Bybit klines do not include trade count
+            is_closed: true,
         })
     }
 }
