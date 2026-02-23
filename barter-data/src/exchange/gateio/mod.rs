@@ -13,6 +13,9 @@ use serde_json::json;
 use std::{fmt::Debug, marker::PhantomData};
 use url::Url;
 
+/// Public candle/kline types for [`Gateio`].
+pub mod candle;
+
 /// Defines the type that translates a Barter [`Subscription`](crate::subscription::Subscription)
 /// into an exchange [`Connector`] specific channel used for generating [`Connector::requests`].
 pub mod channel;

@@ -1,8 +1,9 @@
 use crate::{
     Identifier,
     exchange::bitmex::Bitmex,
-    subscription::{Subscription, trade::PublicTrades},
+    subscription::{Subscription, candle::Candles, trade::PublicTrades},
 };
+use super::bitmex_interval;
 use serde::Serialize;
 
 /// Type that defines how to translate a Barter [`Subscription`] into a [`Bitmex`]
@@ -22,6 +23,12 @@ impl BitmexChannel {
 impl<Instrument> Identifier<BitmexChannel> for Subscription<Bitmex, Instrument, PublicTrades> {
     fn id(&self) -> BitmexChannel {
         BitmexChannel::trades()
+    }
+}
+
+impl<Instrument> Identifier<BitmexChannel> for Subscription<Bitmex, Instrument, Candles> {
+    fn id(&self) -> BitmexChannel {
+        BitmexChannel(format!("tradeBin{}", bitmex_interval(self.kind.0).expect("validated")))
     }
 }
 

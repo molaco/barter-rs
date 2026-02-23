@@ -140,7 +140,7 @@ pub enum Status {
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 pub struct BitfinexSubResponse {
     pub channel: String,
-    #[serde(rename = "symbol")]
+    #[serde(alias = "symbol", alias = "key")]
     pub market: String,
     #[serde(rename = "chanId")]
     pub channel_id: BitfinexChannelId,

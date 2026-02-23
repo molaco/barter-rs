@@ -92,7 +92,9 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         Subscription<BinanceFuturesUsd, Instrument, OrderBooksL2>: Identifier<BinanceMarket>,
         Subscription<BinanceFuturesUsd, Instrument, Liquidations>: Identifier<BinanceMarket>,
         Subscription<Bitfinex, Instrument, PublicTrades>: Identifier<BitfinexMarket>,
+        Subscription<Bitfinex, Instrument, Candles>: Identifier<BitfinexMarket>,
         Subscription<Bitmex, Instrument, PublicTrades>: Identifier<BitmexMarket>,
+        Subscription<Bitmex, Instrument, Candles>: Identifier<BitmexMarket>,
         Subscription<BybitSpot, Instrument, PublicTrades>: Identifier<BybitMarket>,
         Subscription<BybitSpot, Instrument, OrderBooksL1>: Identifier<BybitMarket>,
         Subscription<BybitSpot, Instrument, OrderBooksL2>: Identifier<BybitMarket>,
@@ -107,6 +109,12 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         Subscription<GateioPerpetualsUsd, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<GateioPerpetualsBtc, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<GateioOptions, Instrument, PublicTrades>: Identifier<GateioMarket>,
+        Subscription<GateioSpot, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<GateioFuturesUsd, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<GateioFuturesBtc, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<GateioPerpetualsUsd, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<GateioPerpetualsBtc, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<GateioOptions, Instrument, Candles>: Identifier<GateioMarket>,
         Subscription<Kraken, Instrument, PublicTrades>: Identifier<KrakenMarket>,
         Subscription<Kraken, Instrument, OrderBooksL1>: Identifier<KrakenMarket>,
         Subscription<Kraken, Instrument, Candles>: Identifier<KrakenMarket>,
@@ -294,6 +302,26 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                         .map(|stream| {
                                             tokio::spawn(stream.forward_to(
                                                 txs.trades.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::Bitfinex, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        Bitfinex,
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
                                             ))
                                         })
                                     }
@@ -760,6 +788,146 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                                 .map(|sub| {
                                                     Subscription::new(
                                                         Kraken,
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::Bitmex, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        Bitmex,
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::GateioSpot, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        GateioSpot::default(),
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::GateioFuturesUsd, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        GateioFuturesUsd::default(),
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::GateioFuturesBtc, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        GateioFuturesBtc::default(),
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::GateioPerpetualsUsd, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        GateioPerpetualsUsd::default(),
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::GateioPerpetualsBtc, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        GateioPerpetualsBtc::default(),
+                                                        sub.instrument,
+                                                        Candles(interval),
+                                                    )
+                                                })
+                                                .collect(),
+                                        )
+                                        .await
+                                        .map(|stream| {
+                                            tokio::spawn(stream.forward_to(
+                                                txs.candles.get(&exchange).unwrap().clone(),
+                                            ))
+                                        })
+                                    }
+                                    (ExchangeId::GateioOptions, SubKind::Candles(interval)) => {
+                                        init_market_stream(
+                                            STREAM_RECONNECTION_POLICY,
+                                            subs.into_iter()
+                                                .map(|sub| {
+                                                    Subscription::new(
+                                                        GateioOptions::default(),
                                                         sub.instrument,
                                                         Candles(interval),
                                                     )

@@ -1,7 +1,7 @@
 use super::Bitfinex;
 use crate::{
     Identifier,
-    subscription::{Subscription, trade::PublicTrades},
+    subscription::{Subscription, candle::Candles, trade::PublicTrades},
 };
 use serde::Serialize;
 
@@ -17,11 +17,22 @@ impl BitfinexChannel {
     ///
     /// See docs: <https://docs.bitfinex.com/reference/ws-public-trades>
     pub fn trades() -> Self { Self("trades".into()) }
+
+    /// [`Bitfinex`] real-time candles channel.
+    ///
+    /// See docs: <https://docs.bitfinex.com/reference/ws-public-candles>
+    pub fn candles() -> Self { Self("candles".into()) }
 }
 
 impl<Instrument> Identifier<BitfinexChannel> for Subscription<Bitfinex, Instrument, PublicTrades> {
     fn id(&self) -> BitfinexChannel {
         BitfinexChannel::trades()
+    }
+}
+
+impl<Instrument> Identifier<BitfinexChannel> for Subscription<Bitfinex, Instrument, Candles> {
+    fn id(&self) -> BitfinexChannel {
+        BitfinexChannel::candles()
     }
 }
 

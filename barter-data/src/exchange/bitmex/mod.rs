@@ -3,6 +3,7 @@ use crate::{
     exchange::{
         Connector, StreamSelector,
         bitmex::{
+            candle::BitmexKline,
             channel::BitmexChannel, market::BitmexMarket, subscription::BitmexSubResponse,
             trade::BitmexTrade,
         },
@@ -10,7 +11,7 @@ use crate::{
     },
     instrument::InstrumentData,
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{Map, trade::PublicTrades},
+    subscription::{Map, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -40,6 +41,9 @@ pub mod subscription;
 
 /// Public trade types for [`Bitmex`].
 pub mod trade;
+
+/// Public candle/kline types for [`Bitmex`].
+pub mod candle;
 
 use crate::{error::DataError, subscription::candle::Interval};
 
@@ -108,6 +112,15 @@ where
     type SnapFetcher = NoInitialSnapshots;
     type Stream =
         BitmexWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, BitmexTrade>>;
+}
+
+impl<Instrument> StreamSelector<Instrument, Candles> for Bitmex
+where
+    Instrument: InstrumentData,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Stream =
+        BitmexWsStream<StatelessTransformer<Self, Instrument::Key, Candles, BitmexKline>>;
 }
 
 impl<'de> serde::Deserialize<'de> for Bitmex {

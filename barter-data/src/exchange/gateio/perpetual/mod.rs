@@ -1,10 +1,10 @@
 use self::trade::GateioFuturesTrades;
-use super::Gateio;
+use super::{Gateio, candle::GateioKline};
 use crate::{
     NoInitialSnapshots,
     exchange::{ExchangeServer, StreamSelector, gateio::GateiotWsStream},
     instrument::InstrumentData,
-    subscription::trade::PublicTrades,
+    subscription::{candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -43,6 +43,15 @@ where
     >;
 }
 
+impl<Instrument> StreamSelector<Instrument, Candles> for GateioPerpetualsUsd
+where
+    Instrument: InstrumentData,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Stream =
+        GateiotWsStream<StatelessTransformer<Self, Instrument::Key, Candles, GateioKline>>;
+}
+
 impl Display for GateioPerpetualsUsd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "GateioPerpetualsUsd")
@@ -77,6 +86,15 @@ where
     type Stream = GateiotWsStream<
         StatelessTransformer<Self, Instrument::Key, PublicTrades, GateioFuturesTrades>,
     >;
+}
+
+impl<Instrument> StreamSelector<Instrument, Candles> for GateioPerpetualsBtc
+where
+    Instrument: InstrumentData,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Stream =
+        GateiotWsStream<StatelessTransformer<Self, Instrument::Key, Candles, GateioKline>>;
 }
 
 impl Display for GateioPerpetualsBtc {

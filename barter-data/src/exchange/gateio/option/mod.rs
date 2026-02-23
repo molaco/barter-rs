@@ -2,10 +2,10 @@ use crate::{
     NoInitialSnapshots,
     exchange::{
         ExchangeServer, StreamSelector,
-        gateio::{Gateio, GateiotWsStream, perpetual::trade::GateioFuturesTrades},
+        gateio::{Gateio, GateiotWsStream, candle::GateioKline, perpetual::trade::GateioFuturesTrades},
     },
     instrument::InstrumentData,
-    subscription::trade::PublicTrades,
+    subscription::{candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -39,6 +39,15 @@ where
     type Stream = GateiotWsStream<
         StatelessTransformer<Self, Instrument::Key, PublicTrades, GateioFuturesTrades>,
     >;
+}
+
+impl<Instrument> StreamSelector<Instrument, Candles> for GateioOptions
+where
+    Instrument: InstrumentData,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Stream =
+        GateiotWsStream<StatelessTransformer<Self, Instrument::Key, Candles, GateioKline>>;
 }
 
 impl Display for GateioOptions {

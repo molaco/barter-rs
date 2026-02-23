@@ -1,7 +1,12 @@
+use super::gateio_interval;
 use crate::{
     Identifier,
     instrument::InstrumentData,
-    subscription::{Subscription, trade::PublicTrades},
+    subscription::{
+        Subscription,
+        candle::Candles,
+        trade::PublicTrades,
+    },
 };
 use barter_instrument::instrument::market_data::kind::MarketDataInstrumentKind;
 use serde::Serialize;
@@ -43,6 +48,27 @@ where
                 GateioChannel::future_trades()
             }
             MarketDataInstrumentKind::Option { .. } => GateioChannel::option_trades(),
+        }
+    }
+}
+
+impl<GateioExchange, Instrument> Identifier<GateioChannel>
+    for Subscription<GateioExchange, Instrument, Candles>
+where
+    Instrument: InstrumentData,
+{
+    fn id(&self) -> GateioChannel {
+        let interval = gateio_interval(self.kind.0).expect("validated");
+        match self.instrument.kind() {
+            MarketDataInstrumentKind::Spot => {
+                GateioChannel(format!("spot.candlesticks_{}", interval))
+            }
+            MarketDataInstrumentKind::Future { .. } | MarketDataInstrumentKind::Perpetual => {
+                GateioChannel(format!("futures.candlesticks_{}", interval))
+            }
+            MarketDataInstrumentKind::Option { .. } => {
+                GateioChannel(format!("options.candlesticks_{}", interval))
+            }
         }
     }
 }

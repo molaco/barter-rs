@@ -1,5 +1,8 @@
-use super::Bitfinex;
-use crate::{Identifier, instrument::MarketInstrumentData, subscription::Subscription};
+use super::{Bitfinex, bitfinex_interval};
+use crate::{
+    Identifier, instrument::MarketInstrumentData,
+    subscription::{Subscription, candle::Candles, trade::PublicTrades},
+};
 use barter_instrument::{
     Keyed, asset::name::AssetNameInternal, instrument::market_data::MarketDataInstrument,
 };
@@ -13,25 +16,62 @@ use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 pub struct BitfinexMarket(pub SmolStr);
 
-impl<Kind> Identifier<BitfinexMarket> for Subscription<Bitfinex, MarketDataInstrument, Kind> {
+// --- MarketDataInstrument ---
+
+impl Identifier<BitfinexMarket> for Subscription<Bitfinex, MarketDataInstrument, PublicTrades> {
     fn id(&self) -> BitfinexMarket {
         bitfinex_market(&self.instrument.base, &self.instrument.quote)
     }
 }
 
-impl<InstrumentKey, Kind> Identifier<BitfinexMarket>
-    for Subscription<Bitfinex, Keyed<InstrumentKey, MarketDataInstrument>, Kind>
+impl Identifier<BitfinexMarket> for Subscription<Bitfinex, MarketDataInstrument, Candles> {
+    fn id(&self) -> BitfinexMarket {
+        let interval = bitfinex_interval(self.kind.0).expect("validated");
+        let symbol = bitfinex_market(&self.instrument.base, &self.instrument.quote);
+        BitfinexMarket(format_smolstr!("trade:{}:{}", interval, symbol.0))
+    }
+}
+
+// --- Keyed<InstrumentKey, MarketDataInstrument> ---
+
+impl<InstrumentKey> Identifier<BitfinexMarket>
+    for Subscription<Bitfinex, Keyed<InstrumentKey, MarketDataInstrument>, PublicTrades>
 {
     fn id(&self) -> BitfinexMarket {
         bitfinex_market(&self.instrument.value.base, &self.instrument.value.quote)
     }
 }
 
-impl<InstrumentKey, Kind> Identifier<BitfinexMarket>
-    for Subscription<Bitfinex, MarketInstrumentData<InstrumentKey>, Kind>
+impl<InstrumentKey> Identifier<BitfinexMarket>
+    for Subscription<Bitfinex, Keyed<InstrumentKey, MarketDataInstrument>, Candles>
+{
+    fn id(&self) -> BitfinexMarket {
+        let interval = bitfinex_interval(self.kind.0).expect("validated");
+        let symbol = bitfinex_market(&self.instrument.value.base, &self.instrument.value.quote);
+        BitfinexMarket(format_smolstr!("trade:{}:{}", interval, symbol.0))
+    }
+}
+
+// --- MarketInstrumentData<InstrumentKey> ---
+
+impl<InstrumentKey> Identifier<BitfinexMarket>
+    for Subscription<Bitfinex, MarketInstrumentData<InstrumentKey>, PublicTrades>
 {
     fn id(&self) -> BitfinexMarket {
         BitfinexMarket(self.instrument.name_exchange.to_smolstr())
+    }
+}
+
+impl<InstrumentKey> Identifier<BitfinexMarket>
+    for Subscription<Bitfinex, MarketInstrumentData<InstrumentKey>, Candles>
+{
+    fn id(&self) -> BitfinexMarket {
+        let interval = bitfinex_interval(self.kind.0).expect("validated");
+        BitfinexMarket(format_smolstr!(
+            "trade:{}:{}",
+            interval,
+            self.instrument.name_exchange
+        ))
     }
 }
 

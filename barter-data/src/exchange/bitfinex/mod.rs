@@ -20,15 +20,16 @@
 //! - Therefore, tag="tu" trades are filtered out and considered only as additional Heartbeats.
 
 use self::{
-    channel::BitfinexChannel, market::BitfinexMarket, message::BitfinexMessage,
-    subscription::BitfinexPlatformEvent, validator::BitfinexWebSocketSubValidator,
+    candle::BitfinexCandleMessage, channel::BitfinexChannel, market::BitfinexMarket,
+    message::BitfinexMessage, subscription::BitfinexPlatformEvent,
+    validator::BitfinexWebSocketSubValidator,
 };
 use crate::{
     ExchangeWsStream, NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, StreamSelector},
     instrument::InstrumentData,
     subscriber::WebSocketSubscriber,
-    subscription::trade::PublicTrades,
+    subscription::{candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -40,6 +41,9 @@ use barter_macro::{DeExchange, SerExchange};
 use derive_more::Display;
 use serde_json::json;
 use url::Url;
+
+/// Public candle/kline types for [`Bitfinex`].
+pub mod candle;
 
 /// Defines the type that translates a Barter [`Subscription`](crate::subscription::Subscription)
 /// into an exchange [`Connector`] specific channel used for generating [`Connector::requests`].
@@ -128,14 +132,21 @@ impl Connector for Bitfinex {
         exchange_subs
             .into_iter()
             .map(|ExchangeSub { channel, market }| {
-                WsMessage::text(
+                let channel_str = channel.as_ref();
+                let payload = if channel_str == "candles" {
                     json!({
                         "event": "subscribe",
-                        "channel": channel.as_ref(),
+                        "channel": channel_str,
+                        "key": market.as_ref(),
+                    })
+                } else {
+                    json!({
+                        "event": "subscribe",
+                        "channel": channel_str,
                         "symbol": market.as_ref(),
                     })
-                    .to_string(),
-                )
+                };
+                WsMessage::text(payload.to_string())
             })
             .collect()
     }
@@ -148,5 +159,15 @@ where
     type SnapFetcher = NoInitialSnapshots;
     type Stream = BitfinexWsStream<
         StatelessTransformer<Self, Instrument::Key, PublicTrades, BitfinexMessage>,
+    >;
+}
+
+impl<Instrument> StreamSelector<Instrument, Candles> for Bitfinex
+where
+    Instrument: InstrumentData,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Stream = BitfinexWsStream<
+        StatelessTransformer<Self, Instrument::Key, Candles, BitfinexCandleMessage>,
     >;
 }
