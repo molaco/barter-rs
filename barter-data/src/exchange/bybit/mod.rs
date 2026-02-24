@@ -288,8 +288,7 @@ mod tests {
         let messages = BybitSpot::unsubscribe_requests(exchange_subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
 
         assert_eq!(payload["op"], "unsubscribe");
 

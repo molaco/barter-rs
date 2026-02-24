@@ -6,10 +6,7 @@ use crate::{
     subscription::candle::Candle,
 };
 use barter_instrument::exchange::ExchangeId;
-use barter_integration::{
-    de::datetime_utc_from_epoch_duration,
-    subscription::SubscriptionId,
-};
+use barter_integration::{de::datetime_utc_from_epoch_duration, subscription::SubscriptionId};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
@@ -130,8 +127,7 @@ impl<InstrumentKey> From<(ExchangeId, InstrumentKey, HyperliquidKline)>
         let volume: f64 = candle.volume.parse().unwrap_or(0.0);
 
         let open_time = datetime_utc_from_epoch_duration(Duration::from_millis(candle.open_time));
-        let close_time =
-            datetime_utc_from_epoch_duration(Duration::from_millis(candle.close_time));
+        let close_time = datetime_utc_from_epoch_duration(Duration::from_millis(candle.close_time));
 
         Self(vec![Ok(MarketEvent {
             time_exchange: close_time,
@@ -203,10 +199,7 @@ mod tests {
         let kline: HyperliquidKline = serde_json::from_str(input).unwrap();
         let sub_id = kline.id();
 
-        assert_eq!(
-            sub_id,
-            Some(SubscriptionId::from("candle.1m|ETH"))
-        );
+        assert_eq!(sub_id, Some(SubscriptionId::from("candle.1m|ETH")));
     }
 
     #[test]
@@ -316,10 +309,7 @@ mod tests {
         let kline: HyperliquidKline = serde_json::from_str(input).unwrap();
         let sub_id = kline.id();
 
-        assert_eq!(
-            sub_id,
-            Some(SubscriptionId::from("candle.1h|BTC"))
-        );
+        assert_eq!(sub_id, Some(SubscriptionId::from("candle.1h|BTC")));
     }
 
     #[test]

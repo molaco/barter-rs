@@ -49,8 +49,7 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Transformer =
-        StatelessTransformer<Self, Instrument::Key, Candles, GateioKline>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, GateioKline>;
     type Parser = WebSocketSerdeParser;
 }
 
@@ -95,8 +94,7 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Transformer =
-        StatelessTransformer<Self, Instrument::Key, Candles, GateioKline>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, GateioKline>;
     type Parser = WebSocketSerdeParser;
 }
 

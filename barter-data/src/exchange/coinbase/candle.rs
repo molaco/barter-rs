@@ -86,11 +86,7 @@ impl Identifier<Option<SubscriptionId>> for CoinbaseKline {
             .first()
             .and_then(|event| event.candles.first())
             .map(|candle| {
-                ExchangeSub::from((
-                    CoinbaseChannel::CANDLES,
-                    candle.product_id.as_str(),
-                ))
-                .id()
+                ExchangeSub::from((CoinbaseChannel::CANDLES, candle.product_id.as_str())).id()
             })
     }
 }
@@ -98,9 +94,7 @@ impl Identifier<Option<SubscriptionId>> for CoinbaseKline {
 impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, CoinbaseKline)>
     for MarketIter<InstrumentKey, Candle>
 {
-    fn from(
-        (exchange_id, instrument, kline): (ExchangeId, InstrumentKey, CoinbaseKline),
-    ) -> Self {
+    fn from((exchange_id, instrument, kline): (ExchangeId, InstrumentKey, CoinbaseKline)) -> Self {
         // Coinbase candles only support 5-minute intervals (300 seconds).
         let candle_duration = Duration::seconds(300);
 
@@ -135,16 +129,12 @@ impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, CoinbaseKline)>
 }
 
 /// Deserialize a unix seconds string (e.g., "1688998200") into a `DateTime<Utc>`.
-fn de_str_unix_seconds_as_datetime_utc<'de, D>(
-    deserializer: D,
-) -> Result<DateTime<Utc>, D::Error>
+fn de_str_unix_seconds_as_datetime_utc<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
 where
     D: serde::de::Deserializer<'de>,
 {
     let seconds_str: &str = serde::Deserialize::deserialize(deserializer)?;
-    let seconds: i64 = seconds_str
-        .parse()
-        .map_err(serde::de::Error::custom)?;
+    let seconds: i64 = seconds_str.parse().map_err(serde::de::Error::custom)?;
     DateTime::from_timestamp(seconds, 0)
         .ok_or_else(|| serde::de::Error::custom("invalid unix timestamp"))
 }
@@ -219,10 +209,7 @@ mod tests {
         let kline: CoinbaseKline = serde_json::from_str(input).unwrap();
         let sub_id = kline.id();
 
-        assert_eq!(
-            sub_id,
-            Some(SubscriptionId::from("candles|ETH-USD"))
-        );
+        assert_eq!(sub_id, Some(SubscriptionId::from("candles|ETH-USD")));
     }
 
     #[test]

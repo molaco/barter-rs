@@ -48,8 +48,8 @@ impl KrakenOhlcResponse {
                 last = value.as_i64();
             } else {
                 // This is the pair data array
-                let raw: Vec<KrakenKlineRaw> = serde_json::from_value(value.clone())
-                    .map_err(|e| {
+                let raw: Vec<KrakenKlineRaw> =
+                    serde_json::from_value(value.clone()).map_err(|e| {
                         DataError::Socket(format!(
                             "failed to deserialize Kraken OHLC data for key '{}': {}",
                             key, e

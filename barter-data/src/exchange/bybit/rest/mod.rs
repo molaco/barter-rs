@@ -198,10 +198,8 @@ where
 
             this.wait_for_rate_limit().await;
 
-            let response: klines::BybitKlinesResponse = match retry_with_backoff(
-                &RetryPolicy::default(),
-                is_retriable_data_error,
-                || {
+            let response: klines::BybitKlinesResponse =
+                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
                     let req = get_klines_request.clone();
                     let client = this.client.clone();
                     async move {
@@ -210,16 +208,15 @@ where
                             .await
                             .map(|(response, _metric)| response)
                     }
-                },
-            )
-            .await
-            {
-                Ok(resp) => resp,
-                Err(error) => {
-                    warn!(?error, "klines fetch failed");
-                    return Err(error);
-                }
-            };
+                })
+                .await
+                {
+                    Ok(resp) => resp,
+                    Err(error) => {
+                        warn!(?error, "klines fetch failed");
+                        return Err(error);
+                    }
+                };
 
             // Extract raw klines from nested response and reverse
             // (Bybit returns newest-first, we want oldest-first)
@@ -292,8 +289,7 @@ where
                     // Advance cursor past the open_time of the last candle
                     // (Bybit klines use open_time as the primary timestamp)
                     if let Some(last) = batch.last() {
-                        state.cursor =
-                            last.open_time + TimeDelta::milliseconds(1);
+                        state.cursor = last.open_time + TimeDelta::milliseconds(1);
 
                         // If cursor has passed the requested end, mark done
                         if let Some(end) = state.end {

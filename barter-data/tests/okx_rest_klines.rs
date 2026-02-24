@@ -46,9 +46,39 @@ async fn test_fetch_klines_single_batch() {
     //   Kline B: open_time = 1609545600000
     //   Kline A: open_time = 1609459200000  (oldest in response, last element)
     let body = okx_klines_response(vec![
-        vec!["1609632000000", "29800.00", "30500.00", "29600.00", "30100.00", "800.00", "24000000.00", "24000000.00", "1"],
-        vec!["1609545600000", "29200.00", "30000.00", "29100.00", "29800.00", "1200.00", "35000000.00", "35000000.00", "1"],
-        vec!["1609459200000", "29000.00", "29500.00", "28800.00", "29200.00", "1000.00", "29000000.00", "29000000.00", "1"],
+        vec![
+            "1609632000000",
+            "29800.00",
+            "30500.00",
+            "29600.00",
+            "30100.00",
+            "800.00",
+            "24000000.00",
+            "24000000.00",
+            "1",
+        ],
+        vec![
+            "1609545600000",
+            "29200.00",
+            "30000.00",
+            "29100.00",
+            "29800.00",
+            "1200.00",
+            "35000000.00",
+            "35000000.00",
+            "1",
+        ],
+        vec![
+            "1609459200000",
+            "29000.00",
+            "29500.00",
+            "28800.00",
+            "29200.00",
+            "1000.00",
+            "29000000.00",
+            "29000000.00",
+            "1",
+        ],
     ]);
 
     Mock::given(method("GET"))
@@ -144,13 +174,11 @@ async fn test_fetch_klines_api_error() {
 
     Mock::given(method("GET"))
         .and(path("/api/v5/market/history-candles"))
-        .respond_with(
-            ResponseTemplate::new(400).set_body_json(json!({
-                "code": "51001",
-                "msg": "Instrument ID does not exist",
-                "data": []
-            })),
-        )
+        .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+            "code": "51001",
+            "msg": "Instrument ID does not exist",
+            "data": []
+        })))
         .mount(&mock_server)
         .await;
 
@@ -194,12 +222,32 @@ async fn test_stream_klines_pagination() {
     Mock::given(method("GET"))
         .and(path("/api/v5/market/history-candles"))
         .and(query_param("before", "1609459200000"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            okx_klines_response(vec![
-                vec!["1609545600000", "29200.00", "30000.00", "29100.00", "29800.00", "1200.00", "35000000.00", "35000000.00", "1"],
-                vec!["1609459200000", "29000.00", "29500.00", "28800.00", "29200.00", "1000.00", "29000000.00", "29000000.00", "1"],
-            ]),
-        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(okx_klines_response(vec![
+                vec![
+                    "1609545600000",
+                    "29200.00",
+                    "30000.00",
+                    "29100.00",
+                    "29800.00",
+                    "1200.00",
+                    "35000000.00",
+                    "35000000.00",
+                    "1",
+                ],
+                vec![
+                    "1609459200000",
+                    "29000.00",
+                    "29500.00",
+                    "28800.00",
+                    "29200.00",
+                    "1000.00",
+                    "29000000.00",
+                    "29000000.00",
+                    "1",
+                ],
+            ])),
+        )
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -212,11 +260,19 @@ async fn test_stream_klines_pagination() {
     Mock::given(method("GET"))
         .and(path("/api/v5/market/history-candles"))
         .and(query_param("before", "1609549200000"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            okx_klines_response(vec![
-                vec!["1609632000000", "29800.00", "30500.00", "29600.00", "30100.00", "800.00", "24000000.00", "24000000.00", "1"],
-            ]),
-        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(okx_klines_response(vec![vec![
+                "1609632000000",
+                "29800.00",
+                "30500.00",
+                "29600.00",
+                "30100.00",
+                "800.00",
+                "24000000.00",
+                "24000000.00",
+                "1",
+            ]])),
+        )
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -225,10 +281,7 @@ async fn test_stream_klines_pagination() {
     Mock::given(method("GET"))
         .and(path("/api/v5/market/history-candles"))
         .and(query_param("before", "1609635600000"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(okx_klines_response(vec![])),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(okx_klines_response(vec![])))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -236,9 +289,7 @@ async fn test_stream_klines_pagination() {
     let request = KlineRequest {
         market: "BTC-USDT".to_string(),
         interval: Interval::H1,
-        start: Some(
-            DateTime::from_timestamp_millis(1609459200000).unwrap(),
-        ),
+        start: Some(DateTime::from_timestamp_millis(1609459200000).unwrap()),
         end: None,
         limit: None,
     };

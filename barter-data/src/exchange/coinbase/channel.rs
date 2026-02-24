@@ -47,7 +47,9 @@ impl AsRef<str> for CoinbaseChannel {
 mod tests {
     use super::*;
     use crate::subscription::candle::{Candles, Interval};
-    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+    use barter_instrument::instrument::market_data::{
+        MarketDataInstrument, kind::MarketDataInstrumentKind,
+    };
 
     fn candles_channel(interval: Interval) -> CoinbaseChannel {
         let sub: Subscription<Coinbase, MarketDataInstrument, Candles> = Subscription::new(

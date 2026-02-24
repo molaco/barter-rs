@@ -1,6 +1,7 @@
 use super::{Bitfinex, bitfinex_interval};
 use crate::{
-    Identifier, instrument::MarketInstrumentData,
+    Identifier,
+    instrument::MarketInstrumentData,
     subscription::{Subscription, candle::Candles, trade::PublicTrades},
 };
 use barter_instrument::{

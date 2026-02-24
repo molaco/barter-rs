@@ -140,908 +140,1172 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         let collected_handles: Arc<Mutex<Vec<(ExchangeId, SubscriptionHandle<InstrumentKey>)>>> =
             Arc::new(Mutex::new(Vec::new()));
 
-        let futures =
-            batches.into_iter().map(|mut batch| {
-                batch.sort_unstable_by_key(|sub| (sub.exchange, sub.kind));
-                let by_exchange_by_sub_kind =
-                    batch.into_iter().chunk_by(|sub| (sub.exchange, sub.kind));
+        let futures = batches.into_iter().map(|mut batch| {
+            batch.sort_unstable_by_key(|sub| (sub.exchange, sub.kind));
+            let by_exchange_by_sub_kind =
+                batch.into_iter().chunk_by(|sub| (sub.exchange, sub.kind));
 
-                let batch_futures =
-                    by_exchange_by_sub_kind
-                        .into_iter()
-                        .map(|((exchange, sub_kind), subs)| {
-                            let subs = subs.into_iter().collect::<Vec<_>>();
-                            let txs = Arc::clone(&channels.txs);
-                            let collected_handles = Arc::clone(&collected_handles);
-                            async move {
-                                match (exchange, sub_kind) {
-                                    (ExchangeId::BinanceSpot, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BinanceSpot::default(),
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BinanceSpot, SubKind::OrderBooksL1) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BinanceSpot::default(),
-                                                        sub.instrument,
-                                                        OrderBooksL1,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.l1s.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BinanceSpot, SubKind::OrderBooksL2) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BinanceSpot::default(),
-                                                        sub.instrument,
-                                                        OrderBooksL2,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.l2s.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BinanceFuturesUsd, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BinanceFuturesUsd::default(),
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BinanceFuturesUsd, SubKind::OrderBooksL1) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::<_, Instrument, _>::new(
-                                                        BinanceFuturesUsd::default(),
-                                                        sub.instrument,
-                                                        OrderBooksL1,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.l1s.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BinanceFuturesUsd, SubKind::OrderBooksL2) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::<_, Instrument, _>::new(
-                                                        BinanceFuturesUsd::default(),
-                                                        sub.instrument,
-                                                        OrderBooksL2,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.l2s.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BinanceFuturesUsd, SubKind::Liquidations) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::<_, Instrument, _>::new(
-                                                        BinanceFuturesUsd::default(),
-                                                        sub.instrument,
-                                                        Liquidations,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.liquidations.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Bitfinex, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Bitfinex,
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Bitfinex, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Bitfinex,
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Bitmex, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Bitmex,
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BybitSpot, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BybitSpot::default(),
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BybitSpot, SubKind::OrderBooksL1) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BybitSpot::default(),
-                                                        sub.instrument,
-                                                        OrderBooksL1,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.l1s.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BybitSpot, SubKind::OrderBooksL2) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BybitSpot::default(),
-                                                        sub.instrument,
-                                                        OrderBooksL2,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.l2s.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BybitPerpetualsUsd, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BybitPerpetualsUsd::default(),
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BybitPerpetualsUsd, SubKind::OrderBooksL1) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BybitPerpetualsUsd::default(),
-                                                        sub.instrument,
-                                                        OrderBooksL1,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.l1s.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::BybitPerpetualsUsd, SubKind::OrderBooksL2) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BybitPerpetualsUsd::default(),
-                                                        sub.instrument,
-                                                        OrderBooksL2,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.l2s.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Coinbase, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Coinbase,
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Coinbase, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Coinbase,
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioSpot, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioSpot::default(),
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioFuturesUsd, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioFuturesUsd::default(),
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioFuturesBtc, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioFuturesBtc::default(),
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioPerpetualsUsd, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioPerpetualsUsd::default(),
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioPerpetualsBtc, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioPerpetualsBtc::default(),
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioOptions, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioOptions::default(),
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Hyperliquid, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Hyperliquid,
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Kraken, SubKind::PublicTrades) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Kraken,
-                                                        sub.instrument,
-                                                        PublicTrades,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Kraken, SubKind::OrderBooksL1) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Kraken,
-                                                        sub.instrument,
-                                                        OrderBooksL1,
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.l1s.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Okx, SubKind::PublicTrades) => init_market_stream(
+            let batch_futures =
+                by_exchange_by_sub_kind
+                    .into_iter()
+                    .map(|((exchange, sub_kind), subs)| {
+                        let subs = subs.into_iter().collect::<Vec<_>>();
+                        let txs = Arc::clone(&channels.txs);
+                        let collected_handles = Arc::clone(&collected_handles);
+                        async move {
+                            match (exchange, sub_kind) {
+                                (ExchangeId::BinanceSpot, SubKind::PublicTrades) => {
+                                    init_market_stream(
                                         STREAM_RECONNECTION_POLICY,
                                         subs.into_iter()
                                             .map(|sub| {
-                                                Subscription::new(Okx, sub.instrument, PublicTrades)
+                                                Subscription::new(
+                                                    BinanceSpot::default(),
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
                                             })
                                             .collect(),
                                     )
                                     .await
-                                    .map(|(event_rx, handle)| {
-                                        collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                        tokio::spawn(
-                                            UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.trades.get(&exchange).unwrap().clone(),
-                                            ),
-                                        )
-                                    }),
-                                    (ExchangeId::BinanceSpot, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BinanceSpot::default(),
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BinanceSpot, SubKind::OrderBooksL1) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BinanceSpot::default(),
+                                                    sub.instrument,
+                                                    OrderBooksL1,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.l1s.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BinanceSpot, SubKind::OrderBooksL2) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BinanceSpot::default(),
+                                                    sub.instrument,
+                                                    OrderBooksL2,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.l2s.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BinanceFuturesUsd, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BinanceFuturesUsd::default(),
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BinanceFuturesUsd, SubKind::OrderBooksL1) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::<_, Instrument, _>::new(
+                                                    BinanceFuturesUsd::default(),
+                                                    sub.instrument,
+                                                    OrderBooksL1,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.l1s.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BinanceFuturesUsd, SubKind::OrderBooksL2) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::<_, Instrument, _>::new(
+                                                    BinanceFuturesUsd::default(),
+                                                    sub.instrument,
+                                                    OrderBooksL2,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.l2s.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BinanceFuturesUsd, SubKind::Liquidations) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::<_, Instrument, _>::new(
+                                                    BinanceFuturesUsd::default(),
+                                                    sub.instrument,
+                                                    Liquidations,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.liquidations
+                                                        .get(&exchange)
+                                                        .unwrap()
+                                                        .clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Bitfinex, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    Bitfinex,
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Bitfinex, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    Bitfinex,
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Bitmex, SubKind::PublicTrades) => init_market_stream(
+                                    STREAM_RECONNECTION_POLICY,
+                                    subs.into_iter()
+                                        .map(|sub| {
+                                            Subscription::new(Bitmex, sub.instrument, PublicTrades)
                                         })
-                                    }
-                                    (ExchangeId::BinanceFuturesUsd, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BinanceFuturesUsd::default(),
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
+                                        .collect(),
+                                )
+                                .await
+                                .map(|(event_rx, handle)| {
+                                    collected_handles
+                                        .lock()
+                                        .expect("handles mutex poisoned")
+                                        .push((exchange, handle));
+                                    tokio::spawn(
+                                        UnboundedReceiverStream::new(event_rx)
+                                            .forward_to(txs.trades.get(&exchange).unwrap().clone()),
+                                    )
+                                }),
+                                (ExchangeId::BybitSpot, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BybitSpot::default(),
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BybitSpot, SubKind::OrderBooksL1) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BybitSpot::default(),
+                                                    sub.instrument,
+                                                    OrderBooksL1,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.l1s.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BybitSpot, SubKind::OrderBooksL2) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BybitSpot::default(),
+                                                    sub.instrument,
+                                                    OrderBooksL2,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.l2s.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BybitPerpetualsUsd, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BybitPerpetualsUsd::default(),
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BybitPerpetualsUsd, SubKind::OrderBooksL1) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BybitPerpetualsUsd::default(),
+                                                    sub.instrument,
+                                                    OrderBooksL1,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.l1s.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BybitPerpetualsUsd, SubKind::OrderBooksL2) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BybitPerpetualsUsd::default(),
+                                                    sub.instrument,
+                                                    OrderBooksL2,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.l2s.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Coinbase, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    Coinbase,
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Coinbase, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    Coinbase,
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioSpot, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioSpot::default(),
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioFuturesUsd, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioFuturesUsd::default(),
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioFuturesBtc, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioFuturesBtc::default(),
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioPerpetualsUsd, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioPerpetualsUsd::default(),
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioPerpetualsBtc, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioPerpetualsBtc::default(),
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioOptions, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioOptions::default(),
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Hyperliquid, SubKind::PublicTrades) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    Hyperliquid,
+                                                    sub.instrument,
+                                                    PublicTrades,
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.trades.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Kraken, SubKind::PublicTrades) => init_market_stream(
+                                    STREAM_RECONNECTION_POLICY,
+                                    subs.into_iter()
+                                        .map(|sub| {
+                                            Subscription::new(Kraken, sub.instrument, PublicTrades)
                                         })
-                                    }
-                                    (ExchangeId::Okx, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Okx,
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
+                                        .collect(),
+                                )
+                                .await
+                                .map(|(event_rx, handle)| {
+                                    collected_handles
+                                        .lock()
+                                        .expect("handles mutex poisoned")
+                                        .push((exchange, handle));
+                                    tokio::spawn(
+                                        UnboundedReceiverStream::new(event_rx)
+                                            .forward_to(txs.trades.get(&exchange).unwrap().clone()),
+                                    )
+                                }),
+                                (ExchangeId::Kraken, SubKind::OrderBooksL1) => init_market_stream(
+                                    STREAM_RECONNECTION_POLICY,
+                                    subs.into_iter()
+                                        .map(|sub| {
+                                            Subscription::new(Kraken, sub.instrument, OrderBooksL1)
                                         })
-                                    }
-                                    (ExchangeId::BybitSpot, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BybitSpot::default(),
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
+                                        .collect(),
+                                )
+                                .await
+                                .map(|(event_rx, handle)| {
+                                    collected_handles
+                                        .lock()
+                                        .expect("handles mutex poisoned")
+                                        .push((exchange, handle));
+                                    tokio::spawn(
+                                        UnboundedReceiverStream::new(event_rx)
+                                            .forward_to(txs.l1s.get(&exchange).unwrap().clone()),
+                                    )
+                                }),
+                                (ExchangeId::Okx, SubKind::PublicTrades) => init_market_stream(
+                                    STREAM_RECONNECTION_POLICY,
+                                    subs.into_iter()
+                                        .map(|sub| {
+                                            Subscription::new(Okx, sub.instrument, PublicTrades)
                                         })
-                                    }
-                                    (ExchangeId::BybitPerpetualsUsd, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        BybitPerpetualsUsd::default(),
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Kraken, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Kraken,
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Bitmex, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Bitmex,
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioSpot, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioSpot::default(),
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioFuturesUsd, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioFuturesUsd::default(),
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioFuturesBtc, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioFuturesBtc::default(),
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioPerpetualsUsd, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioPerpetualsUsd::default(),
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioPerpetualsBtc, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioPerpetualsBtc::default(),
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::GateioOptions, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        GateioOptions::default(),
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (ExchangeId::Hyperliquid, SubKind::Candles(interval)) => {
-                                        init_market_stream(
-                                            STREAM_RECONNECTION_POLICY,
-                                            subs.into_iter()
-                                                .map(|sub| {
-                                                    Subscription::new(
-                                                        Hyperliquid,
-                                                        sub.instrument,
-                                                        Candles(interval),
-                                                    )
-                                                })
-                                                .collect(),
-                                        )
-                                        .await
-                                        .map(|(event_rx, handle)| {
-                                            collected_handles.lock().expect("handles mutex poisoned").push((exchange, handle));
-                                            tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(
-                                                txs.candles.get(&exchange).unwrap().clone(),
-                                            ))
-                                        })
-                                    }
-                                    (exchange, sub_kind) => {
-                                        Err(DataError::Unsupported { exchange, sub_kind })
-                                    }
+                                        .collect(),
+                                )
+                                .await
+                                .map(|(event_rx, handle)| {
+                                    collected_handles
+                                        .lock()
+                                        .expect("handles mutex poisoned")
+                                        .push((exchange, handle));
+                                    tokio::spawn(
+                                        UnboundedReceiverStream::new(event_rx)
+                                            .forward_to(txs.trades.get(&exchange).unwrap().clone()),
+                                    )
+                                }),
+                                (ExchangeId::BinanceSpot, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BinanceSpot::default(),
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BinanceFuturesUsd, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BinanceFuturesUsd::default(),
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Okx, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    Okx,
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BybitSpot, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BybitSpot::default(),
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::BybitPerpetualsUsd, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    BybitPerpetualsUsd::default(),
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Kraken, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    Kraken,
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Bitmex, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    Bitmex,
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioSpot, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioSpot::default(),
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioFuturesUsd, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioFuturesUsd::default(),
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioFuturesBtc, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioFuturesBtc::default(),
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioPerpetualsUsd, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioPerpetualsUsd::default(),
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioPerpetualsBtc, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioPerpetualsBtc::default(),
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::GateioOptions, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    GateioOptions::default(),
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (ExchangeId::Hyperliquid, SubKind::Candles(interval)) => {
+                                    init_market_stream(
+                                        STREAM_RECONNECTION_POLICY,
+                                        subs.into_iter()
+                                            .map(|sub| {
+                                                Subscription::new(
+                                                    Hyperliquid,
+                                                    sub.instrument,
+                                                    Candles(interval),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                    .await
+                                    .map(
+                                        |(event_rx, handle)| {
+                                            collected_handles
+                                                .lock()
+                                                .expect("handles mutex poisoned")
+                                                .push((exchange, handle));
+                                            tokio::spawn(
+                                                UnboundedReceiverStream::new(event_rx).forward_to(
+                                                    txs.candles.get(&exchange).unwrap().clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                (exchange, sub_kind) => {
+                                    Err(DataError::Unsupported { exchange, sub_kind })
                                 }
                             }
-                        });
+                        }
+                    });
 
-                try_join_all(batch_futures)
-            });
+            try_join_all(batch_futures)
+        });
 
         try_join_all(futures).await?;
 
@@ -1224,7 +1488,11 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
             .into_values()
             .map(|stream| stream.map(MarketStreamResult::into).boxed());
 
-        let all = trades.chain(l1s).chain(l2s).chain(liquidations).chain(candles);
+        let all = trades
+            .chain(l1s)
+            .chain(l2s)
+            .chain(liquidations)
+            .chain(candles);
 
         futures_util::stream::select_all::select_all(all)
     }

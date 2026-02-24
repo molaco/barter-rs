@@ -4,9 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Barter [`Subscription`](super::Subscription) [`SubscriptionKind`] that yields [`Candle`]
 /// [`MarketEvent<T>`](crate::event::MarketEvent) events.
-#[derive(
-    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize,
-)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 pub struct Candles(pub Interval);
 
 impl Default for Candles {
@@ -45,9 +43,7 @@ pub struct Candle {
 }
 
 /// Normalised candlestick interval period.
-#[derive(
-    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize,
-)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 pub enum Interval {
     M1,
     M3,

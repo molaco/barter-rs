@@ -8,7 +8,8 @@ use crate::{
 };
 use barter_instrument::exchange::ExchangeId;
 use barter_integration::{
-    Transformer, Validator, error::SocketError,
+    Transformer, Validator,
+    error::SocketError,
     protocol::{
         StreamParser,
         websocket::{WsError, WsMessage},
@@ -140,7 +141,9 @@ where
     /// unsubscription payloads sent to the exchange server.
     ///
     /// Default implementation returns an empty vec (no unsubscribe support).
-    fn unsubscribe_requests(_exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage> {
+    fn unsubscribe_requests(
+        _exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+    ) -> Vec<WsMessage> {
         vec![]
     }
 

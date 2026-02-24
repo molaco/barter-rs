@@ -1,7 +1,9 @@
 pub mod retry;
 
-use crate::error::DataError;
-use crate::subscription::candle::{Candle, Interval};
+use crate::{
+    error::DataError,
+    subscription::candle::{Candle, Interval},
+};
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use std::future::Future;

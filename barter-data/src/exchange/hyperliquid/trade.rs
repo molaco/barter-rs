@@ -160,10 +160,7 @@ mod tests {
 
             let actual = serde_json::from_str::<HyperliquidTrades>(input).unwrap();
 
-            assert_eq!(
-                actual.subscription_id,
-                SubscriptionId::from("trades|ETH")
-            );
+            assert_eq!(actual.subscription_id, SubscriptionId::from("trades|ETH"));
             assert_eq!(actual.trades.len(), 1);
             assert_eq!(actual.trades[0].coin, "ETH");
             assert_eq!(actual.trades[0].side, "B");
@@ -202,10 +199,7 @@ mod tests {
             let actual = serde_json::from_str::<HyperliquidTrades>(input).unwrap();
 
             // subscription_id derived from first trade's coin
-            assert_eq!(
-                actual.subscription_id,
-                SubscriptionId::from("trades|BTC")
-            );
+            assert_eq!(actual.subscription_id, SubscriptionId::from("trades|BTC"));
             assert_eq!(actual.trades.len(), 2);
         }
 
@@ -221,10 +215,7 @@ mod tests {
             let actual = serde_json::from_str::<HyperliquidTrades>(input).unwrap();
 
             // With no trades, subscription_id falls back to "trades|"
-            assert_eq!(
-                actual.subscription_id,
-                SubscriptionId::from("trades|")
-            );
+            assert_eq!(actual.subscription_id, SubscriptionId::from("trades|"));
             assert!(actual.trades.is_empty());
         }
 

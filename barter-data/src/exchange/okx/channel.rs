@@ -42,7 +42,9 @@ impl AsRef<str> for OkxChannel {
 mod tests {
     use super::*;
     use crate::subscription::candle::{Candles, Interval};
-    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+    use barter_instrument::instrument::market_data::{
+        MarketDataInstrument, kind::MarketDataInstrumentKind,
+    };
 
     fn candles_channel(interval: Interval) -> OkxChannel {
         let sub: Subscription<Okx, MarketDataInstrument, Candles> = Subscription::new(

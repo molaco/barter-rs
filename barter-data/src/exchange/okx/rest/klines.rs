@@ -184,15 +184,12 @@ impl OkxKlineRaw {
             .parse::<f64>()
             .map_err(|e| format!("failed to parse volume '{}': {}", self.volume, e))?;
 
-        let quote_volume = self
-            .vol_ccy_quote
-            .parse::<f64>()
-            .map_err(|e| {
-                format!(
-                    "failed to parse vol_ccy_quote '{}': {}",
-                    self.vol_ccy_quote, e
-                )
-            })?;
+        let quote_volume = self.vol_ccy_quote.parse::<f64>().map_err(|e| {
+            format!(
+                "failed to parse vol_ccy_quote '{}': {}",
+                self.vol_ccy_quote, e
+            )
+        })?;
 
         Ok(Candle {
             open_time,

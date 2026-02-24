@@ -120,8 +120,8 @@ impl Connector for Hyperliquid {
         exchange_subs
             .into_iter()
             .map(|sub| {
-                let subscription = serde_json::to_value(&sub)
-                    .expect("failed to serialize ExchangeSub");
+                let subscription =
+                    serde_json::to_value(&sub).expect("failed to serialize ExchangeSub");
 
                 let mut payload = serde_json::Map::new();
                 payload.insert("method".to_string(), json!("subscribe"));
@@ -138,8 +138,8 @@ impl Connector for Hyperliquid {
         exchange_subs
             .into_iter()
             .map(|sub| {
-                let subscription = serde_json::to_value(&sub)
-                    .expect("failed to serialize ExchangeSub");
+                let subscription =
+                    serde_json::to_value(&sub).expect("failed to serialize ExchangeSub");
 
                 let mut payload = serde_json::Map::new();
                 payload.insert("method".to_string(), json!("unsubscribe"));
@@ -160,8 +160,7 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Transformer =
-        StatelessTransformer<Self, Instrument::Key, PublicTrades, HyperliquidTrades>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, PublicTrades, HyperliquidTrades>;
     type Parser = WebSocketSerdeParser;
 }
 
@@ -170,8 +169,7 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Transformer =
-        StatelessTransformer<Self, Instrument::Key, Candles, HyperliquidKline>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, HyperliquidKline>;
     type Parser = WebSocketSerdeParser;
 }
 
@@ -209,8 +207,7 @@ mod tests {
         let messages = Hyperliquid::unsubscribe_requests(exchange_subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
 
         assert_eq!(payload["method"], "unsubscribe");
         assert_eq!(payload["subscription"]["type"], "trades");
@@ -229,8 +226,7 @@ mod tests {
         let messages = Hyperliquid::unsubscribe_requests(exchange_subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
 
         assert_eq!(payload["method"], "unsubscribe");
         assert_eq!(payload["subscription"]["type"], "candle");
@@ -256,8 +252,7 @@ mod tests {
         assert_eq!(messages.len(), 2);
 
         for msg in &messages {
-            let payload: serde_json::Value =
-                serde_json::from_str(&msg.to_string()).unwrap();
+            let payload: serde_json::Value = serde_json::from_str(&msg.to_string()).unwrap();
             assert_eq!(payload["method"], "unsubscribe");
         }
     }

@@ -2,8 +2,7 @@
 
 use barter_data::{
     exchange::coinbase::rest::{
-        CoinbaseHttpParser, CoinbaseRestClient,
-        klines::CoinbaseKlinesResponse,
+        CoinbaseHttpParser, CoinbaseRestClient, klines::CoinbaseKlinesResponse,
     },
     rest::{KlineFetcher, KlineRequest},
     subscription::candle::Interval,
@@ -122,10 +121,7 @@ async fn test_fetch_klines_empty_response() {
 
     Mock::given(method("GET"))
         .and(path("/api/v3/brokerage/market/products/BTC-USD/candles"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(coinbase_klines_response(json!([]))),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(coinbase_klines_response(json!([]))))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -150,9 +146,7 @@ async fn test_fetch_klines_api_error() {
     let (mock_server, client) = setup().await;
 
     Mock::given(method("GET"))
-        .and(path(
-            "/api/v3/brokerage/market/products/INVALID/candles",
-        ))
+        .and(path("/api/v3/brokerage/market/products/INVALID/candles"))
         .respond_with(
             ResponseTemplate::new(400)
                 .set_body_json(json!({"error": "NOT_FOUND", "message": "Product not found"})),
@@ -254,10 +248,7 @@ async fn test_stream_klines_pagination() {
     Mock::given(method("GET"))
         .and(path("/api/v3/brokerage/market/products/BTC-USD/candles"))
         .and(query_param("start", "1609470001"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(coinbase_klines_response(json!([]))),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(coinbase_klines_response(json!([]))))
         .expect(1)
         .mount(&mock_server)
         .await;

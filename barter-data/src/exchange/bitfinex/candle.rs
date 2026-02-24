@@ -173,9 +173,7 @@ impl<'de> serde::Deserialize<'de> for BitfinexCandleMessage {
             type Value = BitfinexCandleMessage;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str(
-                    "BitfinexCandleMessage struct from the Bitfinex WebSocket API",
-                )
+                formatter.write_str("BitfinexCandleMessage struct from the Bitfinex WebSocket API")
             }
 
             fn visit_seq<SeqAccessor>(
@@ -197,9 +195,7 @@ impl<'de> serde::Deserialize<'de> for BitfinexCandleMessage {
                 let second: serde_json::Value = extract_next(&mut seq, "payload")?;
 
                 let payload = match &second {
-                    serde_json::Value::String(s) if s == "hb" => {
-                        BitfinexCandlePayload::Heartbeat
-                    }
+                    serde_json::Value::String(s) if s == "hb" => BitfinexCandlePayload::Heartbeat,
                     serde_json::Value::Array(arr)
                         if arr.first().map_or(false, |v| v.is_array()) =>
                     {

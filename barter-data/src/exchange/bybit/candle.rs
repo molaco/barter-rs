@@ -79,9 +79,7 @@ pub struct BybitKlineData {
 impl<InstrumentKey> From<(ExchangeId, InstrumentKey, BybitKline)>
     for MarketIter<InstrumentKey, Candle>
 {
-    fn from(
-        (exchange_id, instrument, kline): (ExchangeId, InstrumentKey, BybitKline),
-    ) -> Self {
+    fn from((exchange_id, instrument, kline): (ExchangeId, InstrumentKey, BybitKline)) -> Self {
         match kline.data.into_iter().next() {
             Some(k) => Self(vec![Ok(MarketEvent {
                 time_exchange: k.end,
@@ -110,9 +108,7 @@ impl<InstrumentKey> From<(ExchangeId, InstrumentKey, BybitKline)>
 mod tests {
     use super::*;
     use crate::exchange::bybit::message::BybitPayloadKind;
-    use barter_integration::{
-        de::datetime_utc_from_epoch_duration, subscription::SubscriptionId,
-    };
+    use barter_integration::{de::datetime_utc_from_epoch_duration, subscription::SubscriptionId};
     use smol_str::ToSmolStr;
     use std::time::Duration;
 
@@ -215,9 +211,7 @@ mod tests {
                 volume: 12.345,
                 turnover: 208000.0,
                 confirm: true,
-                timestamp: datetime_utc_from_epoch_duration(Duration::from_millis(
-                    1672502458000,
-                )),
+                timestamp: datetime_utc_from_epoch_duration(Duration::from_millis(1672502458000)),
             }],
         };
 
@@ -350,9 +344,7 @@ mod tests {
                 volume: 0.0,
                 turnover: 0.0,
                 confirm: true,
-                timestamp: datetime_utc_from_epoch_duration(Duration::from_millis(
-                    1672502458000,
-                )),
+                timestamp: datetime_utc_from_epoch_duration(Duration::from_millis(1672502458000)),
             }],
         };
 

@@ -38,18 +38,14 @@ pub struct OkxKlineArg {
 
 impl Identifier<Option<SubscriptionId>> for OkxKline {
     fn id(&self) -> Option<SubscriptionId> {
-        Some(
-            ExchangeSub::from((self.arg.channel.as_str(), self.arg.inst_id.as_str())).id(),
-        )
+        Some(ExchangeSub::from((self.arg.channel.as_str(), self.arg.inst_id.as_str())).id())
     }
 }
 
 impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, OkxKline)>
     for MarketIter<InstrumentKey, Candle>
 {
-    fn from(
-        (exchange_id, instrument, kline): (ExchangeId, InstrumentKey, OkxKline),
-    ) -> Self {
+    fn from((exchange_id, instrument, kline): (ExchangeId, InstrumentKey, OkxKline)) -> Self {
         Self(
             kline
                 .data
@@ -136,10 +132,7 @@ mod tests {
         let kline: OkxKline = serde_json::from_str(input).unwrap();
         let sub_id = kline.id();
 
-        assert_eq!(
-            sub_id,
-            Some(SubscriptionId::from("candle1m|BTC-USDT"))
-        );
+        assert_eq!(sub_id, Some(SubscriptionId::from("candle1m|BTC-USDT")));
     }
 
     #[test]

@@ -77,9 +77,13 @@ impl AsRef<str> for BybitChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::subscription::candle::{Candles, Interval};
-    use crate::exchange::bybit::spot::BybitSpot;
-    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+    use crate::{
+        exchange::bybit::spot::BybitSpot,
+        subscription::candle::{Candles, Interval},
+    };
+    use barter_instrument::instrument::market_data::{
+        MarketDataInstrument, kind::MarketDataInstrumentKind,
+    };
 
     fn candles_channel(interval: Interval) -> BybitChannel {
         let sub: Subscription<BybitSpot, MarketDataInstrument, Candles> = Subscription::new(

@@ -35,10 +35,7 @@ pub type GateioKline = GateioMessage<GateioKlineInner>;
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct GateioKlineInner {
     /// Timestamp in unix seconds (as string).
-    #[serde(
-        rename = "t",
-        deserialize_with = "barter_integration::de::de_str"
-    )]
+    #[serde(rename = "t", deserialize_with = "barter_integration::de::de_str")]
     pub timestamp: i64,
 
     /// Open price.
@@ -81,9 +78,7 @@ impl Identifier<Option<SubscriptionId>> for GateioKline {
 impl<InstrumentKey> From<(ExchangeId, InstrumentKey, GateioKline)>
     for MarketIter<InstrumentKey, Candle>
 {
-    fn from(
-        (exchange_id, instrument, kline): (ExchangeId, InstrumentKey, GateioKline),
-    ) -> Self {
+    fn from((exchange_id, instrument, kline): (ExchangeId, InstrumentKey, GateioKline)) -> Self {
         let k = kline.data;
         let open_time = DateTime::<Utc>::from_timestamp(k.timestamp, 0).unwrap_or_default();
         Self(vec![Ok(MarketEvent {

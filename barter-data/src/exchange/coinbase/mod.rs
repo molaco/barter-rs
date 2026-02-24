@@ -140,8 +140,7 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Transformer =
-        StatelessTransformer<Self, Instrument::Key, PublicTrades, CoinbaseTrade>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, PublicTrades, CoinbaseTrade>;
     type Parser = WebSocketSerdeParser;
 }
 
@@ -150,16 +149,14 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Transformer =
-        StatelessTransformer<Self, Instrument::Key, Candles, CoinbaseKline>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, CoinbaseKline>;
     type Parser = WebSocketSerdeParser;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::exchange::subscription::ExchangeSub;
-    use crate::subscription::candle::Interval;
+    use crate::{exchange::subscription::ExchangeSub, subscription::candle::Interval};
     use smol_str::SmolStr;
 
     #[test]
@@ -194,8 +191,7 @@ mod tests {
         let messages = Coinbase::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["type"], "unsubscribe");
         assert_eq!(payload["product_ids"][0], "BTC-USD");
         assert_eq!(payload["channels"][0], "matches");
@@ -217,14 +213,12 @@ mod tests {
         let messages = Coinbase::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 2);
 
-        let payload0: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload0: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload0["type"], "unsubscribe");
         assert_eq!(payload0["product_ids"][0], "BTC-USD");
         assert_eq!(payload0["channels"][0], "matches");
 
-        let payload1: serde_json::Value =
-            serde_json::from_str(&messages[1].to_string()).unwrap();
+        let payload1: serde_json::Value = serde_json::from_str(&messages[1].to_string()).unwrap();
         assert_eq!(payload1["type"], "unsubscribe");
         assert_eq!(payload1["product_ids"][0], "ETH-USD");
         assert_eq!(payload1["channels"][0], "candles");

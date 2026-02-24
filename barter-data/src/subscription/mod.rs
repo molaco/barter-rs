@@ -5,10 +5,10 @@ use barter_instrument::{
     exchange::ExchangeId,
     instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind},
 };
-use candle::Interval;
 use barter_integration::{
     Validator, error::SocketError, protocol::websocket::WsMessage, subscription::SubscriptionId,
 };
+use candle::Interval;
 use fnv::FnvHashMap;
 use serde::{Deserialize, Serialize};
 use smol_str::{ToSmolStr, format_smolstr};
@@ -77,9 +77,7 @@ where
     }
 }
 
-#[derive(
-    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize,
-)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 pub enum SubKind {
     PublicTrades,
     OrderBooksL1,

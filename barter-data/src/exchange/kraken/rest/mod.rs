@@ -146,10 +146,8 @@ impl KrakenRestClient {
 
         self.wait_for_rate_limit().await;
 
-        let response: klines::KrakenOhlcResponse = match retry_with_backoff(
-            &RetryPolicy::default(),
-            is_retriable_data_error,
-            || {
+        let response: klines::KrakenOhlcResponse =
+            match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
                 let req = request.clone();
                 let client = self.client.clone();
                 async move {
@@ -158,16 +156,15 @@ impl KrakenRestClient {
                         .await
                         .map(|(response, _metric)| response)
                 }
-            },
-        )
-        .await
-        {
-            Ok(resp) => resp,
-            Err(error) => {
-                warn!(?error, "Kraken OHLC fetch failed");
-                return Err(error);
-            }
-        };
+            })
+            .await
+            {
+                Ok(resp) => resp,
+                Err(error) => {
+                    warn!(?error, "Kraken OHLC fetch failed");
+                    return Err(error);
+                }
+            };
 
         // Check for API-level errors in the response
         if !response.error.is_empty() {
@@ -224,7 +221,9 @@ impl KlineFetcher for KrakenRestClient {
 
             let since = request.start.map(|dt| dt.timestamp());
 
-            let (candles, _last) = this.fetch_raw(&request.market, request.interval, since).await?;
+            let (candles, _last) = this
+                .fetch_raw(&request.market, request.interval, since)
+                .await?;
 
             Ok(candles)
         }

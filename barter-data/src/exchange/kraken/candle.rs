@@ -64,9 +64,7 @@ impl Identifier<Option<SubscriptionId>> for KrakenKlineInner {
 impl<InstrumentKey> From<(ExchangeId, InstrumentKey, KrakenKline)>
     for MarketIter<InstrumentKey, Candle>
 {
-    fn from(
-        (exchange_id, instrument, kline): (ExchangeId, InstrumentKey, KrakenKline),
-    ) -> Self {
+    fn from((exchange_id, instrument, kline): (ExchangeId, InstrumentKey, KrakenKline)) -> Self {
         match kline {
             KrakenKline::Data(kline) => Self(vec![Ok(MarketEvent {
                 time_exchange: kline.close_time,
@@ -120,8 +118,7 @@ impl<'de> serde::de::Deserialize<'de> for KrakenKlineInner {
                 let _: serde::de::IgnoredAny = extract_next(&mut seq, "channelID")?;
 
                 // Extract OHLC data array
-                let ohlc_data: Vec<serde_json::Value> =
-                    extract_next(&mut seq, "ohlc_data")?;
+                let ohlc_data: Vec<serde_json::Value> = extract_next(&mut seq, "ohlc_data")?;
 
                 if ohlc_data.len() < 9 {
                     return Err(serde::de::Error::custom(format!(
@@ -143,18 +140,15 @@ impl<'de> serde::de::Deserialize<'de> for KrakenKlineInner {
                 let volume = parse_f64_str(&ohlc_data[7], "volume")?;
 
                 // Parse trade count (integer)
-                let trade_count = ohlc_data[8]
-                    .as_u64()
-                    .ok_or_else(|| {
-                        serde::de::Error::custom(format!(
-                            "expected u64 for trade_count, got {:?}",
-                            ohlc_data[8]
-                        ))
-                    })?;
+                let trade_count = ohlc_data[8].as_u64().ok_or_else(|| {
+                    serde::de::Error::custom(format!(
+                        "expected u64 for trade_count, got {:?}",
+                        ohlc_data[8]
+                    ))
+                })?;
 
                 // Extract channelName (eg/ "ohlc-1")
-                let channel_name =
-                    extract_next::<SeqAccessor, String>(&mut seq, "channelName")?;
+                let channel_name = extract_next::<SeqAccessor, String>(&mut seq, "channelName")?;
 
                 // Extract pair (eg/ "XBT/USD") & map to SubscriptionId (ie/ "ohlc-1|XBT/USD")
                 let subscription_id =
@@ -189,9 +183,12 @@ impl<'de> serde::de::Deserialize<'de> for KrakenKlineInner {
 /// Parse a [`serde_json::Value`] string containing an epoch seconds timestamp to
 /// [`DateTime<Utc>`].
 fn parse_epoch_str<E: serde::de::Error>(value: &serde_json::Value) -> Result<DateTime<Utc>, E> {
-    let s = value
-        .as_str()
-        .ok_or_else(|| E::custom(format!("expected string for epoch timestamp, got {:?}", value)))?;
+    let s = value.as_str().ok_or_else(|| {
+        E::custom(format!(
+            "expected string for epoch timestamp, got {:?}",
+            value
+        ))
+    })?;
     let secs: f64 = s.parse().map_err(E::custom)?;
     Ok(datetime_utc_from_epoch_duration(
         std::time::Duration::from_secs_f64(secs),
@@ -248,12 +245,12 @@ mod tests {
             "#,
             expected: Ok(KrakenKline::Data(KrakenKlineInner {
                 subscription_id: SubscriptionId::from("ohlc-1|XBT/USD"),
-                open_time: datetime_utc_from_epoch_duration(
-                    std::time::Duration::from_secs_f64(1672502400.000000),
-                ),
-                close_time: datetime_utc_from_epoch_duration(
-                    std::time::Duration::from_secs_f64(1672502459.000000),
-                ),
+                open_time: datetime_utc_from_epoch_duration(std::time::Duration::from_secs_f64(
+                    1672502400.000000,
+                )),
+                close_time: datetime_utc_from_epoch_duration(std::time::Duration::from_secs_f64(
+                    1672502459.000000,
+                )),
                 open: 16850.0,
                 high: 16860.0,
                 low: 16845.0,
@@ -307,22 +304,19 @@ mod tests {
         let kline: KrakenKline = serde_json::from_str(input).unwrap();
         let sub_id = kline.id();
 
-        assert_eq!(
-            sub_id,
-            Some(SubscriptionId::from("ohlc-1|XBT/USD"))
-        );
+        assert_eq!(sub_id, Some(SubscriptionId::from("ohlc-1|XBT/USD")));
     }
 
     #[test]
     fn test_kraken_kline_to_candle() {
         let kline = KrakenKline::Data(KrakenKlineInner {
             subscription_id: SubscriptionId::from("ohlc-1|XBT/USD"),
-            open_time: datetime_utc_from_epoch_duration(
-                std::time::Duration::from_secs_f64(1672502400.0),
-            ),
-            close_time: datetime_utc_from_epoch_duration(
-                std::time::Duration::from_secs_f64(1672502459.0),
-            ),
+            open_time: datetime_utc_from_epoch_duration(std::time::Duration::from_secs_f64(
+                1672502400.0,
+            )),
+            close_time: datetime_utc_from_epoch_duration(std::time::Duration::from_secs_f64(
+                1672502459.0,
+            )),
             open: 16850.0,
             high: 16860.0,
             low: 16845.0,
@@ -440,12 +434,12 @@ mod tests {
     fn test_kraken_kline_to_candle_zero_volume() {
         let kline = KrakenKline::Data(KrakenKlineInner {
             subscription_id: SubscriptionId::from("ohlc-1|XBT/USD"),
-            open_time: datetime_utc_from_epoch_duration(
-                std::time::Duration::from_secs_f64(1672502400.0),
-            ),
-            close_time: datetime_utc_from_epoch_duration(
-                std::time::Duration::from_secs_f64(1672502459.0),
-            ),
+            open_time: datetime_utc_from_epoch_duration(std::time::Duration::from_secs_f64(
+                1672502400.0,
+            )),
+            close_time: datetime_utc_from_epoch_duration(std::time::Duration::from_secs_f64(
+                1672502459.0,
+            )),
             open: 16850.0,
             high: 16860.0,
             low: 16845.0,

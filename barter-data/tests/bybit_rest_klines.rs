@@ -22,8 +22,7 @@ use wiremock::{
 /// whose base URL points at the mock server.
 async fn setup() -> (MockServer, BybitRestClient<BybitServerSpot>) {
     let mock_server = MockServer::start().await;
-    let client =
-        BybitRestClient::<BybitServerSpot>::with_base_url(mock_server.uri());
+    let client = BybitRestClient::<BybitServerSpot>::with_base_url(mock_server.uri());
     (mock_server, client)
 }
 
@@ -88,9 +87,7 @@ async fn test_fetch_klines_single_batch() {
 
     Mock::given(method("GET"))
         .and(path("/v5/market/kline"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(response_body),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -149,9 +146,7 @@ async fn test_fetch_klines_empty_response() {
 
     Mock::given(method("GET"))
         .and(path("/v5/market/kline"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(response_body),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -253,17 +248,15 @@ async fn test_stream_klines_pagination() {
         .and(path("/v5/market/kline"))
         .and(query_param("start", "1609545600001"))
         .respond_with(
-            ResponseTemplate::new(200).set_body_json(bybit_klines_response(vec![
-                vec![
-                    "1609632000000",
-                    "29800.00",
-                    "30500.00",
-                    "29600.00",
-                    "30100.00",
-                    "800.00",
-                    "24000000.00",
-                ],
-            ])),
+            ResponseTemplate::new(200).set_body_json(bybit_klines_response(vec![vec![
+                "1609632000000",
+                "29800.00",
+                "30500.00",
+                "29600.00",
+                "30100.00",
+                "800.00",
+                "24000000.00",
+            ]])),
         )
         .expect(1)
         .mount(&mock_server)
@@ -273,10 +266,7 @@ async fn test_stream_klines_pagination() {
     Mock::given(method("GET"))
         .and(path("/v5/market/kline"))
         .and(query_param("start", "1609632000001"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(bybit_klines_response(vec![])),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(bybit_klines_response(vec![])))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -284,9 +274,7 @@ async fn test_stream_klines_pagination() {
     let request = KlineRequest {
         market: "BTCUSDT".to_string(),
         interval: Interval::H1,
-        start: Some(
-            DateTime::from_timestamp_millis(1609459200000).unwrap(),
-        ),
+        start: Some(DateTime::from_timestamp_millis(1609459200000).unwrap()),
         end: None,
         limit: None,
     };

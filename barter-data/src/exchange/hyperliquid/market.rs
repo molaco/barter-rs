@@ -93,9 +93,7 @@ mod tests {
         let instrument = MarketDataInstrument::from((
             "btc",
             "usdt",
-            MarketDataInstrumentKind::Future(MarketDataFutureContract {
-                expiry: Utc::now(),
-            }),
+            MarketDataInstrumentKind::Future(MarketDataFutureContract { expiry: Utc::now() }),
         ));
         hyperliquid_market(&instrument);
     }

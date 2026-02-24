@@ -7,8 +7,7 @@ use crate::{
     exchange::{
         StreamSelector,
         binance::futures::l2::{
-            BinanceFuturesUsdOrderBooksL2SnapshotFetcher,
-            BinanceFuturesUsdOrderBooksL2Transformer,
+            BinanceFuturesUsdOrderBooksL2SnapshotFetcher, BinanceFuturesUsdOrderBooksL2Transformer,
         },
     },
     instrument::InstrumentData,

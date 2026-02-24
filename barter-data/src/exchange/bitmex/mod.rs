@@ -3,9 +3,8 @@ use crate::{
     exchange::{
         Connector, StreamSelector,
         bitmex::{
-            candle::BitmexKline,
-            channel::BitmexChannel, market::BitmexMarket, subscription::BitmexSubResponse,
-            trade::BitmexTrade,
+            candle::BitmexKline, channel::BitmexChannel, market::BitmexMarket,
+            subscription::BitmexSubResponse, trade::BitmexTrade,
         },
         subscription::ExchangeSub,
     },
@@ -166,8 +165,7 @@ impl serde::Serialize for Bitmex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::exchange::subscription::ExchangeSub;
-    use crate::subscription::candle::Interval;
+    use crate::{exchange::subscription::ExchangeSub, subscription::candle::Interval};
     use smol_str::SmolStr;
 
     #[test]
@@ -202,8 +200,7 @@ mod tests {
         let messages = Bitmex::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["op"], "unsubscribe");
         assert_eq!(payload["args"][0], "trade:XBTUSD");
     }
@@ -225,8 +222,7 @@ mod tests {
         // Bitmex batches all unsubscribes into a single message
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["op"], "unsubscribe");
 
         let args = payload["args"].as_array().unwrap();

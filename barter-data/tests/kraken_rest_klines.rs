@@ -46,9 +46,15 @@ fn kraken_klines_response(
 /// Each kline is: [time_seconds, open, high, low, close, vwap, volume, count]
 fn three_klines_json() -> Vec<serde_json::Value> {
     vec![
-        json!([1672502400, "16800.00", "16900.50", "16750.00", "16850.00", "16825.30", "1234.56", 5000]),
-        json!([1672506000, "16850.00", "16950.00", "16800.00", "16900.00", "16875.00", "987.65", 3000]),
-        json!([1672509600, "16900.00", "17000.00", "16850.00", "16950.00", "16925.00", "1500.00", 4000]),
+        json!([
+            1672502400, "16800.00", "16900.50", "16750.00", "16850.00", "16825.30", "1234.56", 5000
+        ]),
+        json!([
+            1672506000, "16850.00", "16950.00", "16800.00", "16900.00", "16875.00", "987.65", 3000
+        ]),
+        json!([
+            1672509600, "16900.00", "17000.00", "16850.00", "16950.00", "16925.00", "1500.00", 4000
+        ]),
     ]
 }
 
@@ -62,8 +68,11 @@ async fn test_fetch_klines_single_batch() {
     Mock::given(method("GET"))
         .and(path("/0/public/OHLC"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(kraken_klines_response("XBTUSD", three_klines_json(), 1672588800)),
+            ResponseTemplate::new(200).set_body_json(kraken_klines_response(
+                "XBTUSD",
+                three_klines_json(),
+                1672588800,
+            )),
         )
         .expect(1)
         .mount(&mock_server)
@@ -192,16 +201,22 @@ async fn test_stream_klines_pagination() {
     Mock::given(method("GET"))
         .and(path("/0/public/OHLC"))
         .and(query_param("since", "1672502400"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            kraken_klines_response(
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(kraken_klines_response(
                 "XBTUSD",
                 vec![
-                    json!([1672502400, "16800.00", "16900.50", "16750.00", "16850.00", "16825.30", "1234.56", 5000]),
-                    json!([1672506000, "16850.00", "16950.00", "16800.00", "16900.00", "16875.00", "987.65", 3000]),
+                    json!([
+                        1672502400, "16800.00", "16900.50", "16750.00", "16850.00", "16825.30",
+                        "1234.56", 5000
+                    ]),
+                    json!([
+                        1672506000, "16850.00", "16950.00", "16800.00", "16900.00", "16875.00",
+                        "987.65", 3000
+                    ]),
                 ],
                 1672520000,
-            ),
-        ))
+            )),
+        )
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -210,15 +225,16 @@ async fn test_stream_klines_pagination() {
     Mock::given(method("GET"))
         .and(path("/0/public/OHLC"))
         .and(query_param("since", "1672520000"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            kraken_klines_response(
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(kraken_klines_response(
                 "XBTUSD",
-                vec![
-                    json!([1672509600, "16900.00", "17000.00", "16850.00", "16950.00", "16925.00", "1500.00", 4000]),
-                ],
+                vec![json!([
+                    1672509600, "16900.00", "17000.00", "16850.00", "16950.00", "16925.00",
+                    "1500.00", 4000
+                ])],
                 1672530000,
-            ),
-        ))
+            )),
+        )
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -227,9 +243,13 @@ async fn test_stream_klines_pagination() {
     Mock::given(method("GET"))
         .and(path("/0/public/OHLC"))
         .and(query_param("since", "1672530000"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            kraken_klines_response("XBTUSD", vec![], 1672530000),
-        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(kraken_klines_response(
+                "XBTUSD",
+                vec![],
+                1672530000,
+            )),
+        )
         .expect(1)
         .mount(&mock_server)
         .await;

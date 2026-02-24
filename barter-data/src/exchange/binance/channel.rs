@@ -99,9 +99,13 @@ impl AsRef<str> for BinanceChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::subscription::candle::{Candles, Interval};
-    use crate::exchange::binance::spot::BinanceSpot;
-    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+    use crate::{
+        exchange::binance::spot::BinanceSpot,
+        subscription::candle::{Candles, Interval},
+    };
+    use barter_instrument::instrument::market_data::{
+        MarketDataInstrument, kind::MarketDataInstrumentKind,
+    };
 
     fn candles_channel(interval: Interval) -> BinanceChannel {
         let sub: Subscription<BinanceSpot, MarketDataInstrument, Candles> = Subscription::new(

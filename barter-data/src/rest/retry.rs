@@ -1,6 +1,5 @@
 use crate::error::DataError;
-use std::future::Future;
-use std::time::Duration;
+use std::{future::Future, time::Duration};
 use tokio::time::sleep;
 
 /// Configuration for exponential backoff retry.
@@ -81,8 +80,10 @@ pub fn is_retriable_data_error(error: &DataError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU32, Ordering};
-    use std::sync::Arc;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    };
 
     #[test]
     fn test_default_retry_policy() {

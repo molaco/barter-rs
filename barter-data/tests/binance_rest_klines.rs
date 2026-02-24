@@ -23,17 +23,55 @@ use wiremock::{
 /// whose base URL points at the mock server.
 async fn setup() -> (MockServer, BinanceRestClient<BinanceServerSpot>) {
     let mock_server = MockServer::start().await;
-    let client =
-        BinanceRestClient::<BinanceServerSpot>::with_base_url(mock_server.uri());
+    let client = BinanceRestClient::<BinanceServerSpot>::with_base_url(mock_server.uri());
     (mock_server, client)
 }
 
 /// Fixture: a realistic Binance kline JSON array with 3 candles.
 fn three_klines_json() -> serde_json::Value {
     json!([
-        [1609459200000_i64,"29000.00","29500.00","28800.00","29200.00","1000.00",1609545599999_i64,"29000000.00",5000,"500.00","14500000.00","0"],
-        [1609545600000_i64,"29200.00","30000.00","29100.00","29800.00","1200.00",1609631999999_i64,"35000000.00",6000,"600.00","17400000.00","0"],
-        [1609632000000_i64,"29800.00","30500.00","29600.00","30100.00","800.00",1609718399999_i64,"24000000.00",4000,"400.00","12000000.00","0"]
+        [
+            1609459200000_i64,
+            "29000.00",
+            "29500.00",
+            "28800.00",
+            "29200.00",
+            "1000.00",
+            1609545599999_i64,
+            "29000000.00",
+            5000,
+            "500.00",
+            "14500000.00",
+            "0"
+        ],
+        [
+            1609545600000_i64,
+            "29200.00",
+            "30000.00",
+            "29100.00",
+            "29800.00",
+            "1200.00",
+            1609631999999_i64,
+            "35000000.00",
+            6000,
+            "600.00",
+            "17400000.00",
+            "0"
+        ],
+        [
+            1609632000000_i64,
+            "29800.00",
+            "30500.00",
+            "29600.00",
+            "30100.00",
+            "800.00",
+            1609718399999_i64,
+            "24000000.00",
+            4000,
+            "400.00",
+            "12000000.00",
+            "0"
+        ]
     ])
 }
 
@@ -46,9 +84,7 @@ async fn test_fetch_klines_single_batch() {
 
     Mock::given(method("GET"))
         .and(path("/api/v3/klines"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(three_klines_json()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(three_klines_json()))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -176,8 +212,34 @@ async fn test_stream_klines_pagination() {
         .and(path("/api/v3/klines"))
         .and(query_param("startTime", "1609459200000"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            [1609459200000_i64,"29000.00","29500.00","28800.00","29200.00","1000.00",1609545599999_i64,"29000000.00",5000,"500.00","14500000.00","0"],
-            [1609545600000_i64,"29200.00","30000.00","29100.00","29800.00","1200.00",1609631999999_i64,"35000000.00",6000,"600.00","17400000.00","0"]
+            [
+                1609459200000_i64,
+                "29000.00",
+                "29500.00",
+                "28800.00",
+                "29200.00",
+                "1000.00",
+                1609545599999_i64,
+                "29000000.00",
+                5000,
+                "500.00",
+                "14500000.00",
+                "0"
+            ],
+            [
+                1609545600000_i64,
+                "29200.00",
+                "30000.00",
+                "29100.00",
+                "29800.00",
+                "1200.00",
+                1609631999999_i64,
+                "35000000.00",
+                6000,
+                "600.00",
+                "17400000.00",
+                "0"
+            ]
         ])))
         .expect(1)
         .mount(&mock_server)
@@ -188,9 +250,20 @@ async fn test_stream_klines_pagination() {
     Mock::given(method("GET"))
         .and(path("/api/v3/klines"))
         .and(query_param("startTime", "1609632000000"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            [1609632000000_i64,"29800.00","30500.00","29600.00","30100.00","800.00",1609718399999_i64,"24000000.00",4000,"400.00","12000000.00","0"]
-        ])))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([[
+            1609632000000_i64,
+            "29800.00",
+            "30500.00",
+            "29600.00",
+            "30100.00",
+            "800.00",
+            1609718399999_i64,
+            "24000000.00",
+            4000,
+            "400.00",
+            "12000000.00",
+            "0"
+        ]])))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -207,9 +280,7 @@ async fn test_stream_klines_pagination() {
     let request = KlineRequest {
         market: "BTCUSDT".to_string(),
         interval: Interval::H1,
-        start: Some(
-            DateTime::from_timestamp_millis(1609459200000).unwrap(),
-        ),
+        start: Some(DateTime::from_timestamp_millis(1609459200000).unwrap()),
         end: None,
         limit: None,
     };
@@ -273,8 +344,7 @@ async fn test_http_parser_binance_api_error() {
 /// whose base URL points at the mock server.
 async fn setup_futures() -> (MockServer, BinanceRestClient<BinanceServerFuturesUsd>) {
     let mock_server = MockServer::start().await;
-    let client =
-        BinanceRestClient::<BinanceServerFuturesUsd>::with_base_url(mock_server.uri());
+    let client = BinanceRestClient::<BinanceServerFuturesUsd>::with_base_url(mock_server.uri());
     (mock_server, client)
 }
 
@@ -287,9 +357,7 @@ async fn test_futures_fetch_klines() {
 
     Mock::given(method("GET"))
         .and(path("/fapi/v1/klines"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(three_klines_json()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(three_klines_json()))
         .expect(1)
         .mount(&mock_server)
         .await;

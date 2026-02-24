@@ -106,9 +106,7 @@ impl Identifier<Option<SubscriptionId>> for BinanceKline {
 impl<InstrumentKey> From<(ExchangeId, InstrumentKey, BinanceKline)>
     for MarketIter<InstrumentKey, Candle>
 {
-    fn from(
-        (exchange_id, instrument, kline): (ExchangeId, InstrumentKey, BinanceKline),
-    ) -> Self {
+    fn from((exchange_id, instrument, kline): (ExchangeId, InstrumentKey, BinanceKline)) -> Self {
         let k = kline.kline;
         Self(vec![Ok(MarketEvent {
             time_exchange: k.close_time,
@@ -192,10 +190,7 @@ mod tests {
         let kline: BinanceKline = serde_json::from_str(input).unwrap();
         let sub_id = kline.id();
 
-        assert_eq!(
-            sub_id,
-            Some(SubscriptionId::from("@kline_1m|BTCUSDT"))
-        );
+        assert_eq!(sub_id, Some(SubscriptionId::from("@kline_1m|BTCUSDT")));
     }
 
     #[test]
@@ -204,12 +199,8 @@ mod tests {
             kline: BinanceKlineData {
                 symbol: "BTCUSDT".to_string(),
                 interval: "1m".to_string(),
-                open_time: datetime_utc_from_epoch_duration(Duration::from_millis(
-                    1672515780000,
-                )),
-                close_time: datetime_utc_from_epoch_duration(Duration::from_millis(
-                    1672515839999,
-                )),
+                open_time: datetime_utc_from_epoch_duration(Duration::from_millis(1672515780000)),
+                close_time: datetime_utc_from_epoch_duration(Duration::from_millis(1672515839999)),
                 open: 16850.0,
                 high: 16860.0,
                 low: 16845.0,
@@ -309,12 +300,8 @@ mod tests {
             kline: BinanceKlineData {
                 symbol: "BTCUSDT".to_string(),
                 interval: "1m".to_string(),
-                open_time: datetime_utc_from_epoch_duration(Duration::from_millis(
-                    1672515780000,
-                )),
-                close_time: datetime_utc_from_epoch_duration(Duration::from_millis(
-                    1672515839999,
-                )),
+                open_time: datetime_utc_from_epoch_duration(Duration::from_millis(1672515780000)),
+                close_time: datetime_utc_from_epoch_duration(Duration::from_millis(1672515839999)),
                 open: 16850.0,
                 high: 16860.0,
                 low: 16845.0,

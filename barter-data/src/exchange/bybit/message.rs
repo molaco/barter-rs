@@ -79,9 +79,9 @@ where
             "{}|{market}",
             BybitChannel::ORDER_BOOK_L2.0,
         ))),
-        (Some("kline"), Some(interval), Some(market), None) => Ok(SubscriptionId::from(format!(
-            "kline.{interval}|{market}",
-        ))),
+        (Some("kline"), Some(interval), Some(market), None) => {
+            Ok(SubscriptionId::from(format!("kline.{interval}|{market}",)))
+        }
         _ => Err(Error::invalid_value(
             Unexpected::Str(input),
             &"invalid message type expected pattern: <type>.<symbol>",

@@ -1,7 +1,11 @@
 use super::{Hyperliquid, hyperliquid_interval};
 use crate::{
     Identifier,
-    subscription::{Subscription, candle::{Candles, Interval}, trade::PublicTrades},
+    subscription::{
+        Subscription,
+        candle::{Candles, Interval},
+        trade::PublicTrades,
+    },
 };
 use serde::Serialize;
 use smol_str::{SmolStr, format_smolstr};

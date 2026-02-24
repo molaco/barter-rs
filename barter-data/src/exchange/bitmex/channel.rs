@@ -1,9 +1,9 @@
+use super::bitmex_interval;
 use crate::{
     Identifier,
     exchange::bitmex::Bitmex,
     subscription::{Subscription, candle::Candles, trade::PublicTrades},
 };
-use super::bitmex_interval;
 use serde::Serialize;
 use smol_str::{SmolStr, format_smolstr};
 
@@ -29,7 +29,10 @@ impl<Instrument> Identifier<BitmexChannel> for Subscription<Bitmex, Instrument, 
 
 impl<Instrument> Identifier<BitmexChannel> for Subscription<Bitmex, Instrument, Candles> {
     fn id(&self) -> BitmexChannel {
-        BitmexChannel(format_smolstr!("tradeBin{}", bitmex_interval(self.kind.0).expect("validated")))
+        BitmexChannel(format_smolstr!(
+            "tradeBin{}",
+            bitmex_interval(self.kind.0).expect("validated")
+        ))
     }
 }
 
@@ -43,7 +46,9 @@ impl AsRef<str> for BitmexChannel {
 mod tests {
     use super::*;
     use crate::subscription::candle::{Candles, Interval};
-    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+    use barter_instrument::instrument::market_data::{
+        MarketDataInstrument, kind::MarketDataInstrumentKind,
+    };
 
     fn candles_channel(interval: Interval) -> BitmexChannel {
         let sub: Subscription<Bitmex, MarketDataInstrument, Candles> = Subscription::new(

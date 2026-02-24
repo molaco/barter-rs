@@ -185,8 +185,7 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Transformer =
-        StatelessTransformer<Self, Instrument::Key, PublicTrades, BitfinexMessage>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, PublicTrades, BitfinexMessage>;
     type Parser = WebSocketSerdeParser;
 }
 
@@ -195,16 +194,14 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Transformer =
-        StatelessTransformer<Self, Instrument::Key, Candles, BitfinexCandleMessage>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, BitfinexCandleMessage>;
     type Parser = WebSocketSerdeParser;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::exchange::subscription::ExchangeSub;
-    use crate::subscription::candle::Interval;
+    use crate::{exchange::subscription::ExchangeSub, subscription::candle::Interval};
     use smol_str::SmolStr;
 
     #[test]
@@ -239,8 +236,7 @@ mod tests {
         let messages = Bitfinex::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["event"], "unsubscribe");
         assert_eq!(payload["channel"], "trades");
         assert_eq!(payload["symbol"], "tBTCUSD");
@@ -256,8 +252,7 @@ mod tests {
         let messages = Bitfinex::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["event"], "unsubscribe");
         assert_eq!(payload["channel"], "candles");
         assert_eq!(payload["key"], "trade:1m:tBTCUSD");
@@ -281,14 +276,12 @@ mod tests {
         let messages = Bitfinex::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 2);
 
-        let payload0: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload0: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload0["event"], "unsubscribe");
         assert_eq!(payload0["channel"], "trades");
         assert_eq!(payload0["symbol"], "tBTCUSD");
 
-        let payload1: serde_json::Value =
-            serde_json::from_str(&messages[1].to_string()).unwrap();
+        let payload1: serde_json::Value = serde_json::from_str(&messages[1].to_string()).unwrap();
         assert_eq!(payload1["event"], "unsubscribe");
         assert_eq!(payload1["channel"], "candles");
         assert_eq!(payload1["key"], "trade:1m:tETHUSD");

@@ -185,10 +185,8 @@ where
 
             this.wait_for_rate_limit().await;
 
-            let raw_klines: Vec<klines::BinanceKlineRaw> = match retry_with_backoff(
-                &RetryPolicy::default(),
-                is_retriable_data_error,
-                || {
+            let raw_klines: Vec<klines::BinanceKlineRaw> =
+                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
                     let req = get_klines_request.clone();
                     let client = this.client.clone();
                     async move {
@@ -197,16 +195,15 @@ where
                             .await
                             .map(|(response, _metric)| response)
                     }
-                },
-            )
-            .await
-            {
-                Ok(klines) => klines,
-                Err(error) => {
-                    warn!(?error, "klines fetch failed");
-                    return Err(error);
-                }
-            };
+                })
+                .await
+                {
+                    Ok(klines) => klines,
+                    Err(error) => {
+                        warn!(?error, "klines fetch failed");
+                        return Err(error);
+                    }
+                };
 
             let candles = raw_klines
                 .into_iter()
@@ -273,8 +270,7 @@ where
                 Ok(batch) => {
                     // Advance cursor past the close_time of the last candle
                     if let Some(last) = batch.last() {
-                        state.cursor =
-                            last.close_time + TimeDelta::milliseconds(1);
+                        state.cursor = last.close_time + TimeDelta::milliseconds(1);
 
                         // If cursor has passed the requested end, mark done
                         if let Some(end) = state.end {

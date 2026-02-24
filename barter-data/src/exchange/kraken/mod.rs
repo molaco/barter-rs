@@ -1,7 +1,6 @@
 use self::{
-    book::l1::KrakenOrderBookL1, candle::KrakenKline, channel::KrakenChannel,
-    market::KrakenMarket, message::KrakenMessage, subscription::KrakenSubResponse,
-    trade::KrakenTrades,
+    book::l1::KrakenOrderBookL1, candle::KrakenKline, channel::KrakenChannel, market::KrakenMarket,
+    message::KrakenMessage, subscription::KrakenSubResponse, trade::KrakenTrades,
 };
 use crate::{
     NoInitialSnapshots,
@@ -211,16 +210,14 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Transformer =
-        StatelessTransformer<Self, Instrument::Key, OrderBooksL1, KrakenOrderBookL1>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, OrderBooksL1, KrakenOrderBookL1>;
     type Parser = WebSocketSerdeParser;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::exchange::subscription::ExchangeSub;
-    use crate::subscription::candle::Interval;
+    use crate::{exchange::subscription::ExchangeSub, subscription::candle::Interval};
     use smol_str::SmolStr;
 
     #[test]
@@ -255,8 +252,7 @@ mod tests {
         let messages = Kraken::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["event"], "unsubscribe");
         assert_eq!(payload["pair"][0], "XBT/USD");
         assert_eq!(payload["subscription"]["name"], "trade");
@@ -272,8 +268,7 @@ mod tests {
         let messages = Kraken::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["event"], "unsubscribe");
         assert_eq!(payload["pair"][0], "XBT/USD");
         assert_eq!(payload["subscription"]["name"], "ohlc");
@@ -296,14 +291,12 @@ mod tests {
         let messages = Kraken::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 2);
 
-        let payload0: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload0: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload0["event"], "unsubscribe");
         assert_eq!(payload0["pair"][0], "XBT/USD");
         assert_eq!(payload0["subscription"]["name"], "trade");
 
-        let payload1: serde_json::Value =
-            serde_json::from_str(&messages[1].to_string()).unwrap();
+        let payload1: serde_json::Value = serde_json::from_str(&messages[1].to_string()).unwrap();
         assert_eq!(payload1["event"], "unsubscribe");
         assert_eq!(payload1["pair"][0], "ETH/USD");
         assert_eq!(payload1["subscription"]["name"], "spread");

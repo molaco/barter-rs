@@ -172,10 +172,8 @@ impl KlineFetcher for OkxRestClient {
 
             this.wait_for_rate_limit().await;
 
-            let response: klines::OkxKlinesResponse = match retry_with_backoff(
-                &RetryPolicy::default(),
-                is_retriable_data_error,
-                || {
+            let response: klines::OkxKlinesResponse =
+                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
                     let req = get_klines_request.clone();
                     let client = this.client.clone();
                     async move {
@@ -184,23 +182,19 @@ impl KlineFetcher for OkxRestClient {
                             .await
                             .map(|(response, _metric)| response)
                     }
-                },
-            )
-            .await
-            {
-                Ok(resp) => resp,
-                Err(error) => {
-                    warn!(?error, "klines fetch failed");
-                    return Err(error);
-                }
-            };
+                })
+                .await
+                {
+                    Ok(resp) => resp,
+                    Err(error) => {
+                        warn!(?error, "klines fetch failed");
+                        return Err(error);
+                    }
+                };
 
             // Check for OKX-level error (non-zero code)
             if response.code != "0" {
-                let msg = format!(
-                    "OKX API error (code {}): {}",
-                    response.code, response.msg
-                );
+                let msg = format!("OKX API error (code {}): {}", response.code, response.msg);
                 warn!(msg, "OKX returned error response");
                 return Err(DataError::Socket(msg));
             }
@@ -289,8 +283,7 @@ impl KlineFetcher for OkxRestClient {
                 Ok(batch) => {
                     // Advance cursor past the close_time of the last (newest) candle
                     if let Some(last) = batch.last() {
-                        state.cursor =
-                            last.close_time + TimeDelta::milliseconds(1);
+                        state.cursor = last.close_time + TimeDelta::milliseconds(1);
 
                         // If cursor has passed the requested end, mark done
                         if let Some(end) = state.end {

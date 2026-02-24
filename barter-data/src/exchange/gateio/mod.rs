@@ -4,10 +4,7 @@ use crate::{
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
 };
 use barter_instrument::exchange::ExchangeId;
-use barter_integration::{
-    error::SocketError,
-    protocol::websocket::WsMessage,
-};
+use barter_integration::{error::SocketError, protocol::websocket::WsMessage};
 use serde_json::json;
 use std::{fmt::Debug, marker::PhantomData};
 use url::Url;
@@ -172,8 +169,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::exchange::subscription::ExchangeSub;
-    use crate::subscription::candle::Interval;
+    use crate::{exchange::subscription::ExchangeSub, subscription::candle::Interval};
     use smol_str::SmolStr;
 
     #[test]
@@ -210,8 +206,7 @@ mod tests {
         let messages = GateioSpot::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["event"], "unsubscribe");
         assert_eq!(payload["channel"], "spot.trades");
         assert_eq!(payload["payload"][0], "BTC_USDT");
@@ -230,8 +225,7 @@ mod tests {
         let messages = GateioPerpetualsUsd::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["event"], "unsubscribe");
         assert_eq!(payload["channel"], "futures.trades");
         assert_eq!(payload["payload"][0], "BTC_USDT");
@@ -250,8 +244,7 @@ mod tests {
         let messages = GateioFuturesUsd::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["event"], "unsubscribe");
         assert_eq!(payload["channel"], "futures.trades");
         assert_eq!(payload["payload"][0], "BTC_USDT");
@@ -269,8 +262,7 @@ mod tests {
         let messages = GateioOptions::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 1);
 
-        let payload: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload["event"], "unsubscribe");
         assert_eq!(payload["channel"], "options.trades");
         assert_eq!(payload["payload"][0], "BTC_USDT");
@@ -294,14 +286,12 @@ mod tests {
         let messages = GateioSpot::unsubscribe_requests(subs);
         assert_eq!(messages.len(), 2);
 
-        let payload0: serde_json::Value =
-            serde_json::from_str(&messages[0].to_string()).unwrap();
+        let payload0: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
         assert_eq!(payload0["event"], "unsubscribe");
         assert_eq!(payload0["channel"], "spot.trades");
         assert_eq!(payload0["payload"][0], "BTC_USDT");
 
-        let payload1: serde_json::Value =
-            serde_json::from_str(&messages[1].to_string()).unwrap();
+        let payload1: serde_json::Value = serde_json::from_str(&messages[1].to_string()).unwrap();
         assert_eq!(payload1["event"], "unsubscribe");
         assert_eq!(payload1["channel"], "spot.candlesticks_1m");
         assert_eq!(payload1["payload"][0], "ETH_USDT");

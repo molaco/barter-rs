@@ -64,9 +64,7 @@ impl Identifier<Option<SubscriptionId>> for BitmexKline {
 impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, BitmexKline)>
     for MarketIter<InstrumentKey, Candle>
 {
-    fn from(
-        (exchange_id, instrument, klines): (ExchangeId, InstrumentKey, BitmexKline),
-    ) -> Self {
+    fn from((exchange_id, instrument, klines): (ExchangeId, InstrumentKey, BitmexKline)) -> Self {
         Self(
             klines
                 .data
@@ -201,10 +199,7 @@ mod tests {
         let kline: BitmexKline = serde_json::from_str(input).unwrap();
         let sub_id = kline.id();
 
-        assert_eq!(
-            sub_id,
-            Some(SubscriptionId::from("tradeBin1m|XBTUSD"))
-        );
+        assert_eq!(sub_id, Some(SubscriptionId::from("tradeBin1m|XBTUSD")));
     }
 
     #[test]
