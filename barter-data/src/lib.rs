@@ -368,14 +368,14 @@ where
                     let new_map = new_map_arc
                         .read()
                         .expect("new instrument_map RwLock poisoned");
-                    new_map.0.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+                    new_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
                 };
 
                 let mut shared_map = handle
                     .instrument_map()
                     .write()
                     .expect("handle instrument_map RwLock poisoned");
-                shared_map.0.clear();
+                shared_map.clear();
                 for (id, key) in new_entries {
                     shared_map.insert(id, key);
                 }

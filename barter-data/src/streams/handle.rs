@@ -7,14 +7,16 @@ use barter_integration::{
     protocol::websocket::WsMessage,
     subscription::SubscriptionId,
 };
+use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 
-/// A dynamic subscription entry tracked for replay on reconnection.
+/// A batch of dynamic subscriptions tracked for replay on reconnection.
+/// One batch corresponds to one `subscribe()` call.
 #[derive(Debug, Clone)]
-pub struct DynamicEntry<InstrumentKey> {
-    pub subscription_id: SubscriptionId,
-    pub instrument_key: InstrumentKey,
+pub struct DynamicBatch<InstrumentKey> {
+    pub entry_ids: HashSet<SubscriptionId>,
+    pub entries: Vec<(SubscriptionId, InstrumentKey)>,
     pub subscribe_messages: Vec<WsMessage>,
 }
 
@@ -31,7 +33,7 @@ pub struct DynamicEntry<InstrumentKey> {
 pub struct SubscriptionHandle<InstrumentKey> {
     ws_sink_tx: Arc<RwLock<mpsc::UnboundedSender<WsMessage>>>,
     instrument_map: Arc<RwLock<Map<InstrumentKey>>>,
-    dynamic_entries: Arc<RwLock<Vec<DynamicEntry<InstrumentKey>>>>,
+    dynamic_batches: Arc<RwLock<Vec<DynamicBatch<InstrumentKey>>>>,
 }
 
 impl<InstrumentKey> SubscriptionHandle<InstrumentKey>
@@ -46,7 +48,7 @@ where
         Self {
             ws_sink_tx: Arc::new(RwLock::new(ws_sink_tx)),
             instrument_map,
-            dynamic_entries: Arc::new(RwLock::new(Vec::new())),
+            dynamic_batches: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -90,21 +92,20 @@ where
             }
         }
 
-        // Record dynamic entries for reconnection replay
+        // Record batch for reconnection replay
         {
-            let mut dynamic = self
-                .dynamic_entries
+            let mut batches = self
+                .dynamic_batches
                 .write()
                 .map_err(|_| {
-                    SocketError::Subscribe("dynamic_entries RwLock poisoned".to_string())
+                    SocketError::Subscribe("dynamic_batches RwLock poisoned".to_string())
                 })?;
-            for (id, key) in entries {
-                dynamic.push(DynamicEntry {
-                    subscription_id: id,
-                    instrument_key: key,
-                    subscribe_messages: ws_messages.clone(),
-                });
-            }
+            let entry_ids: HashSet<SubscriptionId> = entries.iter().map(|(id, _)| id.clone()).collect();
+            batches.push(DynamicBatch {
+                entry_ids,
+                entries,
+                subscribe_messages: ws_messages,
+            });
         }
 
         Ok(())
@@ -148,15 +149,22 @@ where
             }
         }
 
-        // Remove from dynamic entries
+        // Remove from dynamic batches
         {
-            let mut dynamic = self
-                .dynamic_entries
+            let mut batches = self
+                .dynamic_batches
                 .write()
                 .map_err(|_| {
-                    SocketError::Subscribe("dynamic_entries RwLock poisoned".to_string())
+                    SocketError::Subscribe("dynamic_batches RwLock poisoned".to_string())
                 })?;
-            dynamic.retain(|entry| !subscription_ids.contains(&entry.subscription_id));
+            for batch in batches.iter_mut() {
+                for id in &subscription_ids {
+                    batch.entry_ids.remove(id);
+                }
+                batch.entries.retain(|(id, _)| !subscription_ids.contains(id));
+            }
+            // Drop empty batches entirely — no stale subscribe messages
+            batches.retain(|batch| !batch.entry_ids.is_empty());
         }
 
         Ok(())
@@ -181,9 +189,9 @@ where
         &self.instrument_map
     }
 
-    /// Get a reference to the dynamic entries tracked for reconnection.
-    pub fn dynamic_entries(&self) -> &Arc<RwLock<Vec<DynamicEntry<InstrumentKey>>>> {
-        &self.dynamic_entries
+    /// Get a reference to the dynamic batches tracked for reconnection.
+    pub fn dynamic_batches(&self) -> &Arc<RwLock<Vec<DynamicBatch<InstrumentKey>>>> {
+        &self.dynamic_batches
     }
 
     /// Update the internal `ws_sink_tx` to point to a new WebSocket connection.
@@ -201,16 +209,15 @@ where
             .ws_sink_tx
             .read()
             .map_err(|_| SocketError::Subscribe("ws_sink_tx RwLock poisoned".to_string()))?;
-        let dynamic = self
-            .dynamic_entries
+        let batches = self
+            .dynamic_batches
             .read()
             .map_err(|_| {
-                SocketError::Subscribe("dynamic_entries RwLock poisoned".to_string())
+                SocketError::Subscribe("dynamic_batches RwLock poisoned".to_string())
             })?;
 
-        for entry in dynamic.iter() {
-            for msg in &entry.subscribe_messages {
-                // Best-effort: don't fail the whole reconnection if a replay fails
+        for batch in batches.iter() {
+            for msg in &batch.subscribe_messages {
                 let _ = tx.send(msg.clone());
             }
         }
@@ -221,15 +228,14 @@ where
     /// Merge dynamic subscription entries into the instrument map.
     /// Called after reconnection to ensure the transformer can route dynamic subscription data.
     pub(crate) fn merge_dynamic_entries_into_map(&self) {
-        if let (Ok(mut map), Ok(dynamic)) = (
+        if let (Ok(mut map), Ok(batches)) = (
             self.instrument_map.write(),
-            self.dynamic_entries.read(),
+            self.dynamic_batches.read(),
         ) {
-            for entry in dynamic.iter() {
-                map.insert(
-                    entry.subscription_id.clone(),
-                    entry.instrument_key.clone(),
-                );
+            for batch in batches.iter() {
+                for (id, key) in &batch.entries {
+                    map.insert(id.clone(), key.clone());
+                }
             }
         }
     }

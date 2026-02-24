@@ -369,6 +369,14 @@ impl<T> Map<T> {
     pub fn remove(&mut self, id: &SubscriptionId) -> Option<T> {
         self.0.remove(id)
     }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&SubscriptionId, &T)> {
+        self.0.iter()
+    }
 }
 
 #[cfg(test)]
