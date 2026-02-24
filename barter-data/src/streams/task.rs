@@ -62,7 +62,7 @@ where
             )
             .await;
 
-        let (ws_stream, mut transformer, ws_sink_tx, buffer) = match connect_result {
+        let (mut ws_stream, mut transformer, ws_sink_tx, buffer) = match connect_result {
             Ok(result) => {
                 // Reset backoff on successful connection
                 backoff_ms = policy.backoff_ms_initial;
@@ -84,7 +84,7 @@ where
                 warn!(%exchange, %err, backoff_ms, "reconnection failed, backing off");
                 tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
                 backoff_ms = std::cmp::min(
-                    backoff_ms * policy.backoff_multiplier as u64,
+                    backoff_ms * u64::from(policy.backoff_multiplier),
                     policy.backoff_ms_max,
                 );
                 continue;
@@ -110,25 +110,24 @@ where
         }
 
         // === Replay dynamic batches (reconnection resubscribe) ===
-        {
+        let replay_batches = {
             let batches = dynamic_batches
                 .lock()
                 .expect("dynamic_batches mutex poisoned");
-            for batch in batches.iter() {
-                // Apply entries to transformer map
-                let subscribe_command = Command::Subscribe {
-                    entries: batch.entries.clone(),
-                    ws_messages: batch.subscribe_messages.clone(),
-                };
-                let ws_messages = transformer.apply_command(subscribe_command);
-                for msg in ws_messages {
-                    let _ = ws_sink_tx.send(msg);
-                }
+            batches.clone()
+        };
+        for batch in replay_batches {
+            let subscribe_command = Command::Subscribe {
+                entries: batch.entries,
+                ws_messages: batch.subscribe_messages,
+            };
+            let ws_messages = transformer.apply_command(subscribe_command);
+            for msg in ws_messages {
+                let _ = ws_sink_tx.send(msg);
             }
         }
 
         // === Inner select! loop ===
-        let mut ws_stream = ws_stream;
         loop {
             tokio::select! {
                 cmd = command_rx.recv() => {
@@ -137,7 +136,7 @@ where
                             let ws_messages = transformer.apply_command(command);
                             for msg in ws_messages {
                                 if ws_sink_tx.send(msg).is_err() {
-                                    break; // sink closed
+                                    break; // ws_sink closed, reconnect
                                 }
                             }
                         }
@@ -188,13 +187,6 @@ where
         {
             return;
         }
-
-        // Backoff before reconnecting
-        tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
-        backoff_ms = std::cmp::min(
-            backoff_ms * policy.backoff_multiplier as u64,
-            policy.backoff_ms_max,
-        );
     }
 }
 

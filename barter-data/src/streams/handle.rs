@@ -122,7 +122,7 @@ where
                 subscription_ids,
                 ws_messages,
             })
-            .map_err(|_| SocketError::Subscribe("command channel closed".to_string()))
+            .map_err(|_| SocketError::Subscribe("unsubscribe command channel closed".to_string()))
     }
 }
 
