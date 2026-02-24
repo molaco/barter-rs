@@ -2,12 +2,13 @@ use self::trade::GateioSpotTrade;
 use super::{Gateio, candle::GateioKline};
 use crate::{
     NoInitialSnapshots,
-    exchange::{ExchangeServer, StreamSelector, gateio::GateiotWsStream},
+    exchange::{ExchangeServer, StreamSelector},
     instrument::InstrumentData,
     subscription::{candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
+use barter_integration::protocol::websocket::WebSocketSerdeParser;
 use barter_macro::{DeExchange, SerExchange};
 use std::fmt::Display;
 
@@ -41,8 +42,9 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        GateiotWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, GateioSpotTrade>>;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, PublicTrades, GateioSpotTrade>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument> StreamSelector<Instrument, Candles> for GateioSpot
@@ -50,8 +52,9 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        GateiotWsStream<StatelessTransformer<Self, Instrument::Key, Candles, GateioKline>>;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, Candles, GateioKline>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl Display for GateioSpot {

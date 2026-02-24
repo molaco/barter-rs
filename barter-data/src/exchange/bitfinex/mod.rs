@@ -188,9 +188,9 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = BitfinexWsStream<
-        StatelessTransformer<Self, Instrument::Key, PublicTrades, BitfinexMessage>,
-    >;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, PublicTrades, BitfinexMessage>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument> StreamSelector<Instrument, Candles> for Bitfinex
@@ -198,9 +198,9 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = BitfinexWsStream<
-        StatelessTransformer<Self, Instrument::Key, Candles, BitfinexCandleMessage>,
-    >;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, Candles, BitfinexCandleMessage>;
+    type Parser = WebSocketSerdeParser;
 }
 
 #[cfg(test)]

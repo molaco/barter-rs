@@ -196,8 +196,8 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        KrakenWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, KrakenTrades>>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, PublicTrades, KrakenTrades>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument> StreamSelector<Instrument, Candles> for Kraken
@@ -205,8 +205,8 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        KrakenWsStream<StatelessTransformer<Self, Instrument::Key, Candles, KrakenKline>>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, KrakenKline>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument> StreamSelector<Instrument, OrderBooksL1> for Kraken
@@ -214,9 +214,9 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = KrakenWsStream<
-        StatelessTransformer<Self, Instrument::Key, OrderBooksL1, KrakenOrderBookL1>,
-    >;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, OrderBooksL1, KrakenOrderBookL1>;
+    type Parser = WebSocketSerdeParser;
 }
 
 #[cfg(test)]

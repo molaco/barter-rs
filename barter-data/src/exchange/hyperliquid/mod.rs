@@ -163,9 +163,9 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = HyperliquidWsStream<
-        StatelessTransformer<Self, Instrument::Key, PublicTrades, HyperliquidTrades>,
-    >;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, PublicTrades, HyperliquidTrades>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument> StreamSelector<Instrument, Candles> for Hyperliquid
@@ -173,9 +173,9 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = HyperliquidWsStream<
-        StatelessTransformer<Self, Instrument::Key, Candles, HyperliquidKline>,
-    >;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, Candles, HyperliquidKline>;
+    type Parser = WebSocketSerdeParser;
 }
 
 #[cfg(test)]

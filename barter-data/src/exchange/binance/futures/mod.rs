@@ -6,12 +6,9 @@ use crate::{
     NoInitialSnapshots,
     exchange::{
         StreamSelector,
-        binance::{
-            BinanceWsStream,
-            futures::l2::{
-                BinanceFuturesUsdOrderBooksL2SnapshotFetcher,
-                BinanceFuturesUsdOrderBooksL2Transformer,
-            },
+        binance::futures::l2::{
+            BinanceFuturesUsdOrderBooksL2SnapshotFetcher,
+            BinanceFuturesUsdOrderBooksL2Transformer,
         },
     },
     instrument::InstrumentData,
@@ -19,6 +16,7 @@ use crate::{
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
+use barter_integration::protocol::websocket::WebSocketSerdeParser;
 use std::fmt::{Display, Formatter};
 
 /// Level 2 OrderBook types.
@@ -65,7 +63,8 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = BinanceFuturesUsdOrderBooksL2SnapshotFetcher;
-    type Stream = BinanceWsStream<BinanceFuturesUsdOrderBooksL2Transformer<Instrument::Key>>;
+    type Transformer = BinanceFuturesUsdOrderBooksL2Transformer<Instrument::Key>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument> StreamSelector<Instrument, Liquidations> for BinanceFuturesUsd
@@ -73,9 +72,9 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = BinanceWsStream<
-        StatelessTransformer<Self, Instrument::Key, Liquidations, BinanceLiquidation>,
-    >;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, Liquidations, BinanceLiquidation>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl Display for BinanceFuturesUsd {

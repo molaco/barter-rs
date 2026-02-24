@@ -1,8 +1,8 @@
 use crate::{
-    ExchangeWsStream, Identifier,
+    Identifier,
     error::DataError,
     event::MarketEvent,
-    exchange::{Connector, StreamSelector},
+    exchange::StreamSelector,
     instrument::InstrumentData,
     streams::{
         handle::SubscriptionHandle,
@@ -10,16 +10,8 @@ use crate::{
         reconnect::stream::ReconnectionBackoffPolicy,
     },
     subscription::{Subscription, SubscriptionKind, display_subscriptions_without_exchange},
-    transformer::ExchangeTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
-use barter_integration::{
-    Transformer,
-    protocol::{
-        StreamParser,
-        websocket::{WsError, WsMessage},
-    },
-};
 use derive_more::Constructor;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -44,40 +36,7 @@ pub type MarketStreamResult<InstrumentKey, Kind> =
 pub type MarketStreamEvent<InstrumentKey, Kind> =
     reconnect::Event<ExchangeId, MarketEvent<InstrumentKey, Kind>>;
 
-/// Helper trait to extract `Parser` and `Transformer` type parameters from
-/// [`ExchangeWsStream`] so that [`init_market_stream`] can name them when
-/// spawning the [`connection_task`](crate::streams::task::connection_task).
-pub trait ConnectionTaskTypes<Exchange, Instrument, Kind>
-where
-    Exchange: Connector,
-    Instrument: InstrumentData,
-    Kind: SubscriptionKind,
-{
-    type TaskTransformer: ExchangeTransformer<Exchange, Instrument::Key, Kind> + Send + 'static;
-    type TaskParser: StreamParser<
-        <Self::TaskTransformer as Transformer>::Input,
-        Message = WsMessage,
-        Error = WsError,
-    > + Send + 'static;
-}
-
-impl<Exchange, Instrument, Kind, Parser, TransformerT>
-    ConnectionTaskTypes<Exchange, Instrument, Kind>
-    for ExchangeWsStream<Parser, TransformerT>
-where
-    Exchange: Connector + Send + Sync,
-    Instrument: InstrumentData,
-    Instrument::Key: Clone + Send + Sync,
-    Kind: SubscriptionKind + Send + Sync,
-    Kind::Event: Send,
-    TransformerT: ExchangeTransformer<Exchange, Instrument::Key, Kind> + Send + 'static,
-    Parser: StreamParser<TransformerT::Input, Message = WsMessage, Error = WsError> + Send + 'static,
-{
-    type TaskTransformer = TransformerT;
-    type TaskParser = Parser;
-}
-
-/// Initialises a [`MarketStream`](crate::MarketStream) with a connection task using a collection
+/// Initialises a market stream with a connection task using a collection
 /// of [`Subscription`]s.
 ///
 /// The provided [`ReconnectionBackoffPolicy`] dictates how the exponential backoff scales
@@ -97,7 +56,6 @@ pub async fn init_market_stream<Exchange, Instrument, Kind>(
 >
 where
     Exchange: StreamSelector<Instrument, Kind> + Send + Sync + 'static,
-    Exchange::Stream: ConnectionTaskTypes<Exchange, Instrument, Kind>,
     Instrument: InstrumentData + Display + 'static,
     Instrument::Key: Clone + Send + Sync + 'static,
     Kind: SubscriptionKind + Display + Send + Sync + 'static,
@@ -131,8 +89,8 @@ where
         Exchange,
         Instrument,
         Kind,
-        <Exchange::Stream as ConnectionTaskTypes<Exchange, Instrument, Kind>>::TaskTransformer,
-        <Exchange::Stream as ConnectionTaskTypes<Exchange, Instrument, Kind>>::TaskParser,
+        Exchange::Transformer,
+        Exchange::Parser,
         Exchange::SnapFetcher,
     >(
         subscriptions,

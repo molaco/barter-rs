@@ -83,7 +83,6 @@ where
         SubIter: IntoIterator<Item = Sub>,
         Sub: Into<Subscription<Exchange, Instrument, Kind>>,
         Exchange: StreamSelector<Instrument, Kind> + Ord + Send + Sync + 'static,
-        Exchange::Stream: crate::streams::consumer::ConnectionTaskTypes<Exchange, Instrument, Kind>,
         Instrument: InstrumentData<Key = InstrumentKey> + Ord + Display + 'static,
         Instrument::Key: Debug + Clone + Send + Sync + 'static,
         Kind: Ord + Display + Send + Sync + 'static,

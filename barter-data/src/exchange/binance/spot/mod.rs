@@ -4,17 +4,15 @@ use crate::exchange::RestExchangeServer;
 use crate::{
     exchange::{
         StreamSelector,
-        binance::{
-            BinanceWsStream,
-            spot::l2::{
-                BinanceSpotOrderBooksL2SnapshotFetcher, BinanceSpotOrderBooksL2Transformer,
-            },
+        binance::spot::l2::{
+            BinanceSpotOrderBooksL2SnapshotFetcher, BinanceSpotOrderBooksL2Transformer,
         },
     },
     instrument::InstrumentData,
     subscription::book::OrderBooksL2,
 };
 use barter_instrument::exchange::ExchangeId;
+use barter_integration::protocol::websocket::WebSocketSerdeParser;
 use std::fmt::{Display, Formatter};
 
 /// Level 2 OrderBook types.
@@ -58,7 +56,8 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = BinanceSpotOrderBooksL2SnapshotFetcher;
-    type Stream = BinanceWsStream<BinanceSpotOrderBooksL2Transformer<Instrument::Key>>;
+    type Transformer = BinanceSpotOrderBooksL2Transformer<Instrument::Key>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl Display for BinanceSpot {

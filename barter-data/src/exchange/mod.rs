@@ -1,12 +1,19 @@
 use self::subscription::ExchangeSub;
 use crate::{
-    MarketStream, SnapshotFetcher,
+    SnapshotFetcher,
     instrument::InstrumentData,
     subscriber::{Subscriber, validator::SubscriptionValidator},
     subscription::{Map, SubscriptionKind},
+    transformer::ExchangeTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
-use barter_integration::{Validator, error::SocketError, protocol::websocket::WsMessage};
+use barter_integration::{
+    Transformer, Validator, error::SocketError,
+    protocol::{
+        StreamParser,
+        websocket::{WsError, WsMessage},
+    },
+};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{fmt::Debug, time::Duration};
 use url::Url;
@@ -47,8 +54,8 @@ pub mod subscription;
 /// `Subscription` requests.
 pub const DEFAULT_SUBSCRIPTION_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Defines the [`MarketStream`] kind associated with an exchange
-/// `Subscription` [`SubscriptionKind`].
+/// Defines the associated types for streaming market data for a specific
+/// exchange `Subscription` [`SubscriptionKind`].
 ///
 /// ### Notes
 /// Must be implemented by an exchange [`Connector`] if it supports a specific
@@ -60,7 +67,12 @@ where
     Kind: SubscriptionKind,
 {
     type SnapFetcher: SnapshotFetcher<Self, Kind>;
-    type Stream: MarketStream<Self, Instrument, Kind>;
+    type Transformer: ExchangeTransformer<Self, Instrument::Key, Kind> + Send;
+    type Parser: StreamParser<
+            <Self::Transformer as Transformer>::Input,
+            Message = WsMessage,
+            Error = WsError,
+        > + Send;
 }
 
 /// Primary exchange abstraction. Defines how to translate Barter types into exchange specific

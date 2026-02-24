@@ -147,7 +147,8 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = OkxWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, OkxTrades>>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, PublicTrades, OkxTrades>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument> StreamSelector<Instrument, Candles> for Okx
@@ -155,7 +156,8 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = OkxWsStream<StatelessTransformer<Self, Instrument::Key, Candles, OkxKline>>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, OkxKline>;
+    type Parser = WebSocketSerdeParser;
 }
 
 #[cfg(test)]

@@ -127,8 +127,8 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        BitmexWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, BitmexTrade>>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, PublicTrades, BitmexTrade>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument> StreamSelector<Instrument, Candles> for Bitmex
@@ -136,8 +136,8 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        BitmexWsStream<StatelessTransformer<Self, Instrument::Key, Candles, BitmexKline>>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, BitmexKline>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<'de> serde::Deserialize<'de> for Bitmex {

@@ -143,8 +143,9 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        CoinbaseWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, CoinbaseTrade>>;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, PublicTrades, CoinbaseTrade>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument> StreamSelector<Instrument, Candles> for Coinbase
@@ -152,8 +153,9 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        CoinbaseWsStream<StatelessTransformer<Self, Instrument::Key, Candles, CoinbaseKline>>;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, Candles, CoinbaseKline>;
+    type Parser = WebSocketSerdeParser;
 }
 
 #[cfg(test)]

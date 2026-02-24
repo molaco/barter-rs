@@ -181,8 +181,8 @@ where
     Server: ExchangeServer + Debug + Send + Sync,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        BybitWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, BybitTrade>>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, PublicTrades, BybitTrade>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument, Server> StreamSelector<Instrument, Candles> for Bybit<Server>
@@ -191,8 +191,8 @@ where
     Server: ExchangeServer + Debug + Send + Sync,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        BybitWsStream<StatelessTransformer<Self, Instrument::Key, Candles, BybitKline>>;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, BybitKline>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument, Server> StreamSelector<Instrument, OrderBooksL1> for Bybit<Server>
@@ -201,9 +201,9 @@ where
     Server: ExchangeServer + Debug + Send + Sync,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = BybitWsStream<
-        StatelessTransformer<Self, Instrument::Key, OrderBooksL1, BybitOrderBookMessage>,
-    >;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, OrderBooksL1, BybitOrderBookMessage>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument, Server> StreamSelector<Instrument, OrderBooksL2> for Bybit<Server>
@@ -212,7 +212,8 @@ where
     Server: ExchangeServer + Debug + Send + Sync,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = BybitWsStream<BybitOrderBooksL2Transformer<Instrument::Key>>;
+    type Transformer = BybitOrderBooksL2Transformer<Instrument::Key>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<'de, Server> serde::Deserialize<'de> for Bybit<Server>

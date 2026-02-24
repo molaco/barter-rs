@@ -165,8 +165,9 @@ where
     Server: ExchangeServer + Debug + Send + Sync,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        BinanceWsStream<StatelessTransformer<Self, Instrument::Key, PublicTrades, BinanceTrade>>;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, PublicTrades, BinanceTrade>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument, Server> StreamSelector<Instrument, Candles> for Binance<Server>
@@ -175,8 +176,9 @@ where
     Server: ExchangeServer + Debug + Send + Sync,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream =
-        BinanceWsStream<StatelessTransformer<Self, Instrument::Key, Candles, BinanceKline>>;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, Candles, BinanceKline>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<Instrument, Server> StreamSelector<Instrument, OrderBooksL1> for Binance<Server>
@@ -185,9 +187,9 @@ where
     Server: ExchangeServer + Debug + Send + Sync,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Stream = BinanceWsStream<
-        StatelessTransformer<Self, Instrument::Key, OrderBooksL1, BinanceOrderBookL1>,
-    >;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, OrderBooksL1, BinanceOrderBookL1>;
+    type Parser = WebSocketSerdeParser;
 }
 
 impl<'de, Server> serde::Deserialize<'de> for Binance<Server>
