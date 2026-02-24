@@ -5,7 +5,6 @@ use crate::{
 };
 use async_trait::async_trait;
 use barter_integration::{Transformer, protocol::websocket::WsMessage};
-use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 
 /// Generic stateless [`ExchangeTransformer`] often used for transforming
@@ -30,24 +29,14 @@ where
         ws_sink_tx: mpsc::UnboundedSender<WsMessage>,
     ) -> Result<Self, DataError>;
 
-    /// Returns a shared reference to the instrument map, if supported.
-    /// Used by [`SubscriptionHandle`](crate::streams::handle::SubscriptionHandle) for dynamic
-    /// subscription management.
-    fn shared_instrument_map(&self) -> Option<Arc<RwLock<Map<InstrumentKey>>>> {
-        None
-    }
-
-    /// Returns the WebSocket sink sender for sending messages to the exchange.
-    fn ws_sink_tx(&self) -> Option<mpsc::UnboundedSender<WsMessage>> {
-        None
-    }
-
-    /// Replace the internal shared instrument map with the provided one.
+    /// Apply a dynamic subscription command to the transformer's state.
     ///
-    /// Used during reconnection to ensure the transformer and [`SubscriptionHandle`](crate::streams::handle::SubscriptionHandle)
-    /// share the same `Arc<RwLock<Map>>` instance, so that dynamic subscriptions
-    /// added via the handle are visible to the transformer after reconnection.
-    fn set_shared_instrument_map(&mut self, _map: Arc<RwLock<Map<InstrumentKey>>>) {
-        // Default: no-op. Transformers that support dynamic subscriptions override this.
+    /// Returns WsMessages to send to the exchange.
+    /// Default: no-op (transformer doesn't support dynamic subscriptions).
+    fn apply_command(
+        &mut self,
+        _command: crate::streams::handle::Command<InstrumentKey>,
+    ) -> Vec<WsMessage> {
+        vec![]
     }
 }

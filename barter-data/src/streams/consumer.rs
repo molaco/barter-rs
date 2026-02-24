@@ -1,24 +1,30 @@
 use crate::{
-    Identifier, MarketStream,
+    ExchangeWsStream, Identifier,
     error::DataError,
     event::MarketEvent,
-    exchange::StreamSelector,
+    exchange::{Connector, StreamSelector},
     instrument::InstrumentData,
     streams::{
         handle::SubscriptionHandle,
         reconnect,
-        reconnect::stream::{
-            ReconnectingStream, ReconnectionBackoffPolicy, init_reconnecting_stream,
-        },
+        reconnect::stream::ReconnectionBackoffPolicy,
     },
     subscription::{Subscription, SubscriptionKind, display_subscriptions_without_exchange},
+    transformer::ExchangeTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
+use barter_integration::{
+    Transformer,
+    protocol::{
+        StreamParser,
+        websocket::{WsError, WsMessage},
+    },
+};
 use derive_more::Constructor;
-use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
 use tracing::info;
 
 /// Default [`ReconnectionBackoffPolicy`] for a [`reconnecting`](`ReconnectingStream`) [`MarketStream`].
@@ -38,32 +44,69 @@ pub type MarketStreamResult<InstrumentKey, Kind> =
 pub type MarketStreamEvent<InstrumentKey, Kind> =
     reconnect::Event<ExchangeId, MarketEvent<InstrumentKey, Kind>>;
 
-/// Initialises a [`reconnecting`](`ReconnectingStream`) [`MarketStream`] using a collection of
-/// [`Subscription`]s.
+/// Helper trait to extract `Parser` and `Transformer` type parameters from
+/// [`ExchangeWsStream`] so that [`init_market_stream`] can name them when
+/// spawning the [`connection_task`](crate::streams::task::connection_task).
+pub trait ConnectionTaskTypes<Exchange, Instrument, Kind>
+where
+    Exchange: Connector,
+    Instrument: InstrumentData,
+    Kind: SubscriptionKind,
+{
+    type TaskTransformer: ExchangeTransformer<Exchange, Instrument::Key, Kind> + Send + 'static;
+    type TaskParser: StreamParser<
+        <Self::TaskTransformer as Transformer>::Input,
+        Message = WsMessage,
+        Error = WsError,
+    > + Send + 'static;
+}
+
+impl<Exchange, Instrument, Kind, Parser, TransformerT>
+    ConnectionTaskTypes<Exchange, Instrument, Kind>
+    for ExchangeWsStream<Parser, TransformerT>
+where
+    Exchange: Connector + Send + Sync,
+    Instrument: InstrumentData,
+    Instrument::Key: Clone + Send + Sync,
+    Kind: SubscriptionKind + Send + Sync,
+    Kind::Event: Send,
+    TransformerT: ExchangeTransformer<Exchange, Instrument::Key, Kind> + Send + 'static,
+    Parser: StreamParser<TransformerT::Input, Message = WsMessage, Error = WsError> + Send + 'static,
+{
+    type TaskTransformer = TransformerT;
+    type TaskParser = Parser;
+}
+
+/// Initialises a [`MarketStream`](crate::MarketStream) with a connection task using a collection
+/// of [`Subscription`]s.
 ///
 /// The provided [`ReconnectionBackoffPolicy`] dictates how the exponential backoff scales
 /// between reconnections.
+///
+/// Returns an `mpsc::UnboundedReceiver` of market events and a [`SubscriptionHandle`] for
+/// dynamic subscribe/unsubscribe on the live connection.
 pub async fn init_market_stream<Exchange, Instrument, Kind>(
     policy: ReconnectionBackoffPolicy,
     subscriptions: Vec<Subscription<Exchange, Instrument, Kind>>,
 ) -> Result<
     (
-        impl Stream<Item = MarketStreamResult<Instrument::Key, Kind::Event>>,
-        Option<SubscriptionHandle<Instrument::Key>>,
+        mpsc::UnboundedReceiver<MarketStreamResult<Instrument::Key, Kind::Event>>,
+        SubscriptionHandle<Instrument::Key>,
     ),
     DataError,
 >
 where
-    Exchange: StreamSelector<Instrument, Kind>,
-    Instrument: InstrumentData + Display,
-    Kind: SubscriptionKind + Display,
+    Exchange: StreamSelector<Instrument, Kind> + Send + Sync + 'static,
+    Exchange::Stream: ConnectionTaskTypes<Exchange, Instrument, Kind>,
+    Instrument: InstrumentData + Display + 'static,
+    Instrument::Key: Clone + Send + Sync + 'static,
+    Kind: SubscriptionKind + Display + Send + Sync + 'static,
+    Kind::Event: Send + 'static,
     Subscription<Exchange, Instrument, Kind>:
-        Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+        Identifier<Exchange::Channel> + Identifier<Exchange::Market> + 'static,
 {
-    // Determine ExchangeId associated with these Subscriptions
     let exchange = Exchange::ID;
 
-    // Determine StreamKey for use in logging
     let stream_key = subscriptions
         .first()
         .map(|sub| StreamKey::new("market_stream", exchange, Some(sub.kind.as_str())))
@@ -74,63 +117,38 @@ where
         subscriptions = %display_subscriptions_without_exchange(&subscriptions),
         ?policy,
         ?stream_key,
-        "MarketStream with auto reconnect initialising"
+        "MarketStream with connection task initialising"
     );
 
-    // Use a oneshot to send the handle from the first init to the caller.
-    // On reconnects, init_reconnect() updates the existing handle's shared state.
-    let (handle_tx, handle_rx) = tokio::sync::oneshot::channel();
-    let handle_tx = Arc::new(Mutex::new(Some(handle_tx)));
+    let (command_tx, command_rx) = mpsc::unbounded_channel();
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let dynamic_batches = Arc::new(Mutex::new(Vec::new()));
+    let handle = SubscriptionHandle::new(command_tx, dynamic_batches.clone());
 
-    // Shared reference to the handle, populated after first init.
-    // On reconnect, the closure reads this to pass to init_reconnect().
-    let shared_handle: Arc<Mutex<Option<SubscriptionHandle<Instrument::Key>>>> =
-        Arc::new(Mutex::new(None));
+    let (init_tx, init_rx) = tokio::sync::oneshot::channel();
 
-    let stream = init_reconnecting_stream(move || {
-        let subscriptions = subscriptions.clone();
-        let handle_tx = handle_tx.clone();
-        let shared_handle = shared_handle.clone();
-        async move {
-            // Check if we have an existing handle from a previous init (reconnection path)
-            let existing_handle = shared_handle
-                .lock()
-                .expect("shared_handle mutex poisoned")
-                .clone();
+    tokio::spawn(crate::streams::task::connection_task::<
+        Exchange,
+        Instrument,
+        Kind,
+        <Exchange::Stream as ConnectionTaskTypes<Exchange, Instrument, Kind>>::TaskTransformer,
+        <Exchange::Stream as ConnectionTaskTypes<Exchange, Instrument, Kind>>::TaskParser,
+        Exchange::SnapFetcher,
+    >(
+        subscriptions,
+        command_rx,
+        event_tx,
+        dynamic_batches,
+        policy,
+        init_tx,
+    ));
 
-            if let Some(ref handle) = existing_handle {
-                // Reconnect path: reuse handle, update its shared state
-                let stream = Exchange::Stream::init_reconnect::<Exchange::SnapFetcher>(
-                    &subscriptions,
-                    handle,
-                )
-                .await?;
-                Ok::<_, DataError>(stream)
-            } else {
-                // First init: create fresh handle
-                let (stream, handle) =
-                    Exchange::Stream::init::<Exchange::SnapFetcher>(&subscriptions).await?;
+    // Wait for first connection to succeed
+    init_rx
+        .await
+        .map_err(|_| DataError::SubscriptionsEmpty)??;
 
-                // Store handle for future reconnects
-                *shared_handle.lock().expect("shared_handle mutex poisoned") = handle.clone();
-
-                // Send handle to caller via oneshot
-                if let Some(tx) = handle_tx.lock().expect("handle_tx mutex poisoned").take() {
-                    let _ = tx.send(handle);
-                }
-
-                Ok::<_, DataError>(stream)
-            }
-        }
-    })
-    .await?
-    .with_reconnect_backoff(policy, stream_key)
-    .with_termination_on_error(|error| error.is_terminal(), stream_key)
-    .with_reconnection_events(exchange);
-
-    let handle = handle_rx.await.ok().flatten();
-
-    Ok((stream, handle))
+    Ok((event_rx, handle))
 }
 
 #[derive(

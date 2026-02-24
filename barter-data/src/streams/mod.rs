@@ -21,6 +21,10 @@ pub mod consumer;
 /// for generating an auto reconnecting `Stream`.
 pub mod reconnect;
 
+/// Spawned connection task that owns the WebSocket stream and transformer,
+/// using `tokio::select!` to multiplex command processing and frame reading.
+pub(crate) mod task;
+
 /// Ergonomic collection of exchange market event receivers.
 #[derive(Debug)]
 pub struct Streams<T> {

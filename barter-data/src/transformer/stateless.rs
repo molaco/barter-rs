@@ -13,17 +13,15 @@ use barter_integration::{
 };
 use serde::Deserialize;
 use std::marker::PhantomData;
-use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 
 /// Standard generic stateless [`ExchangeTransformer`] to translate exchange specific types into
 /// normalised Barter types. Often used with
 /// [`PublicTrades`](crate::subscription::trade::PublicTrades) or
 /// [`OrderBooksL1`](crate::subscription::book::OrderBooksL1) streams.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct StatelessTransformer<Exchange, InstrumentKey, Kind, Input> {
-    instrument_map: Arc<RwLock<Map<InstrumentKey>>>,
-    ws_sink_tx: mpsc::UnboundedSender<WsMessage>,
+    instrument_map: Map<InstrumentKey>,
     phantom: PhantomData<(Exchange, Kind, Input)>,
 }
 
@@ -40,25 +38,38 @@ where
     async fn init(
         instrument_map: Map<InstrumentKey>,
         _: &[MarketEvent<InstrumentKey, Kind::Event>],
-        ws_sink_tx: mpsc::UnboundedSender<WsMessage>,
+        _ws_sink_tx: mpsc::UnboundedSender<WsMessage>,
     ) -> Result<Self, DataError> {
         Ok(Self {
-            instrument_map: Arc::new(RwLock::new(instrument_map)),
-            ws_sink_tx,
+            instrument_map,
             phantom: PhantomData,
         })
     }
 
-    fn shared_instrument_map(&self) -> Option<Arc<RwLock<Map<InstrumentKey>>>> {
-        Some(self.instrument_map.clone())
-    }
-
-    fn ws_sink_tx(&self) -> Option<mpsc::UnboundedSender<WsMessage>> {
-        Some(self.ws_sink_tx.clone())
-    }
-
-    fn set_shared_instrument_map(&mut self, map: Arc<RwLock<Map<InstrumentKey>>>) {
-        self.instrument_map = map;
+    fn apply_command(
+        &mut self,
+        command: crate::streams::handle::Command<InstrumentKey>,
+    ) -> Vec<WsMessage> {
+        match command {
+            crate::streams::handle::Command::Subscribe {
+                entries,
+                ws_messages,
+            } => {
+                for (id, key) in entries {
+                    self.instrument_map.insert(id, key);
+                }
+                ws_messages
+            }
+            crate::streams::handle::Command::Unsubscribe {
+                subscription_ids,
+                ws_messages,
+            } => {
+                for id in &subscription_ids {
+                    self.instrument_map.remove(id);
+                }
+                ws_messages
+            }
+        }
     }
 }
 
@@ -77,20 +88,12 @@ where
     type OutputIter = Vec<Result<Self::Output, Self::Error>>;
 
     fn transform(&mut self, input: Self::Input) -> Self::OutputIter {
-        // Determine if the message has an identifiable SubscriptionId
         let subscription_id = match input.id() {
             Some(subscription_id) => subscription_id,
             None => return vec![],
         };
 
-        // Acquire read lock on the shared instrument map
-        let instrument_map = self
-            .instrument_map
-            .read()
-            .expect("instrument_map RwLock poisoned");
-
-        // Find Instrument associated with Input and transform
-        match instrument_map.find(&subscription_id) {
+        match self.instrument_map.find(&subscription_id) {
             Ok(instrument) => {
                 MarketIter::<InstrumentKey, Kind::Event>::from((
                     Exchange::ID,

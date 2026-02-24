@@ -83,12 +83,13 @@ where
         SubIter: IntoIterator<Item = Sub>,
         Sub: Into<Subscription<Exchange, Instrument, Kind>>,
         Exchange: StreamSelector<Instrument, Kind> + Ord + Send + Sync + 'static,
+        Exchange::Stream: crate::streams::consumer::ConnectionTaskTypes<Exchange, Instrument, Kind>,
         Instrument: InstrumentData<Key = InstrumentKey> + Ord + Display + 'static,
         Instrument::Key: Debug + Clone + Send + Sync + 'static,
         Kind: Ord + Display + Send + Sync + 'static,
-        Kind::Event: Clone + Send,
+        Kind::Event: Clone + Send + 'static,
         Subscription<Exchange, Instrument, Kind>:
-            Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+            Identifier<Exchange::Channel> + Identifier<Exchange::Market> + 'static,
     {
         // Construct Vec<Subscriptions> from input SubIter
         let subscriptions = subscriptions.into_iter().map(Sub::into).collect::<Vec<_>>();
@@ -112,20 +113,21 @@ where
 
             let exchange = Exchange::ID;
 
-            // Initialise a MarketEvent `ReconnectingStream`
-            let (stream, handle) =
+            // Initialise market stream connection task
+            let (event_rx, handle) =
                 init_market_stream(STREAM_RECONNECTION_POLICY, subscriptions).await?;
 
-            // Store SubscriptionHandle if available
-            if let Some(handle) = handle {
-                handles
-                    .lock()
-                    .expect("handles mutex poisoned")
-                    .push((exchange, handle));
-            }
+            // Store SubscriptionHandle
+            handles
+                .lock()
+                .expect("handles mutex poisoned")
+                .push((exchange, handle));
 
-            // Forward MarketEvents to ExchangeTx
-            tokio::spawn(stream.forward_to(exchange_tx));
+            // Forward MarketEvents from receiver to ExchangeTx
+            tokio::spawn(
+                tokio_stream::wrappers::UnboundedReceiverStream::new(event_rx)
+                    .forward_to(exchange_tx),
+            );
 
             Ok(())
         }));
