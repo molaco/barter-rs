@@ -5,9 +5,7 @@ use crate::{
     exchange::StreamSelector,
     instrument::InstrumentData,
     streams::{
-        handle::SubscriptionHandle,
-        reconnect,
-        reconnect::stream::ReconnectionBackoffPolicy,
+        handle::SubscriptionHandle, reconnect, reconnect::stream::ReconnectionBackoffPolicy,
     },
     subscription::{Subscription, SubscriptionKind, display_subscriptions_without_exchange},
 };
@@ -15,7 +13,6 @@ use barter_instrument::exchange::ExchangeId;
 use derive_more::Constructor;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tracing::info;
 
@@ -80,8 +77,7 @@ where
 
     let (command_tx, command_rx) = mpsc::unbounded_channel();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
-    let dynamic_batches = Arc::new(Mutex::new(Vec::new()));
-    let handle = SubscriptionHandle::new(command_tx, dynamic_batches.clone());
+    let handle = SubscriptionHandle::new(command_tx);
 
     let (init_tx, init_rx) = tokio::sync::oneshot::channel();
 
@@ -92,19 +88,12 @@ where
         Exchange::Transformer,
         Exchange::Parser,
         Exchange::SnapFetcher,
-    >(
-        subscriptions,
-        command_rx,
-        event_tx,
-        dynamic_batches,
-        policy,
-        init_tx,
-    ));
+    >(subscriptions, command_rx, event_tx, policy, init_tx));
 
     // Wait for first connection to succeed
     init_rx
         .await
-        .map_err(|_| DataError::SubscriptionsEmpty)??;
+        .map_err(|_| DataError::ConnectionTaskTerminated)??;
 
     Ok((event_rx, handle))
 }

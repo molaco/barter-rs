@@ -13,6 +13,9 @@ pub enum DataError {
     #[error("failed to initialise reconnecting MarketStream due to empty subscriptions")]
     SubscriptionsEmpty,
 
+    #[error("connection task terminated before signaling init result")]
+    ConnectionTaskTerminated,
+
     #[error("unsupported DynamicStreams Subscription SubKind: {0}")]
     UnsupportedSubKind(SubKind),
 

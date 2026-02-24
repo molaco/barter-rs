@@ -1,18 +1,11 @@
 use crate::{
-    Identifier,
+    Identifier, SnapshotFetcher, distribute_messages_to_exchange,
     error::DataError,
     event::MarketEvent,
     exchange::Connector,
     instrument::InstrumentData,
-    process_buffered_events,
-    distribute_messages_to_exchange,
-    schedule_pings_to_exchange,
-    SnapshotFetcher,
-    streams::{
-        consumer::MarketStreamResult,
-        handle::{Command, DynamicBatch},
-        reconnect,
-    },
+    process_buffered_events, schedule_pings_to_exchange,
+    streams::{consumer::MarketStreamResult, handle::Command, reconnect},
     subscriber::{Subscribed, Subscriber},
     subscription::{Subscription, SubscriptionKind},
     transformer::ExchangeTransformer,
@@ -22,7 +15,6 @@ use barter_integration::protocol::{
     websocket::{WsError, WsMessage},
 };
 use futures::StreamExt;
-use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{info, warn};
 
@@ -34,11 +26,9 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
     subscriptions: Vec<Subscription<Exchange, Instrument, Kind>>,
     mut command_rx: mpsc::UnboundedReceiver<Command<Instrument::Key>>,
     event_tx: mpsc::UnboundedSender<MarketStreamResult<Instrument::Key, Kind::Event>>,
-    dynamic_batches: Arc<Mutex<Vec<DynamicBatch<Instrument::Key>>>>,
     policy: crate::streams::reconnect::stream::ReconnectionBackoffPolicy,
     init_result_tx: oneshot::Sender<Result<(), DataError>>,
-)
-where
+) where
     Exchange: Connector + Send + Sync,
     Instrument: InstrumentData,
     Instrument::Key: Clone + Send + Sync,
@@ -53,6 +43,7 @@ where
     let exchange = Exchange::ID;
     let mut init_result_tx = Some(init_result_tx);
     let mut backoff_ms = policy.backoff_ms_initial;
+    let mut replay_commands: Vec<Command<Instrument::Key>> = Vec::new();
 
     loop {
         // === Connect phase ===
@@ -93,36 +84,20 @@ where
 
         // === Forward buffered events ===
         for event in buffer {
-            if event_tx
-                .send(reconnect::Event::Item(event))
-                .is_err()
-            {
+            if event_tx.send(reconnect::Event::Item(event)).is_err() {
                 return; // event_rx dropped, shut down
             }
         }
 
-        // === Drain any commands buffered while disconnected ===
+        // === Drain commands buffered while disconnected into replay log ===
         while let Ok(command) = command_rx.try_recv() {
-            let ws_messages = transformer.apply_command(command);
-            for msg in ws_messages {
-                let _ = ws_sink_tx.send(msg);
-            }
+            replay_commands.push(command);
         }
 
-        // === Replay dynamic batches (reconnection resubscribe) ===
-        let replay_batches = {
-            let batches = dynamic_batches
-                .lock()
-                .expect("dynamic_batches mutex poisoned");
-            batches.clone()
-        };
-        for batch in replay_batches {
-            let subscribe_command = Command::Subscribe {
-                entries: batch.entries,
-                ws_messages: batch.subscribe_messages,
-            };
-            let ws_messages = transformer.apply_command(subscribe_command);
-            for msg in ws_messages {
+        // === Replay command history on reconnect ===
+        for command in replay_commands.iter().cloned() {
+            let msgs = transformer.apply_command(command);
+            for msg in msgs {
                 let _ = ws_sink_tx.send(msg);
             }
         }
@@ -133,6 +108,8 @@ where
                 cmd = command_rx.recv() => {
                     match cmd {
                         Some(command) => {
+                            replay_commands.push(command.clone());
+
                             let ws_messages = transformer.apply_command(command);
                             for msg in ws_messages {
                                 if ws_sink_tx.send(msg).is_err() {
@@ -233,9 +210,7 @@ where
     // Spawn task to distribute messages to exchange via WsSink
     let (ws_sink_tx, ws_sink_rx) = mpsc::unbounded_channel();
     tokio::spawn(distribute_messages_to_exchange(
-        exchange,
-        ws_sink,
-        ws_sink_rx,
+        exchange, ws_sink, ws_sink_rx,
     ));
 
     // Spawn optional custom application-level pings
