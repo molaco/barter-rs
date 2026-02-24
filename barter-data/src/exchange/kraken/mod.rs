@@ -4,7 +4,7 @@ use self::{
     trade::KrakenTrades,
 };
 use crate::{
-    ExchangeWsStream, NoInitialSnapshots,
+    NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, StreamSelector},
     instrument::InstrumentData,
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
@@ -90,9 +90,6 @@ pub fn kraken_interval(interval: Interval) -> Result<u32, DataError> {
 ///
 /// See docs: <https://docs.kraken.com/websockets/#overview>
 pub const BASE_URL_KRAKEN: &str = "wss://ws.kraken.com/";
-
-/// Convenient type alias for a Kraken [`ExchangeWsStream`] using [`WebSocketSerdeParser`](barter_integration::protocol::websocket::WebSocketSerdeParser).
-pub type KrakenWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
 
 /// [`Kraken`] exchange.
 ///

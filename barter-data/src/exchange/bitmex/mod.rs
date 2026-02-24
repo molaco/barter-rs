@@ -1,5 +1,5 @@
 use crate::{
-    ExchangeWsStream, NoInitialSnapshots,
+    NoInitialSnapshots,
     exchange::{
         Connector, StreamSelector,
         bitmex::{
@@ -61,9 +61,6 @@ pub fn bitmex_interval(interval: Interval) -> Result<&'static str, DataError> {
         ))),
     }
 }
-
-/// Convenient type alias for a Bitmex [`ExchangeWsStream`] using [`WebSocketSerdeParser`](barter_integration::protocol::websocket::WebSocketSerdeParser).
-pub type BitmexWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
 
 /// [`Bitmex`] server base url.
 ///

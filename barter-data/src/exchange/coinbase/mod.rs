@@ -3,7 +3,7 @@ use self::{
     subscription::CoinbaseSubResponse, trade::CoinbaseTrade,
 };
 use crate::{
-    ExchangeWsStream, NoInitialSnapshots,
+    NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, StreamSelector},
     instrument::InstrumentData,
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
@@ -68,9 +68,6 @@ pub fn coinbase_interval(interval: Interval) -> Result<&'static str, DataError> 
 ///
 /// See docs: <https://docs.cloud.coinbase.com/exchange/docs/websocket-overview>
 pub const BASE_URL_COINBASE: &str = "wss://ws-feed.exchange.coinbase.com";
-
-/// Convenient type alias for a Coinbase [`ExchangeWsStream`] using [`WebSocketSerdeParser`](barter_integration::protocol::websocket::WebSocketSerdeParser).
-pub type CoinbaseWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
 
 /// [`Coinbase`] exchange.
 ///

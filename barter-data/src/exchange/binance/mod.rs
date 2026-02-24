@@ -3,7 +3,7 @@ use self::{
     market::BinanceMarket, subscription::BinanceSubResponse, trade::BinanceTrade,
 };
 use crate::{
-    ExchangeWsStream, NoInitialSnapshots,
+    NoInitialSnapshots,
     exchange::{Connector, ExchangeServer, ExchangeSub, StreamSelector},
     instrument::InstrumentData,
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
@@ -76,9 +76,6 @@ pub fn binance_interval(interval: Interval) -> &'static str {
         Interval::Month1 => "1M",
     }
 }
-
-/// Convenient type alias for a Binance [`ExchangeWsStream`] using [`WebSocketSerdeParser`].
-pub type BinanceWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
 
 /// Generic [`Binance<Server>`](Binance) exchange.
 ///

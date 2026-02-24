@@ -25,7 +25,7 @@ use self::{
     validator::BitfinexWebSocketSubValidator,
 };
 use crate::{
-    ExchangeWsStream, NoInitialSnapshots,
+    NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, StreamSelector},
     instrument::InstrumentData,
     subscriber::WebSocketSubscriber,
@@ -93,9 +93,6 @@ pub fn bitfinex_interval(interval: Interval) -> Result<&'static str, DataError> 
 ///
 /// See docs: <https://docs.bitfinex.com/docs/ws-general>
 pub const BASE_URL_BITFINEX: &str = "wss://api-pub.bitfinex.com/ws/2";
-
-/// Convenient type alias for a Bitfinex [`ExchangeWsStream`] using [`WebSocketSerdeParser`](barter_integration::protocol::websocket::WebSocketSerdeParser).
-pub type BitfinexWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
 
 /// [`Bitfinex`] exchange.
 ///

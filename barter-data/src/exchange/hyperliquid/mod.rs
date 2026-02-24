@@ -3,7 +3,7 @@ use self::{
     subscription::HyperliquidSubResponse, trade::HyperliquidTrades,
 };
 use crate::{
-    ExchangeWsStream, NoInitialSnapshots,
+    NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, PingInterval, StreamSelector},
     instrument::InstrumentData,
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
@@ -70,9 +70,6 @@ pub const BASE_URL_HYPERLIQUID: &str = "wss://api.hyperliquid.xyz/ws";
 
 /// [`Hyperliquid`] server [`PingInterval`] duration.
 pub const PING_INTERVAL_HYPERLIQUID: Duration = Duration::from_secs(50);
-
-/// Convenient type alias for a Hyperliquid [`ExchangeWsStream`] using [`WebSocketSerdeParser`](barter_integration::protocol::websocket::WebSocketSerdeParser).
-pub type HyperliquidWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
 
 /// [`Hyperliquid`] exchange.
 ///

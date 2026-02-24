@@ -1,5 +1,5 @@
 use crate::{
-    ExchangeWsStream, NoInitialSnapshots,
+    NoInitialSnapshots,
     exchange::{
         Connector, ExchangeServer, PingInterval, StreamSelector,
         bybit::{channel::BybitChannel, market::BybitMarket, subscription::BybitResponse},
@@ -95,9 +95,6 @@ pub fn bybit_interval(interval: Interval) -> &'static str {
 /// REST API client and kline fetching for Bybit.
 #[cfg(feature = "rest")]
 pub mod rest;
-
-/// Convenient type alias for a Bybit [`ExchangeWsStream`] using [`WebSocketSerdeParser`](barter_integration::protocol::websocket::WebSocketSerdeParser).
-pub type BybitWsStream<Transformer> = ExchangeWsStream<WebSocketSerdeParser, Transformer>;
 
 /// Generic [`Bybit<Server>`](Bybit) exchange.
 ///
