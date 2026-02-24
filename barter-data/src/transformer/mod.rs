@@ -41,4 +41,13 @@ where
     fn ws_sink_tx(&self) -> Option<mpsc::UnboundedSender<WsMessage>> {
         None
     }
+
+    /// Replace the internal shared instrument map with the provided one.
+    ///
+    /// Used during reconnection to ensure the transformer and [`SubscriptionHandle`](crate::streams::handle::SubscriptionHandle)
+    /// share the same `Arc<RwLock<Map>>` instance, so that dynamic subscriptions
+    /// added via the handle are visible to the transformer after reconnection.
+    fn set_shared_instrument_map(&mut self, _map: Arc<RwLock<Map<InstrumentKey>>>) {
+        // Default: no-op. Transformers that support dynamic subscriptions override this.
+    }
 }

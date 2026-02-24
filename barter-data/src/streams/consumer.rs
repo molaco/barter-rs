@@ -77,24 +77,50 @@ where
         "MarketStream with auto reconnect initialising"
     );
 
-    // Use a oneshot channel to capture the SubscriptionHandle from the first init call.
-    // On reconnects, subsequent handles are discarded (stale handle is a Phase 3 TODO).
+    // Use a oneshot to send the handle from the first init to the caller.
+    // On reconnects, init_reconnect() updates the existing handle's shared state.
     let (handle_tx, handle_rx) = tokio::sync::oneshot::channel();
     let handle_tx = Arc::new(Mutex::new(Some(handle_tx)));
+
+    // Shared reference to the handle, populated after first init.
+    // On reconnect, the closure reads this to pass to init_reconnect().
+    let shared_handle: Arc<Mutex<Option<SubscriptionHandle<Instrument::Key>>>> =
+        Arc::new(Mutex::new(None));
 
     let stream = init_reconnecting_stream(move || {
         let subscriptions = subscriptions.clone();
         let handle_tx = handle_tx.clone();
+        let shared_handle = shared_handle.clone();
         async move {
-            let (stream, handle) =
-                Exchange::Stream::init::<Exchange::SnapFetcher>(&subscriptions).await?;
+            // Check if we have an existing handle from a previous init (reconnection path)
+            let existing_handle = shared_handle
+                .lock()
+                .expect("shared_handle mutex poisoned")
+                .clone();
 
-            // Send handle on first init only (oneshot sender is consumed)
-            if let Some(tx) = handle_tx.lock().expect("handle_tx mutex poisoned").take() {
-                let _ = tx.send(handle);
+            if let Some(ref handle) = existing_handle {
+                // Reconnect path: reuse handle, update its shared state
+                let stream = Exchange::Stream::init_reconnect::<Exchange::SnapFetcher>(
+                    &subscriptions,
+                    handle,
+                )
+                .await?;
+                Ok::<_, DataError>(stream)
+            } else {
+                // First init: create fresh handle
+                let (stream, handle) =
+                    Exchange::Stream::init::<Exchange::SnapFetcher>(&subscriptions).await?;
+
+                // Store handle for future reconnects
+                *shared_handle.lock().expect("shared_handle mutex poisoned") = handle.clone();
+
+                // Send handle to caller via oneshot
+                if let Some(tx) = handle_tx.lock().expect("handle_tx mutex poisoned").take() {
+                    let _ = tx.send(handle);
+                }
+
+                Ok::<_, DataError>(stream)
             }
-
-            Ok::<_, DataError>(stream)
         }
     })
     .await?

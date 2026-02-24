@@ -197,6 +197,23 @@ where
         SnapFetcher: SnapshotFetcher<Exchange, Kind>,
         Subscription<Exchange, Instrument, Kind>:
             Identifier<Exchange::Channel> + Identifier<Exchange::Market>;
+
+    /// Re-initialise this [`MarketStream`] after a reconnection, updating the provided
+    /// [`SubscriptionHandle`] to point to the new WebSocket connection.
+    ///
+    /// This ensures that:
+    /// - The handle's `ws_sink_tx` is updated to the new connection
+    /// - The transformer uses the same shared instrument map as the handle
+    /// - Dynamic subscriptions are re-established on the new connection
+    async fn init_reconnect<SnapFetcher>(
+        subscriptions: &[Subscription<Exchange, Instrument, Kind>],
+        handle: &SubscriptionHandle<Instrument::Key>,
+    ) -> Result<Self, DataError>
+    where
+        SnapFetcher: SnapshotFetcher<Exchange, Kind>,
+        Instrument::Key: Clone,
+        Subscription<Exchange, Instrument, Kind>:
+            Identifier<Exchange::Channel> + Identifier<Exchange::Market>;
 }
 
 /// Defines how to fetch market data snapshots for a collection of [`Subscription`]s.
@@ -292,6 +309,101 @@ where
         processed.extend(initial_snapshots.into_iter().map(Ok));
 
         Ok((ExchangeWsStream::new(ws_stream, transformer, processed), handle))
+    }
+
+    async fn init_reconnect<SnapFetcher>(
+        subscriptions: &[Subscription<Exchange, Instrument, Kind>],
+        handle: &SubscriptionHandle<Instrument::Key>,
+    ) -> Result<Self, DataError>
+    where
+        SnapFetcher: SnapshotFetcher<Exchange, Kind>,
+        Instrument::Key: Clone,
+        Subscription<Exchange, Instrument, Kind>:
+            Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+    {
+        // Connect & subscribe (creates fresh WebSocket, instrument_map, ws_sink_tx)
+        let Subscribed {
+            websocket,
+            map: new_instrument_map,
+            buffered_websocket_events,
+        } = Exchange::Subscriber::subscribe(subscriptions).await?;
+
+        // Fetch any required initial MarketEvent snapshots
+        let initial_snapshots = SnapFetcher::fetch_snapshots(subscriptions).await?;
+
+        // Split WebSocket into WsStream & WsSink components
+        let (ws_sink, ws_stream) = websocket.split();
+
+        // Spawn task to distribute messages to the exchange
+        let (ws_sink_tx, ws_sink_rx) = mpsc::unbounded_channel();
+        tokio::spawn(distribute_messages_to_exchange(
+            Exchange::ID,
+            ws_sink,
+            ws_sink_rx,
+        ));
+
+        // Spawn optional custom application-level pings
+        if let Some(ping_interval) = Exchange::ping_interval() {
+            tokio::spawn(schedule_pings_to_exchange(
+                Exchange::ID,
+                ws_sink_tx.clone(),
+                ping_interval,
+            ));
+        }
+
+        // Initialise Transformer with the new instrument map and ws_sink_tx
+        let mut transformer =
+            Transformer::init(new_instrument_map, &initial_snapshots, ws_sink_tx.clone()).await?;
+
+        // Update the handle's ws_sink_tx to the new connection
+        handle.update_ws_sink_tx(ws_sink_tx);
+
+        // Replace the transformer's instrument map with the handle's persistent shared map.
+        // First, update the handle's map with the new entries from subscription validation,
+        // then merge in dynamic entries so they're available to the transformer.
+        {
+            // Copy new map entries into the handle's shared map
+            if let Some(new_map_arc) = transformer.shared_instrument_map() {
+                let new_entries: Vec<_> = {
+                    let new_map = new_map_arc
+                        .read()
+                        .expect("new instrument_map RwLock poisoned");
+                    new_map.0.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+                };
+
+                let mut shared_map = handle
+                    .instrument_map()
+                    .write()
+                    .expect("handle instrument_map RwLock poisoned");
+                shared_map.0.clear();
+                for (id, key) in new_entries {
+                    shared_map.insert(id, key);
+                }
+            }
+
+            // Merge dynamic entries into the shared map
+            handle.merge_dynamic_entries_into_map();
+        }
+
+        // Make the transformer use the handle's persistent shared map
+        transformer.set_shared_instrument_map(handle.instrument_map().clone());
+
+        // Re-send subscribe messages for dynamic subscriptions on the new connection
+        if let Err(error) = handle.replay_dynamic_subscriptions() {
+            warn!(
+                %error,
+                "failed to replay dynamic subscriptions after reconnection"
+            );
+        }
+
+        // Process buffered events
+        let mut processed = process_buffered_events::<Parser, Transformer>(
+            &mut transformer,
+            buffered_websocket_events,
+        );
+        processed.extend(initial_snapshots.into_iter().map(Ok));
+
+        Ok(ExchangeWsStream::new(ws_stream, transformer, processed))
     }
 }
 

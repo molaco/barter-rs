@@ -56,6 +56,10 @@ where
     fn ws_sink_tx(&self) -> Option<mpsc::UnboundedSender<WsMessage>> {
         Some(self.ws_sink_tx.clone())
     }
+
+    fn set_shared_instrument_map(&mut self, map: Arc<RwLock<Map<InstrumentKey>>>) {
+        self.instrument_map = map;
+    }
 }
 
 impl<Exchange, InstrumentKey, Kind, Input> Transformer
