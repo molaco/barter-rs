@@ -46,29 +46,15 @@ where
         })
     }
 
-    fn apply_command(
-        &mut self,
-        command: crate::streams::handle::Command<InstrumentKey>,
-    ) -> Vec<WsMessage> {
-        match command {
-            crate::streams::handle::Command::Subscribe {
-                entries,
-                ws_messages,
-            } => {
-                for (id, key) in entries {
-                    self.instrument_map.insert(id, key);
-                }
-                ws_messages
-            }
-            crate::streams::handle::Command::Unsubscribe {
-                subscription_ids,
-                ws_messages,
-            } => {
-                for id in &subscription_ids {
-                    self.instrument_map.remove(id);
-                }
-                ws_messages
-            }
+    fn insert_map_entries(&mut self, entries: Vec<(SubscriptionId, InstrumentKey)>) {
+        for (id, key) in entries {
+            self.instrument_map.insert(id, key);
+        }
+    }
+
+    fn remove_map_entries(&mut self, subscription_ids: &[SubscriptionId]) {
+        for id in subscription_ids {
+            self.instrument_map.remove(id);
         }
     }
 }

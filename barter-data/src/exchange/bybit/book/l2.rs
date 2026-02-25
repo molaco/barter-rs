@@ -15,7 +15,7 @@ use crate::{
     transformer::ExchangeTransformer,
 };
 use async_trait::async_trait;
-use barter_integration::{Transformer, protocol::websocket::WsMessage};
+use barter_integration::{Transformer, protocol::websocket::WsMessage, subscription::SubscriptionId};
 use derive_more::Constructor;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;
@@ -53,6 +53,19 @@ where
             .collect();
 
         Ok(Self { instrument_map })
+    }
+
+    fn insert_map_entries(&mut self, entries: Vec<(SubscriptionId, InstrumentKey)>) {
+        for (id, key) in entries {
+            self.instrument_map
+                .insert(id, BybitOrderBookL2Meta::new(key, None));
+        }
+    }
+
+    fn remove_map_entries(&mut self, subscription_ids: &[SubscriptionId]) {
+        for id in subscription_ids {
+            self.instrument_map.remove(id);
+        }
     }
 }
 

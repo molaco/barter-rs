@@ -34,6 +34,18 @@ pub enum DataError {
         sub_kind: SubKind,
     },
 
+    #[error("no connection for {exchange} {sub_kind}")]
+    NoConnection {
+        exchange: ExchangeId,
+        sub_kind: SubKind,
+    },
+
+    #[error("handle type mismatch for {exchange} {sub_kind} (downcast failed)")]
+    HandleTypeMismatch {
+        exchange: ExchangeId,
+        sub_kind: SubKind,
+    },
+
     #[error(
         "\
         InvalidSequence: first_update_id {first_update_id} does not follow on from the \

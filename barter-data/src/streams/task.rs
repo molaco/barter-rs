@@ -2,7 +2,7 @@ use crate::{
     Identifier, SnapshotFetcher, distribute_messages_to_exchange,
     error::DataError,
     event::MarketEvent,
-    exchange::Connector,
+    exchange::{Connector, subscription::ExchangeSub},
     instrument::InstrumentData,
     process_buffered_events, schedule_pings_to_exchange,
     streams::{consumer::MarketStreamResult, handle::Command, reconnect},
@@ -10,13 +10,80 @@ use crate::{
     subscription::{Subscription, SubscriptionKind},
     transformer::ExchangeTransformer,
 };
-use barter_integration::protocol::{
-    StreamParser,
-    websocket::{WsError, WsMessage},
+use barter_integration::{
+    protocol::{
+        StreamParser,
+        websocket::{WsError, WsMessage},
+    },
+    subscription::SubscriptionId,
 };
+use fnv::FnvHashMap;
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{info, warn};
+
+/// Tracks net-active dynamic subscriptions for reconnect replay.
+/// Replaces the unbounded `replay_commands: Vec<Command>` log.
+struct ActiveSubs<Channel, Market, InstrumentKey> {
+    map: FnvHashMap<SubscriptionId, (ExchangeSub<Channel, Market>, InstrumentKey)>,
+}
+
+impl<Channel, Market, InstrumentKey> ActiveSubs<Channel, Market, InstrumentKey>
+where
+    Channel: Clone,
+    Market: Clone,
+    InstrumentKey: Clone,
+{
+    fn new() -> Self {
+        Self {
+            map: FnvHashMap::default(),
+        }
+    }
+
+    /// Insert entries. Returns the ExchangeSubs for Connector::requests().
+    fn subscribe(
+        &mut self,
+        entries: Vec<(SubscriptionId, ExchangeSub<Channel, Market>, InstrumentKey)>,
+    ) -> Vec<ExchangeSub<Channel, Market>> {
+        entries
+            .into_iter()
+            .map(|(id, exchange_sub, key)| {
+                let sub = exchange_sub.clone();
+                self.map.insert(id, (exchange_sub, key));
+                sub
+            })
+            .collect()
+    }
+
+    /// Remove entries. Returns the ExchangeSubs that were removed,
+    /// for Connector::unsubscribe_requests().
+    fn unsubscribe(
+        &mut self,
+        subscription_ids: &[SubscriptionId],
+    ) -> Vec<ExchangeSub<Channel, Market>> {
+        subscription_ids
+            .iter()
+            .filter_map(|id| self.map.remove(id).map(|(sub, _)| sub))
+            .collect()
+    }
+
+    /// All ExchangeSubs for reconnect replay via Connector::requests().
+    fn all_exchange_subs(&self) -> Vec<ExchangeSub<Channel, Market>> {
+        self.map.values().map(|(sub, _)| sub.clone()).collect()
+    }
+
+    /// All (SubscriptionId, InstrumentKey) pairs for rebuilding the transformer map on reconnect.
+    fn instrument_entries(&self) -> Vec<(SubscriptionId, InstrumentKey)> {
+        self.map
+            .iter()
+            .map(|(id, (_, key))| (id.clone(), key.clone()))
+            .collect()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+}
 
 /// Spawned connection task that owns the WebSocket stream and transformer.
 ///
@@ -24,7 +91,7 @@ use tracing::{info, warn};
 /// Inner loop uses `tokio::select!` to multiplex command processing and frame reading.
 pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Parser, SnapFetcher>(
     subscriptions: Vec<Subscription<Exchange, Instrument, Kind>>,
-    mut command_rx: mpsc::UnboundedReceiver<Command<Instrument::Key>>,
+    mut command_rx: mpsc::UnboundedReceiver<Command<Exchange::Channel, Exchange::Market, Instrument::Key>>,
     event_tx: mpsc::UnboundedSender<MarketStreamResult<Instrument::Key, Kind::Event>>,
     policy: crate::streams::reconnect::stream::ReconnectionBackoffPolicy,
     init_result_tx: oneshot::Sender<Result<(), DataError>>,
@@ -43,7 +110,7 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
     let exchange = Exchange::ID;
     let mut init_result_tx = Some(init_result_tx);
     let mut backoff_ms = policy.backoff_ms_initial;
-    let mut replay_commands: Vec<Command<Instrument::Key>> = Vec::new();
+    let mut active_subs = ActiveSubs::new();
 
     loop {
         // === Connect phase ===
@@ -89,31 +156,70 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
             }
         }
 
-        // === Drain commands buffered while disconnected into replay log ===
+        // === Drain commands buffered while disconnected ===
         while let Ok(command) = command_rx.try_recv() {
-            replay_commands.push(command);
+            match command {
+                Command::Subscribe { entries } => {
+                    active_subs.subscribe(entries);
+                }
+                Command::Unsubscribe { subscription_ids } => {
+                    active_subs.unsubscribe(&subscription_ids);
+                }
+            }
         }
 
-        // === Replay command history on reconnect ===
-        for command in replay_commands.iter().cloned() {
-            let msgs = transformer.apply_command(command);
-            for msg in msgs {
+        // === Replay dynamic subscriptions on reconnect ===
+        if !active_subs.is_empty() {
+            // Rebuild transformer map entries
+            transformer.insert_map_entries(active_subs.instrument_entries());
+
+            // Re-subscribe via Connector::requests()
+            let ws_msgs = Exchange::requests(active_subs.all_exchange_subs());
+            for msg in ws_msgs {
                 let _ = ws_sink_tx.send(msg);
             }
         }
 
         // === Inner select! loop ===
-        loop {
+        'inner: loop {
             tokio::select! {
                 cmd = command_rx.recv() => {
                     match cmd {
                         Some(command) => {
-                            replay_commands.push(command.clone());
+                            match command {
+                                Command::Subscribe { entries } => {
+                                    // 1. Insert into active_subs (returns ExchangeSubs)
+                                    let exchange_subs = active_subs.subscribe(entries.clone());
 
-                            let ws_messages = transformer.apply_command(command);
-                            for msg in ws_messages {
-                                if ws_sink_tx.send(msg).is_err() {
-                                    break; // ws_sink closed, reconnect
+                                    // 2. Update transformer map
+                                    let map_entries: Vec<_> = entries
+                                        .into_iter()
+                                        .map(|(id, _, key)| (id, key))
+                                        .collect();
+                                    transformer.insert_map_entries(map_entries);
+
+                                    // 3. Generate and send WS messages
+                                    let ws_msgs = Exchange::requests(exchange_subs);
+                                    for msg in ws_msgs {
+                                        if ws_sink_tx.send(msg).is_err() {
+                                            break 'inner; // ws_sink closed -> reconnect
+                                        }
+                                    }
+                                }
+                                Command::Unsubscribe { subscription_ids } => {
+                                    // 1. Remove from active_subs (returns ExchangeSubs)
+                                    let exchange_subs = active_subs.unsubscribe(&subscription_ids);
+
+                                    // 2. Update transformer map
+                                    transformer.remove_map_entries(&subscription_ids);
+
+                                    // 3. Generate and send unsubscribe WS messages
+                                    let ws_msgs = Exchange::unsubscribe_requests(exchange_subs);
+                                    for msg in ws_msgs {
+                                        if ws_sink_tx.send(msg).is_err() {
+                                            break 'inner;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -239,4 +345,102 @@ where
     all_events.extend(initial_snapshots.into_iter().map(Ok));
 
     Ok((ws_stream, transformer, ws_sink_tx, all_events))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::exchange::subscription::ExchangeSub;
+
+    fn test_sub(channel: &str, market: &str) -> ExchangeSub<String, String> {
+        ExchangeSub {
+            channel: channel.to_string(),
+            market: market.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_active_subs_subscribe_insert() {
+        let mut subs = ActiveSubs::<String, String, String>::new();
+
+        let entries = vec![
+            (SubscriptionId::from("c1|m1"), test_sub("c1", "m1"), "BTC".to_string()),
+            (SubscriptionId::from("c2|m2"), test_sub("c2", "m2"), "ETH".to_string()),
+        ];
+
+        let exchange_subs = subs.subscribe(entries);
+        assert_eq!(exchange_subs.len(), 2);
+        assert_eq!(subs.map.len(), 2);
+    }
+
+    #[test]
+    fn test_active_subs_unsubscribe_remove() {
+        let mut subs = ActiveSubs::<String, String, String>::new();
+
+        let entries = vec![
+            (SubscriptionId::from("c1|m1"), test_sub("c1", "m1"), "BTC".to_string()),
+        ];
+        subs.subscribe(entries);
+
+        let removed = subs.unsubscribe(&[SubscriptionId::from("c1|m1")]);
+        assert_eq!(removed.len(), 1);
+        assert!(subs.is_empty());
+    }
+
+    #[test]
+    fn test_active_subs_net_zero() {
+        let mut subs = ActiveSubs::<String, String, String>::new();
+
+        subs.subscribe(vec![
+            (SubscriptionId::from("c1|m1"), test_sub("c1", "m1"), "BTC".to_string()),
+        ]);
+        subs.unsubscribe(&[SubscriptionId::from("c1|m1")]);
+
+        assert!(subs.is_empty());
+        assert!(subs.all_exchange_subs().is_empty());
+        assert!(subs.instrument_entries().is_empty());
+    }
+
+    #[test]
+    fn test_active_subs_partial_unsubscribe() {
+        let mut subs = ActiveSubs::<String, String, String>::new();
+
+        subs.subscribe(vec![
+            (SubscriptionId::from("c1|m1"), test_sub("c1", "m1"), "BTC".to_string()),
+            (SubscriptionId::from("c2|m2"), test_sub("c2", "m2"), "ETH".to_string()),
+        ]);
+        subs.unsubscribe(&[SubscriptionId::from("c1|m1")]);
+
+        assert_eq!(subs.map.len(), 1);
+        let all_subs = subs.all_exchange_subs();
+        assert_eq!(all_subs.len(), 1);
+        assert_eq!(all_subs[0].channel, "c2");
+        assert_eq!(all_subs[0].market, "m2");
+    }
+
+    #[test]
+    fn test_active_subs_instrument_entries() {
+        let mut subs = ActiveSubs::<String, String, String>::new();
+
+        subs.subscribe(vec![
+            (SubscriptionId::from("c1|m1"), test_sub("c1", "m1"), "BTC".to_string()),
+            (SubscriptionId::from("c2|m2"), test_sub("c2", "m2"), "ETH".to_string()),
+        ]);
+
+        let entries = subs.instrument_entries();
+        assert_eq!(entries.len(), 2);
+
+        // Both entries should be present (order not guaranteed from HashMap)
+        let keys: Vec<_> = entries.iter().map(|(_, key)| key.as_str()).collect();
+        assert!(keys.contains(&"BTC"));
+        assert!(keys.contains(&"ETH"));
+    }
+
+    #[test]
+    fn test_active_subs_unsubscribe_nonexistent() {
+        let mut subs = ActiveSubs::<String, String, String>::new();
+
+        let removed = subs.unsubscribe(&[SubscriptionId::from("nonexistent")]);
+        assert!(removed.is_empty());
+    }
 }

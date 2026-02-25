@@ -42,8 +42,8 @@ pub async fn init_indexed_multi_exchange_market_stream(
     let subscriptions = generate_indexed_market_data_subscription_batches(instruments, sub_kinds);
 
     // Initialise an indexed MarketStream via DynamicStreams
-    let stream = DynamicStreams::init(subscriptions)
-        .await?
+    let (streams, _handles) = DynamicStreams::init(subscriptions).await?;
+    let stream = streams
         .select_all::<MarketStreamResult<InstrumentIndex, DataKind>>()
         .with_error_handler(|error| warn!(?error, "MarketStream generated error"));
 

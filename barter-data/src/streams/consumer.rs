@@ -5,7 +5,7 @@ use crate::{
     exchange::StreamSelector,
     instrument::InstrumentData,
     streams::{
-        handle::SubscriptionHandle, reconnect, reconnect::stream::ReconnectionBackoffPolicy,
+        handle::TypedHandle, reconnect, reconnect::stream::ReconnectionBackoffPolicy,
     },
     subscription::{Subscription, SubscriptionKind, display_subscriptions_without_exchange},
 };
@@ -39,7 +39,7 @@ pub type MarketStreamEvent<InstrumentKey, Kind> =
 /// The provided [`ReconnectionBackoffPolicy`] dictates how the exponential backoff scales
 /// between reconnections.
 ///
-/// Returns an `mpsc::UnboundedReceiver` of market events and a [`SubscriptionHandle`] for
+/// Returns an `mpsc::UnboundedReceiver` of market events and a [`TypedHandle`] for
 /// dynamic subscribe/unsubscribe on the live connection.
 pub async fn init_market_stream<Exchange, Instrument, Kind>(
     policy: ReconnectionBackoffPolicy,
@@ -47,7 +47,7 @@ pub async fn init_market_stream<Exchange, Instrument, Kind>(
 ) -> Result<
     (
         mpsc::UnboundedReceiver<MarketStreamResult<Instrument::Key, Kind::Event>>,
-        SubscriptionHandle<Instrument::Key>,
+        TypedHandle<Exchange, Instrument::Key, Kind>,
     ),
     DataError,
 >
@@ -59,6 +59,10 @@ where
     Kind::Event: Send + 'static,
     Subscription<Exchange, Instrument, Kind>:
         Identifier<Exchange::Channel> + Identifier<Exchange::Market> + 'static,
+    // 'static required here (not on Connector trait) because tokio::spawn
+    // captures Command<Channel, Market, IK> via the mpsc receiver.
+    Exchange::Channel: 'static,
+    Exchange::Market: 'static,
 {
     let exchange = Exchange::ID;
 
@@ -77,7 +81,7 @@ where
 
     let (command_tx, command_rx) = mpsc::unbounded_channel();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
-    let handle = SubscriptionHandle::new(command_tx);
+    let handle = TypedHandle::new(command_tx);
 
     let (init_tx, init_rx) = tokio::sync::oneshot::channel();
 

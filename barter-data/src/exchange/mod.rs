@@ -94,7 +94,7 @@ where
     /// ### Examples
     /// - [`BinanceChannel("@depth@100ms")`](binance::channel::BinanceChannel)
     /// - [`KrakenChannel("trade")`](kraken::channel::KrakenChannel)
-    type Channel: AsRef<str>;
+    type Channel: AsRef<str> + Clone + Send;
 
     /// Type that defines how to translate a Barter
     /// `Subscription` into an exchange specific market that
@@ -103,7 +103,7 @@ where
     /// ### Examples
     /// - [`BinanceMarket("btcusdt")`](binance::market::BinanceMarket)
     /// - [`KrakenMarket("BTC/USDT")`](kraken::market::KrakenMarket)
-    type Market: AsRef<str>;
+    type Market: AsRef<str> + Clone + Send;
 
     /// [`Subscriber`] type that establishes a connection with the exchange server, and actions
     /// `Subscription`s over the socket.

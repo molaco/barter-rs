@@ -109,7 +109,7 @@ where
 
                 let book_meta = BinanceOrderBookL2Meta::new(
                     instrument_key,
-                    BinanceSpotOrderBookL2Sequencer::new(snapshot.sequence()),
+                    Some(BinanceSpotOrderBookL2Sequencer::new(snapshot.sequence())),
                 );
 
                 Ok((sub_id, book_meta))
@@ -117,6 +117,19 @@ where
             .collect::<Result<Map<_>, _>>()?;
 
         Ok(Self { instrument_map })
+    }
+
+    fn insert_map_entries(&mut self, entries: Vec<(SubscriptionId, InstrumentKey)>) {
+        for (id, key) in entries {
+            self.instrument_map
+                .insert(id, BinanceOrderBookL2Meta::new(key, None));
+        }
+    }
+
+    fn remove_map_entries(&mut self, subscription_ids: &[SubscriptionId]) {
+        for id in subscription_ids {
+            self.instrument_map.remove(id);
+        }
     }
 }
 
@@ -142,8 +155,13 @@ where
             Err(unidentifiable) => return vec![Err(DataError::from(unidentifiable))],
         };
 
+        // Guard: sequencer not yet initialized (dynamic sub without snapshot)
+        let Some(sequencer) = &mut instrument.sequencer else {
+            return vec![];
+        };
+
         // Drop any outdated updates & validate sequence for relevant updates
-        let valid_update = match instrument.sequencer.validate_sequence(input) {
+        let valid_update = match sequencer.validate_sequence(input) {
             Ok(Some(valid_update)) => valid_update,
             Ok(None) => return vec![],
             Err(error) => return vec![Err(error)],

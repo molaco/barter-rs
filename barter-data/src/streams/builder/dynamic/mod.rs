@@ -2,6 +2,7 @@ use crate::{
     Identifier,
     error::DataError,
     exchange::{
+        Connector,
         binance::{futures::BinanceFuturesUsd, market::BinanceMarket, spot::BinanceSpot},
         bitfinex::{Bitfinex, market::BitfinexMarket},
         bitmex::{Bitmex, market::BitmexMarket},
@@ -21,11 +22,11 @@ use crate::{
     instrument::InstrumentData,
     streams::{
         consumer::{MarketStreamResult, STREAM_RECONNECTION_POLICY, init_market_stream},
-        handle::SubscriptionHandle,
+        handle::TypedHandle,
         reconnect::stream::ReconnectingStream,
     },
     subscription::{
-        SubKind, Subscription,
+        SubKind, SubscriptionKind, Subscription,
         book::{OrderBookEvent, OrderBookL1, OrderBooksL1, OrderBooksL2},
         candle::{Candle, Candles},
         liquidation::{Liquidation, Liquidations},
@@ -43,6 +44,7 @@ use futures::{Stream, stream::SelectAll};
 use futures_util::{StreamExt, future::try_join_all};
 use itertools::Itertools;
 use std::{
+    any::Any,
     fmt::{Debug, Display},
     sync::{Arc, Mutex},
 };
@@ -50,6 +52,100 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use vecmap::VecMap;
 
 pub mod indexed;
+
+/// Key for looking up type-erased handles in DynamicStreamHandles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct HandleKey {
+    exchange: ExchangeId,
+    sub_kind: SubKind,
+}
+
+/// Holds type-erased `TypedHandle`s for runtime subscribe/unsubscribe.
+///
+/// Each handle is keyed by `(ExchangeId, SubKind)` and stored as `Box<dyn Any>`.
+/// Use `subscribe()` and `unsubscribe()` with concrete exchange/kind types to
+/// downcast and forward commands.
+#[derive(Clone)]
+pub struct DynamicStreamHandles<InstrumentKey> {
+    typed_handles: Arc<FnvHashMap<HandleKey, Box<dyn Any + Send + Sync>>>,
+    _phantom: std::marker::PhantomData<InstrumentKey>,
+}
+
+impl<InstrumentKey> std::fmt::Debug for DynamicStreamHandles<InstrumentKey> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DynamicStreamHandles")
+            .field("num_handles", &self.typed_handles.len())
+            .finish()
+    }
+}
+
+impl<InstrumentKey: Clone + Send + Sync + 'static> DynamicStreamHandles<InstrumentKey> {
+    /// Subscribe to new instruments on a live connection.
+    ///
+    /// Derives the `SubKind` key from the first subscription's `kind` field.
+    pub fn subscribe<Exchange, Instrument, Kind>(
+        &self,
+        subscriptions: Vec<Subscription<Exchange, Instrument, Kind>>,
+    ) -> Result<Vec<barter_integration::subscription::SubscriptionId>, DataError>
+    where
+        Exchange: Connector + 'static,
+        Kind: SubscriptionKind + Into<SubKind> + Clone + 'static,
+        Instrument: InstrumentData<Key = InstrumentKey> + 'static,
+        Subscription<Exchange, Instrument, Kind>:
+            crate::Identifier<Exchange::Channel> + crate::Identifier<Exchange::Market>,
+    {
+        let sub_kind: SubKind = subscriptions
+            .first()
+            .map(|s| s.kind.clone().into())
+            .ok_or(DataError::SubscriptionsEmpty)?;
+        let key = HandleKey {
+            exchange: Exchange::ID,
+            sub_kind,
+        };
+        let handle = self
+            .typed_handles
+            .get(&key)
+            .ok_or(DataError::NoConnection {
+                exchange: Exchange::ID,
+                sub_kind,
+            })?
+            .downcast_ref::<TypedHandle<Exchange, InstrumentKey, Kind>>()
+            .ok_or(DataError::HandleTypeMismatch {
+                exchange: Exchange::ID,
+                sub_kind,
+            })?;
+        handle.subscribe(subscriptions).map_err(DataError::from)
+    }
+
+    /// Unsubscribe from instruments on a live connection.
+    pub fn unsubscribe<Exchange, Kind>(
+        &self,
+        sub_kind: SubKind,
+        subscription_ids: Vec<barter_integration::subscription::SubscriptionId>,
+    ) -> Result<(), DataError>
+    where
+        Exchange: Connector + 'static,
+        Kind: SubscriptionKind + 'static,
+    {
+        let key = HandleKey {
+            exchange: Exchange::ID,
+            sub_kind,
+        };
+        let handle = self
+            .typed_handles
+            .get(&key)
+            .ok_or(DataError::NoConnection {
+                exchange: Exchange::ID,
+                sub_kind,
+            })?
+            .downcast_ref::<TypedHandle<Exchange, InstrumentKey, Kind>>()
+            .ok_or(DataError::HandleTypeMismatch {
+                exchange: Exchange::ID,
+                sub_kind,
+            })?;
+        handle.unsubscribe(subscription_ids).map_err(DataError::from)
+    }
+}
 
 #[derive(Debug)]
 pub struct DynamicStreams<InstrumentKey> {
@@ -65,7 +161,6 @@ pub struct DynamicStreams<InstrumentKey> {
         VecMap<ExchangeId, UnboundedReceiverStream<MarketStreamResult<InstrumentKey, Liquidation>>>,
     pub candles:
         VecMap<ExchangeId, UnboundedReceiverStream<MarketStreamResult<InstrumentKey, Candle>>>,
-    pub handles: Vec<(ExchangeId, SubscriptionHandle<InstrumentKey>)>,
 }
 
 impl<InstrumentKey> DynamicStreams<InstrumentKey> {
@@ -80,7 +175,7 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
     /// comprehensive example of how to use this market data stream initialiser.
     pub async fn init<SubBatchIter, SubIter, Sub, Instrument>(
         subscription_batches: SubBatchIter,
-    ) -> Result<Self, DataError>
+    ) -> Result<(Self, DynamicStreamHandles<InstrumentKey>), DataError>
     where
         SubBatchIter: IntoIterator<Item = SubIter>,
         SubIter: IntoIterator<Item = Sub>,
@@ -136,9 +231,9 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         // Generate required Channels from Subscription batches
         let channels = Channels::try_from(&batches)?;
 
-        // Shared collector for SubscriptionHandles from all init_market_stream calls
-        let collected_handles: Arc<Mutex<Vec<(ExchangeId, SubscriptionHandle<InstrumentKey>)>>> =
-            Arc::new(Mutex::new(Vec::new()));
+        // Shared collector for TypedHandles (type-erased) from all init_market_stream calls
+        let collected_handles: Arc<Mutex<FnvHashMap<HandleKey, Box<dyn Any + Send + Sync>>>> =
+            Arc::new(Mutex::new(FnvHashMap::default()));
 
         let futures = batches.into_iter().map(|mut batch| {
             batch.sort_unstable_by_key(|sub| (sub.exchange, sub.kind));
@@ -173,7 +268,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -201,7 +299,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.l1s.get(&exchange).unwrap().clone(),
@@ -229,7 +330,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.l2s.get(&exchange).unwrap().clone(),
@@ -257,7 +361,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -285,7 +392,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.l1s.get(&exchange).unwrap().clone(),
@@ -313,7 +423,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.l2s.get(&exchange).unwrap().clone(),
@@ -341,7 +454,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.liquidations
@@ -372,7 +488,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -400,7 +519,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -422,7 +544,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                     collected_handles
                                         .lock()
                                         .expect("handles mutex poisoned")
-                                        .push((exchange, handle));
+                                        .insert(
+                                            HandleKey { exchange, sub_kind },
+                                            Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                        );
                                     tokio::spawn(
                                         UnboundedReceiverStream::new(event_rx)
                                             .forward_to(txs.trades.get(&exchange).unwrap().clone()),
@@ -447,7 +572,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -475,7 +603,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.l1s.get(&exchange).unwrap().clone(),
@@ -503,7 +634,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.l2s.get(&exchange).unwrap().clone(),
@@ -531,7 +665,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -559,7 +696,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.l1s.get(&exchange).unwrap().clone(),
@@ -587,7 +727,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.l2s.get(&exchange).unwrap().clone(),
@@ -615,7 +758,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -643,7 +789,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -671,7 +820,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -699,7 +851,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -727,7 +882,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -755,7 +913,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -783,7 +944,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -811,7 +975,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -839,7 +1006,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.trades.get(&exchange).unwrap().clone(),
@@ -861,7 +1031,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                     collected_handles
                                         .lock()
                                         .expect("handles mutex poisoned")
-                                        .push((exchange, handle));
+                                        .insert(
+                                            HandleKey { exchange, sub_kind },
+                                            Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                        );
                                     tokio::spawn(
                                         UnboundedReceiverStream::new(event_rx)
                                             .forward_to(txs.trades.get(&exchange).unwrap().clone()),
@@ -880,7 +1053,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                     collected_handles
                                         .lock()
                                         .expect("handles mutex poisoned")
-                                        .push((exchange, handle));
+                                        .insert(
+                                            HandleKey { exchange, sub_kind },
+                                            Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                        );
                                     tokio::spawn(
                                         UnboundedReceiverStream::new(event_rx)
                                             .forward_to(txs.l1s.get(&exchange).unwrap().clone()),
@@ -899,7 +1075,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                     collected_handles
                                         .lock()
                                         .expect("handles mutex poisoned")
-                                        .push((exchange, handle));
+                                        .insert(
+                                            HandleKey { exchange, sub_kind },
+                                            Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                        );
                                     tokio::spawn(
                                         UnboundedReceiverStream::new(event_rx)
                                             .forward_to(txs.trades.get(&exchange).unwrap().clone()),
@@ -924,7 +1103,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -952,7 +1134,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -980,7 +1165,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1008,7 +1196,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1036,7 +1227,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1064,7 +1258,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1092,7 +1289,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1120,7 +1320,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1148,7 +1351,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1176,7 +1382,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1204,7 +1413,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1232,7 +1444,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1260,7 +1475,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1288,7 +1506,10 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                             collected_handles
                                                 .lock()
                                                 .expect("handles mutex poisoned")
-                                                .push((exchange, handle));
+                                                .insert(
+                                                    HandleKey { exchange, sub_kind },
+                                                    Box::new(handle) as Box<dyn Any + Send + Sync>,
+                                                );
                                             tokio::spawn(
                                                 UnboundedReceiverStream::new(event_rx).forward_to(
                                                     txs.candles.get(&exchange).unwrap().clone(),
@@ -1309,46 +1530,55 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
 
         try_join_all(futures).await?;
 
-        // Extract collected SubscriptionHandles
-        let handles = collected_handles
-            .lock()
-            .expect("handles mutex poisoned")
-            .drain(..)
-            .collect::<Vec<_>>();
+        // Extract collected TypedHandles into an Arc'd map
+        let typed_handles = Arc::new(
+            collected_handles
+                .lock()
+                .expect("handles mutex poisoned")
+                .drain()
+                .collect::<FnvHashMap<_, _>>(),
+        );
 
-        Ok(Self {
-            trades: channels
-                .rxs
-                .trades
-                .into_iter()
-                .map(|(exchange, rx)| (exchange, rx.into_stream()))
-                .collect(),
-            l1s: channels
-                .rxs
-                .l1s
-                .into_iter()
-                .map(|(exchange, rx)| (exchange, rx.into_stream()))
-                .collect(),
-            l2s: channels
-                .rxs
-                .l2s
-                .into_iter()
-                .map(|(exchange, rx)| (exchange, rx.into_stream()))
-                .collect(),
-            liquidations: channels
-                .rxs
-                .liquidations
-                .into_iter()
-                .map(|(exchange, rx)| (exchange, rx.into_stream()))
-                .collect(),
-            candles: channels
-                .rxs
-                .candles
-                .into_iter()
-                .map(|(exchange, rx)| (exchange, rx.into_stream()))
-                .collect(),
+        let handles = DynamicStreamHandles {
+            typed_handles,
+            _phantom: std::marker::PhantomData,
+        };
+
+        Ok((
+            Self {
+                trades: channels
+                    .rxs
+                    .trades
+                    .into_iter()
+                    .map(|(exchange, rx)| (exchange, rx.into_stream()))
+                    .collect(),
+                l1s: channels
+                    .rxs
+                    .l1s
+                    .into_iter()
+                    .map(|(exchange, rx)| (exchange, rx.into_stream()))
+                    .collect(),
+                l2s: channels
+                    .rxs
+                    .l2s
+                    .into_iter()
+                    .map(|(exchange, rx)| (exchange, rx.into_stream()))
+                    .collect(),
+                liquidations: channels
+                    .rxs
+                    .liquidations
+                    .into_iter()
+                    .map(|(exchange, rx)| (exchange, rx.into_stream()))
+                    .collect(),
+                candles: channels
+                    .rxs
+                    .candles
+                    .into_iter()
+                    .map(|(exchange, rx)| (exchange, rx.into_stream()))
+                    .collect(),
+            },
             handles,
-        })
+        ))
     }
 
     /// Remove an exchange [`PublicTrade`] `Stream` from the [`DynamicStreams`] collection.
@@ -1465,7 +1695,6 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
             l2s,
             liquidations,
             candles,
-            handles: _,
         } = self;
 
         let trades = trades

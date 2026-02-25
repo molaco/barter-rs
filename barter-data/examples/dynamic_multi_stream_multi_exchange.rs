@@ -31,7 +31,7 @@ async fn main() {
     //   will be further split under the hood for compile-time reasons.
 
     // Initialise market reconnect::Event streams for various ExchangeIds and SubscriptionKinds
-    let streams = DynamicStreams::init([
+    let (streams, _handles) = DynamicStreams::init([
         // Batch notes:
         // Since batch contains 1 ExchangeId and 1 SubscriptionKind, so only 1 (1x1) WebSockets
         // will be spawned for this batch.
@@ -65,7 +65,9 @@ async fn main() {
 
     // Select all streams, mapping each SubscriptionKind `MarketStreamResult<T>` into a unified
     // `Output` (eg/ `MarketStreamResult<_, DataKind>`), where MarketStreamResult<T>: Into<Output>
-    // Notes on other DynamicStreams methods:
+    // Notes:
+    //  - DynamicStreams::init returns (streams, handles)
+    //  - `handles` can be used for runtime subscribe/unsubscribe (see DynamicStreamHandles)
     //  - Use `streams.select_trades(ExchangeId)` to return a stream of trades from a given exchange.
     //  - Use `streams.select_<T>(ExchangeId)` to return a stream of T from a given exchange.
     //  - Use `streams.select_all_trades(ExchangeId)` to return a stream of trades from all exchanges

@@ -6,7 +6,6 @@ use crate::{
     instrument::InstrumentData,
     streams::{
         consumer::{MarketStreamResult, STREAM_RECONNECTION_POLICY, init_market_stream},
-        handle::SubscriptionHandle,
         reconnect::stream::ReconnectingStream,
     },
     subscription::{Subscription, SubscriptionKind},
@@ -14,6 +13,7 @@ use crate::{
 use barter_instrument::exchange::ExchangeId;
 use barter_integration::{Validator, channel::Channel};
 use std::{
+    any::Any,
     collections::HashMap,
     fmt::{Debug, Display},
     future::Future,
@@ -44,7 +44,7 @@ where
 {
     pub channels: HashMap<ExchangeId, Channel<MarketStreamResult<InstrumentKey, Kind::Event>>>,
     pub futures: Vec<SubscribeFuture>,
-    pub handles: Arc<Mutex<Vec<(ExchangeId, SubscriptionHandle<InstrumentKey>)>>>,
+    pub handles: Arc<Mutex<Vec<(ExchangeId, Box<dyn Any + Send + Sync>)>>>,
 }
 
 impl<InstrumentKey, Kind> Debug for StreamBuilder<InstrumentKey, Kind>
@@ -116,11 +116,11 @@ where
             let (event_rx, handle) =
                 init_market_stream(STREAM_RECONNECTION_POLICY, subscriptions).await?;
 
-            // Store SubscriptionHandle
+            // Store TypedHandle (type-erased)
             handles
                 .lock()
                 .expect("handles mutex poisoned")
-                .push((exchange, handle));
+                .push((exchange, Box::new(handle) as Box<dyn Any + Send + Sync>));
 
             // Forward MarketEvents from receiver to ExchangeTx
             tokio::spawn(
@@ -145,7 +145,7 @@ where
     ) -> Result<
         (
             Streams<MarketStreamResult<InstrumentKey, Kind::Event>>,
-            Vec<(ExchangeId, SubscriptionHandle<InstrumentKey>)>,
+            Vec<(ExchangeId, Box<dyn Any + Send + Sync>)>,
         ),
         DataError,
     > {

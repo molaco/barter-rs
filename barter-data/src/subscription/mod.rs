@@ -100,6 +100,36 @@ impl std::fmt::Display for SubKind {
     }
 }
 
+impl From<trade::PublicTrades> for SubKind {
+    fn from(_: trade::PublicTrades) -> Self {
+        SubKind::PublicTrades
+    }
+}
+
+impl From<book::OrderBooksL1> for SubKind {
+    fn from(_: book::OrderBooksL1) -> Self {
+        SubKind::OrderBooksL1
+    }
+}
+
+impl From<book::OrderBooksL2> for SubKind {
+    fn from(_: book::OrderBooksL2) -> Self {
+        SubKind::OrderBooksL2
+    }
+}
+
+impl From<liquidation::Liquidations> for SubKind {
+    fn from(_: liquidation::Liquidations) -> Self {
+        SubKind::Liquidations
+    }
+}
+
+impl From<candle::Candles> for SubKind {
+    fn from(c: candle::Candles) -> Self {
+        SubKind::Candles(c.0)
+    }
+}
+
 impl<Exchange, S, Kind> From<(Exchange, S, S, MarketDataInstrumentKind, Kind)>
     for Subscription<Exchange, MarketDataInstrument, Kind>
 where

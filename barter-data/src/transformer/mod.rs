@@ -4,7 +4,7 @@ use crate::{
     subscription::{Map, SubscriptionKind},
 };
 use async_trait::async_trait;
-use barter_integration::{Transformer, protocol::websocket::WsMessage};
+use barter_integration::{Transformer, protocol::websocket::WsMessage, subscription::SubscriptionId};
 use tokio::sync::mpsc;
 
 /// Generic stateless [`ExchangeTransformer`] often used for transforming
@@ -29,14 +29,11 @@ where
         ws_sink_tx: mpsc::UnboundedSender<WsMessage>,
     ) -> Result<Self, DataError>;
 
-    /// Apply a dynamic subscription command to the transformer's state.
-    ///
-    /// Returns WsMessages to send to the exchange.
-    /// Default: no-op (transformer doesn't support dynamic subscriptions).
-    fn apply_command(
-        &mut self,
-        _command: crate::streams::handle::Command<InstrumentKey>,
-    ) -> Vec<WsMessage> {
-        vec![]
-    }
+    /// Insert entries into the transformer's instrument map for dynamic subscriptions.
+    /// Default: no-op.
+    fn insert_map_entries(&mut self, _entries: Vec<(SubscriptionId, InstrumentKey)>) {}
+
+    /// Remove entries from the transformer's instrument map for dynamic unsubscriptions.
+    /// Default: no-op.
+    fn remove_map_entries(&mut self, _subscription_ids: &[SubscriptionId]) {}
 }

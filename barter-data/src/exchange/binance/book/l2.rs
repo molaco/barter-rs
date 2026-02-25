@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Constructor)]
 pub struct BinanceOrderBookL2Meta<InstrumentKey, Sequencer> {
     pub key: InstrumentKey,
-    pub sequencer: Sequencer,
+    pub sequencer: Option<Sequencer>,
 }
 
 /// [`Binance`](super::super::Binance) OrderBook Level2 snapshot HTTP message.
