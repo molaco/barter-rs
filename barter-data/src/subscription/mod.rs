@@ -118,6 +118,12 @@ impl From<book::OrderBooksL2> for SubKind {
     }
 }
 
+impl From<book::OrderBooksL3> for SubKind {
+    fn from(_: book::OrderBooksL3) -> Self {
+        SubKind::OrderBooksL3
+    }
+}
+
 impl From<liquidation::Liquidations> for SubKind {
     fn from(_: liquidation::Liquidations) -> Self {
         SubKind::Liquidations

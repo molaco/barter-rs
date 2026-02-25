@@ -1,21 +1,23 @@
 use barter_data::{
     event::DataKind,
+    exchange::binance::spot::BinanceSpot as BinanceSpotExchange,
     streams::{
         builder::dynamic::DynamicStreams, consumer::MarketStreamResult,
         reconnect::stream::ReconnectingStream,
     },
-    subscription::SubKind,
+    subscription::{SubKind, Subscription, trade::PublicTrades as PublicTradesKind},
 };
 use barter_instrument::{
     exchange::ExchangeId,
     instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind},
 };
 use futures::StreamExt;
+use std::time::Duration;
 use tracing::{info, warn};
 
 #[rustfmt::skip]
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialise INFO Tracing log subscriber
     init_logging();
 
@@ -31,7 +33,7 @@ async fn main() {
     //   will be further split under the hood for compile-time reasons.
 
     // Initialise market reconnect::Event streams for various ExchangeIds and SubscriptionKinds
-    let (streams, _handles) = DynamicStreams::init([
+    let (streams, handles) = DynamicStreams::init([
         // Batch notes:
         // Since batch contains 1 ExchangeId and 1 SubscriptionKind, so only 1 (1x1) WebSockets
         // will be spawned for this batch.
@@ -75,9 +77,37 @@ async fn main() {
         .select_all::<MarketStreamResult<MarketDataInstrument, DataKind>>()
         .with_error_handler(|error| warn!(?error, "MarketStream generated error"));
 
-    while let Some(event) = merged.next().await {
-        info!("{event:?}");
-    }
+    // Spawn a task to consume the merged stream so that main can continue
+    let stream_task = tokio::spawn(async move {
+        while let Some(event) = merged.next().await {
+            info!("{event:?}");
+        }
+    });
+
+    // --- Runtime subscribe/unsubscribe demonstration ---
+
+    // Wait 5 seconds, then subscribe to a new instrument on an existing connection
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    info!("Subscribing to BinanceSpot eth/usdt PublicTrades at runtime...");
+    let sub_ids = handles.subscribe::<BinanceSpotExchange, MarketDataInstrument, PublicTradesKind>(vec![
+        Subscription::new(
+            BinanceSpotExchange::default(),
+            ("eth", "usdt", MarketDataInstrumentKind::Spot),
+            PublicTradesKind,
+        ),
+    ])?;
+    info!(?sub_ids, "Subscribed to new instruments");
+
+    // Wait 10 seconds, then unsubscribe from the instruments we just added
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    info!("Unsubscribing from BinanceSpot eth/usdt PublicTrades...");
+    handles.unsubscribe::<BinanceSpotExchange, PublicTradesKind>(SubKind::PublicTrades, sub_ids)?;
+    info!("Unsubscribed successfully");
+
+    // Continue consuming the stream until it ends
+    stream_task.await?;
+
+    Ok(())
 }
 
 // Initialise an INFO `Subscriber` for `Tracing` Json logs and install it as the global default.

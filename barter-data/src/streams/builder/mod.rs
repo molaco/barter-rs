@@ -154,7 +154,7 @@ where
         // Await Stream initialisation perpetual and ensure success
         futures::future::try_join_all(self.futures).await?;
 
-        // Extract collected SubscriptionHandles (all futures are done, so only our Arc remains)
+        // Extract collected TypedHandles (all futures are done, so only our Arc remains)
         let handles = handles
             .lock()
             .expect("handles mutex poisoned")

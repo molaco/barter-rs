@@ -56,6 +56,9 @@ where
     }
 
     fn insert_map_entries(&mut self, entries: Vec<(SubscriptionId, InstrumentKey)>) {
+        tracing::warn!(
+            "dynamic L2 subscription added without snapshot - updates will be dropped until snapshot fetch is implemented"
+        );
         for (id, key) in entries {
             self.instrument_map
                 .insert(id, BybitOrderBookL2Meta::new(key, None));

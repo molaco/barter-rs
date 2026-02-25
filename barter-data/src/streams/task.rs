@@ -55,15 +55,15 @@ where
             .collect()
     }
 
-    /// Remove entries. Returns the ExchangeSubs that were removed,
-    /// for Connector::unsubscribe_requests().
+    /// Remove entries. Returns the (SubscriptionId, ExchangeSub) pairs that were
+    /// actually removed, so callers know exactly which IDs were present.
     fn unsubscribe(
         &mut self,
         subscription_ids: &[SubscriptionId],
-    ) -> Vec<ExchangeSub<Channel, Market>> {
+    ) -> Vec<(SubscriptionId, ExchangeSub<Channel, Market>)> {
         subscription_ids
             .iter()
-            .filter_map(|id| self.map.remove(id).map(|(sub, _)| sub))
+            .filter_map(|id| self.map.remove(id).map(|(sub, _)| (id.clone(), sub)))
             .collect()
     }
 
@@ -176,7 +176,10 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
             // Re-subscribe via Connector::requests()
             let ws_msgs = Exchange::requests(active_subs.all_exchange_subs());
             for msg in ws_msgs {
-                let _ = ws_sink_tx.send(msg);
+                if ws_sink_tx.send(msg).is_err() {
+                    warn!(%exchange, "ws_sink closed during reconnect replay, will reconnect");
+                    break;
+                }
             }
         }
 
@@ -188,17 +191,19 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
                         Some(command) => {
                             match command {
                                 Command::Subscribe { entries } => {
-                                    // 1. Insert into active_subs (returns ExchangeSubs)
-                                    let exchange_subs = active_subs.subscribe(entries.clone());
-
-                                    // 2. Update transformer map
+                                    // 1. Extract (id, key) pairs before consuming entries
                                     let map_entries: Vec<_> = entries
-                                        .into_iter()
-                                        .map(|(id, _, key)| (id, key))
+                                        .iter()
+                                        .map(|(id, _, key)| (id.clone(), key.clone()))
                                         .collect();
+
+                                    // 2. Insert into active_subs (consumes entries, returns ExchangeSubs)
+                                    let exchange_subs = active_subs.subscribe(entries);
+
+                                    // 3. Update transformer map
                                     transformer.insert_map_entries(map_entries);
 
-                                    // 3. Generate and send WS messages
+                                    // 4. Generate and send WS messages
                                     let ws_msgs = Exchange::requests(exchange_subs);
                                     for msg in ws_msgs {
                                         if ws_sink_tx.send(msg).is_err() {
@@ -207,11 +212,13 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
                                     }
                                 }
                                 Command::Unsubscribe { subscription_ids } => {
-                                    // 1. Remove from active_subs (returns ExchangeSubs)
-                                    let exchange_subs = active_subs.unsubscribe(&subscription_ids);
+                                    // 1. Remove from active_subs (returns actually-removed pairs)
+                                    let removed = active_subs.unsubscribe(&subscription_ids);
+                                    let (removed_ids, exchange_subs): (Vec<_>, Vec<_>) =
+                                        removed.into_iter().unzip();
 
-                                    // 2. Update transformer map
-                                    transformer.remove_map_entries(&subscription_ids);
+                                    // 2. Update transformer map with only actually-removed IDs
+                                    transformer.remove_map_entries(&removed_ids);
 
                                     // 3. Generate and send unsubscribe WS messages
                                     let ws_msgs = Exchange::unsubscribe_requests(exchange_subs);
@@ -384,6 +391,7 @@ mod tests {
 
         let removed = subs.unsubscribe(&[SubscriptionId::from("c1|m1")]);
         assert_eq!(removed.len(), 1);
+        assert_eq!(removed[0].0, SubscriptionId::from("c1|m1"));
         assert!(subs.is_empty());
     }
 

@@ -8,7 +8,7 @@ use barter_integration::{error::SocketError, subscription::SubscriptionId};
 use std::marker::PhantomData;
 use tokio::sync::mpsc;
 
-/// Command sent from SubscriptionHandle to the connection task.
+/// Command sent from a [`TypedHandle`] (or [`SubscriptionHandle`]) to the connection task.
 #[derive(Debug, Clone)]
 pub enum Command<Channel, Market, InstrumentKey> {
     Subscribe {
@@ -27,7 +27,7 @@ pub enum Command<Channel, Market, InstrumentKey> {
 ///
 /// Commands are fire-and-forget and handled by the connection task actor.
 #[derive(Debug, Clone)]
-pub struct SubscriptionHandle<Channel, Market, InstrumentKey> {
+pub(crate) struct SubscriptionHandle<Channel, Market, InstrumentKey> {
     command_tx: mpsc::UnboundedSender<Command<Channel, Market, InstrumentKey>>,
 }
 
@@ -36,14 +36,14 @@ where
     InstrumentKey: Clone,
 {
     /// Create a new `SubscriptionHandle`.
-    pub fn new(
+    pub(crate) fn new(
         command_tx: mpsc::UnboundedSender<Command<Channel, Market, InstrumentKey>>,
     ) -> Self {
         Self { command_tx }
     }
 
     /// Subscribe to new instruments on the live WebSocket connection.
-    pub fn subscribe(
+    pub(crate) fn subscribe(
         &self,
         entries: Vec<(SubscriptionId, ExchangeSub<Channel, Market>, InstrumentKey)>,
     ) -> Result<(), SocketError> {
@@ -53,7 +53,7 @@ where
     }
 
     /// Unsubscribe from instruments on the live WebSocket connection.
-    pub fn unsubscribe(
+    pub(crate) fn unsubscribe(
         &self,
         subscription_ids: Vec<SubscriptionId>,
     ) -> Result<(), SocketError> {
@@ -253,5 +253,177 @@ mod tests {
             result.is_err(),
             "unsubscribe should fail when command channel is closed"
         );
+    }
+
+    mod typed_handle {
+        use super::*;
+        use crate::{
+            Identifier,
+            exchange::binance::{channel::BinanceChannel, market::BinanceMarket, spot::BinanceSpot},
+            subscription::trade::PublicTrades,
+        };
+        use barter_instrument::instrument::market_data::{
+            MarketDataInstrument, kind::MarketDataInstrumentKind,
+        };
+
+        /// Helper to create a `TypedHandle<BinanceSpot, MarketDataInstrument, PublicTrades>`
+        /// and its corresponding command receiver.
+        fn typed_handle() -> (
+            TypedHandle<BinanceSpot, MarketDataInstrument, PublicTrades>,
+            mpsc::UnboundedReceiver<
+                Command<BinanceChannel, BinanceMarket, MarketDataInstrument>,
+            >,
+        ) {
+            let (command_tx, command_rx) = mpsc::unbounded_channel();
+            (TypedHandle::new(command_tx), command_rx)
+        }
+
+        /// Helper to build a BinanceSpot PublicTrades Subscription for BTC/USDT.
+        fn btc_usdt_sub() -> Subscription<BinanceSpot, MarketDataInstrument, PublicTrades> {
+            Subscription::new(
+                BinanceSpot::default(),
+                MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
+                PublicTrades,
+            )
+        }
+
+        #[test]
+        fn test_typed_handle_subscribe_sends_command() {
+            let (handle, mut rx) = typed_handle();
+            let sub = btc_usdt_sub();
+
+            // Derive expected ExchangeSub and SubscriptionId from the subscription
+            // to compare against what TypedHandle produces internally.
+            let expected_channel: BinanceChannel = sub.id();
+            let expected_market: BinanceMarket = sub.id();
+
+            handle.subscribe(vec![sub]).unwrap();
+
+            let cmd = rx.try_recv().expect("expected Command on receiver");
+            match cmd {
+                Command::Subscribe { entries } => {
+                    assert_eq!(entries.len(), 1);
+
+                    let (sub_id, exchange_sub, instrument_key) = &entries[0];
+
+                    // Verify ExchangeSub channel and market match Identifier impls
+                    assert_eq!(exchange_sub.channel, expected_channel);
+                    assert_eq!(exchange_sub.market, expected_market);
+
+                    // Verify SubscriptionId is "{channel}|{market}"
+                    let expected_sub_id = SubscriptionId::from(format!(
+                        "{}|{}",
+                        expected_channel.as_ref(),
+                        expected_market.as_ref()
+                    ));
+                    assert_eq!(*sub_id, expected_sub_id);
+
+                    // Verify the instrument key is the MarketDataInstrument itself
+                    assert_eq!(
+                        *instrument_key,
+                        MarketDataInstrument::from((
+                            "btc",
+                            "usdt",
+                            MarketDataInstrumentKind::Spot
+                        ))
+                    );
+                }
+                _ => panic!("expected Command::Subscribe, got Command::Unsubscribe"),
+            }
+        }
+
+        #[test]
+        fn test_typed_handle_unsubscribe_sends_command() {
+            let (handle, mut rx) = typed_handle();
+
+            let sub_ids = vec![
+                SubscriptionId::from("@trade|BTCUSDT"),
+                SubscriptionId::from("@trade|ETHUSDT"),
+            ];
+
+            handle.unsubscribe(sub_ids.clone()).unwrap();
+
+            let cmd = rx.try_recv().expect("expected Command on receiver");
+            match cmd {
+                Command::Unsubscribe { subscription_ids } => {
+                    assert_eq!(subscription_ids.len(), 2);
+                    assert_eq!(subscription_ids[0], sub_ids[0]);
+                    assert_eq!(subscription_ids[1], sub_ids[1]);
+                }
+                _ => panic!("expected Command::Unsubscribe, got Command::Subscribe"),
+            }
+        }
+
+        #[test]
+        fn test_typed_handle_subscribe_returns_sub_ids() {
+            let (handle, _rx) = typed_handle();
+
+            let sub = btc_usdt_sub();
+
+            // Derive the expected SubscriptionId using the same path as TypedHandle:
+            // ExchangeSub::new(&sub) -> exchange_sub.id()
+            let exchange_sub: ExchangeSub<BinanceChannel, BinanceMarket> =
+                ExchangeSub::new(&sub);
+            let expected_id: SubscriptionId = exchange_sub.id();
+
+            let ids = handle.subscribe(vec![sub]).unwrap();
+
+            assert_eq!(ids.len(), 1);
+            assert_eq!(ids[0], expected_id);
+        }
+
+        #[test]
+        fn test_typed_handle_subscribe_multiple_returns_correct_ids() {
+            let (handle, _rx) = typed_handle();
+
+            let sub_btc = btc_usdt_sub();
+            let sub_eth = Subscription::new(
+                BinanceSpot::default(),
+                MarketDataInstrument::from(("eth", "usdt", MarketDataInstrumentKind::Spot)),
+                PublicTrades,
+            );
+
+            let expected_btc_id =
+                ExchangeSub::<BinanceChannel, BinanceMarket>::new(&sub_btc).id();
+            let expected_eth_id =
+                ExchangeSub::<BinanceChannel, BinanceMarket>::new(&sub_eth).id();
+
+            let ids = handle.subscribe(vec![sub_btc, sub_eth]).unwrap();
+
+            assert_eq!(ids.len(), 2);
+            assert_eq!(ids[0], expected_btc_id);
+            assert_eq!(ids[1], expected_eth_id);
+
+            // Verify the two ids are distinct
+            assert_ne!(ids[0], ids[1]);
+        }
+
+        #[test]
+        fn test_typed_handle_closed_channel() {
+            let (handle, rx) = typed_handle();
+            drop(rx);
+
+            let sub = btc_usdt_sub();
+            let result = handle.subscribe(vec![sub]);
+
+            assert!(
+                result.is_err(),
+                "subscribe should fail when command channel is closed"
+            );
+        }
+
+        #[test]
+        fn test_typed_handle_unsubscribe_closed_channel() {
+            let (handle, rx) = typed_handle();
+            drop(rx);
+
+            let result =
+                handle.unsubscribe(vec![SubscriptionId::from("@trade|BTCUSDT")]);
+
+            assert!(
+                result.is_err(),
+                "unsubscribe should fail when command channel is closed"
+            );
+        }
     }
 }
