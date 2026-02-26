@@ -116,23 +116,23 @@ impl Connector for Okx {
         })
     }
 
-    fn requests(exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage> {
+    fn requests(exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>]) -> Vec<WsMessage> {
         vec![WsMessage::text(
             json!({
                 "op": "subscribe",
-                "args": &exchange_subs,
+                "args": exchange_subs,
             })
             .to_string(),
         )]
     }
 
     fn unsubscribe_requests(
-        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+        exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>],
     ) -> Vec<WsMessage> {
         vec![WsMessage::text(
             json!({
                 "op": "unsubscribe",
-                "args": &exchange_subs,
+                "args": exchange_subs,
             })
             .to_string(),
         )]
@@ -194,7 +194,7 @@ mod tests {
             },
         ];
 
-        let messages = Okx::unsubscribe_requests(exchange_subs);
+        let messages = Okx::unsubscribe_requests(&exchange_subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();

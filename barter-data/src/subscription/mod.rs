@@ -136,6 +136,66 @@ impl From<candle::Candles> for SubKind {
     }
 }
 
+impl TryFrom<SubKind> for trade::PublicTrades {
+    type Error = crate::error::DataError;
+    fn try_from(sk: SubKind) -> Result<Self, Self::Error> {
+        match sk {
+            SubKind::PublicTrades => Ok(trade::PublicTrades),
+            other => Err(crate::error::DataError::UnsupportedSubKind(other)),
+        }
+    }
+}
+
+impl TryFrom<SubKind> for book::OrderBooksL1 {
+    type Error = crate::error::DataError;
+    fn try_from(sk: SubKind) -> Result<Self, Self::Error> {
+        match sk {
+            SubKind::OrderBooksL1 => Ok(book::OrderBooksL1),
+            other => Err(crate::error::DataError::UnsupportedSubKind(other)),
+        }
+    }
+}
+
+impl TryFrom<SubKind> for book::OrderBooksL2 {
+    type Error = crate::error::DataError;
+    fn try_from(sk: SubKind) -> Result<Self, Self::Error> {
+        match sk {
+            SubKind::OrderBooksL2 => Ok(book::OrderBooksL2),
+            other => Err(crate::error::DataError::UnsupportedSubKind(other)),
+        }
+    }
+}
+
+impl TryFrom<SubKind> for book::OrderBooksL3 {
+    type Error = crate::error::DataError;
+    fn try_from(sk: SubKind) -> Result<Self, Self::Error> {
+        match sk {
+            SubKind::OrderBooksL3 => Ok(book::OrderBooksL3),
+            other => Err(crate::error::DataError::UnsupportedSubKind(other)),
+        }
+    }
+}
+
+impl TryFrom<SubKind> for liquidation::Liquidations {
+    type Error = crate::error::DataError;
+    fn try_from(sk: SubKind) -> Result<Self, Self::Error> {
+        match sk {
+            SubKind::Liquidations => Ok(liquidation::Liquidations),
+            other => Err(crate::error::DataError::UnsupportedSubKind(other)),
+        }
+    }
+}
+
+impl TryFrom<SubKind> for candle::Candles {
+    type Error = crate::error::DataError;
+    fn try_from(sk: SubKind) -> Result<Self, Self::Error> {
+        match sk {
+            SubKind::Candles(interval) => Ok(candle::Candles(interval)),
+            other => Err(crate::error::DataError::UnsupportedSubKind(other)),
+        }
+    }
+}
+
 impl<Exchange, S, Kind> From<(Exchange, S, S, MarketDataInstrumentKind, Kind)>
     for Subscription<Exchange, MarketDataInstrument, Kind>
 where

@@ -1,11 +1,10 @@
 use barter_data::{
     event::DataKind,
-    exchange::binance::spot::BinanceSpot as BinanceSpotExchange,
     streams::{
         builder::dynamic::DynamicStreams, consumer::MarketStreamResult,
         reconnect::stream::ReconnectingStream,
     },
-    subscription::{SubKind, Subscription, trade::PublicTrades as PublicTradesKind},
+    subscription::{SubKind, Subscription},
 };
 use barter_instrument::{
     exchange::ExchangeId,
@@ -89,11 +88,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Wait 5 seconds, then subscribe to a new instrument on an existing connection
     tokio::time::sleep(Duration::from_secs(5)).await;
     info!("Subscribing to BinanceSpot eth/usdt PublicTrades at runtime...");
-    let sub_ids = handles.subscribe::<BinanceSpotExchange, MarketDataInstrument, PublicTradesKind>(vec![
+    let sub_ids = handles.subscribe(vec![
         Subscription::new(
-            BinanceSpotExchange::default(),
-            ("eth", "usdt", MarketDataInstrumentKind::Spot),
-            PublicTradesKind,
+            ExchangeId::BinanceSpot,
+            MarketDataInstrument::from(("eth", "usdt", MarketDataInstrumentKind::Spot)),
+            SubKind::PublicTrades,
         ),
     ])?;
     info!(?sub_ids, "Subscribed to new instruments");
@@ -101,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Wait 10 seconds, then unsubscribe from the instruments we just added
     tokio::time::sleep(Duration::from_secs(10)).await;
     info!("Unsubscribing from BinanceSpot eth/usdt PublicTrades...");
-    handles.unsubscribe::<BinanceSpotExchange, PublicTradesKind>(SubKind::PublicTrades, sub_ids)?;
+    handles.unsubscribe(ExchangeId::BinanceSpot, SubKind::PublicTrades, sub_ids)?;
     info!("Unsubscribed successfully");
 
     // Continue consuming the stream until it ends

@@ -125,9 +125,9 @@ impl Connector for Bitfinex {
         Url::parse(BASE_URL_BITFINEX).map_err(SocketError::UrlParse)
     }
 
-    fn requests(exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage> {
+    fn requests(exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>]) -> Vec<WsMessage> {
         exchange_subs
-            .into_iter()
+            .iter()
             .map(|ExchangeSub { channel, market }| {
                 let channel_str = channel.as_ref();
                 let payload = if channel_str == "candles" {
@@ -149,7 +149,7 @@ impl Connector for Bitfinex {
     }
 
     fn unsubscribe_requests(
-        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+        exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>],
     ) -> Vec<WsMessage> {
         // TODO: Bitfinex unsubscribe officially requires a server-assigned `chanId`:
         //   {"event": "unsubscribe", "chanId": N}
@@ -158,7 +158,7 @@ impl Connector for Bitfinex {
         // this format. If not, proper chanId-based unsubscribe will need to be handled
         // in the transformer layer.
         exchange_subs
-            .into_iter()
+            .iter()
             .map(|ExchangeSub { channel, market }| {
                 let channel_str = channel.as_ref();
                 let payload = if channel_str == "candles" {
@@ -233,7 +233,7 @@ mod tests {
             market: BitfinexMarket(SmolStr::new("tBTCUSD")),
         }];
 
-        let messages = Bitfinex::unsubscribe_requests(subs);
+        let messages = Bitfinex::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -249,7 +249,7 @@ mod tests {
             market: BitfinexMarket(SmolStr::new("trade:1m:tBTCUSD")),
         }];
 
-        let messages = Bitfinex::unsubscribe_requests(subs);
+        let messages = Bitfinex::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -273,7 +273,7 @@ mod tests {
             },
         ];
 
-        let messages = Bitfinex::unsubscribe_requests(subs);
+        let messages = Bitfinex::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 2);
 
         let payload0: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();

@@ -1,20 +1,30 @@
 use crate::{
     Identifier,
+    error::DataError,
     exchange::{Connector, subscription::ExchangeSub},
     instrument::InstrumentData,
-    subscription::{Subscription, SubscriptionKind},
+    subscription::{SubKind, Subscription, SubscriptionKind},
 };
+use barter_instrument::exchange::ExchangeId;
 use barter_integration::{error::SocketError, subscription::SubscriptionId};
 use std::marker::PhantomData;
 use tokio::sync::mpsc;
+
+/// A single resolved subscription entry for the connection task.
+#[derive(Debug, Clone)]
+pub struct SubEntry<Channel, Market, InstrumentKey> {
+    pub id: SubscriptionId,
+    pub exchange_sub: ExchangeSub<Channel, Market>,
+    pub instrument_key: InstrumentKey,
+}
 
 /// Command sent from a [`TypedHandle`] (or [`SubscriptionHandle`]) to the connection task.
 #[derive(Debug, Clone)]
 pub enum Command<Channel, Market, InstrumentKey> {
     Subscribe {
-        /// (SubscriptionId, ExchangeSub, InstrumentKey) per instrument.
+        /// Resolved subscription entries per instrument.
         /// SubscriptionId is pre-derived from ExchangeSub::id() by the handle.
-        entries: Vec<(SubscriptionId, ExchangeSub<Channel, Market>, InstrumentKey)>,
+        entries: Vec<SubEntry<Channel, Market, InstrumentKey>>,
     },
     Unsubscribe {
         /// SubscriptionIds to remove. The task looks up ExchangeSubs from ActiveSubs
@@ -45,7 +55,7 @@ where
     /// Subscribe to new instruments on the live WebSocket connection.
     pub(crate) fn subscribe(
         &self,
-        entries: Vec<(SubscriptionId, ExchangeSub<Channel, Market>, InstrumentKey)>,
+        entries: Vec<SubEntry<Channel, Market, InstrumentKey>>,
     ) -> Result<(), SocketError> {
         self.command_tx
             .send(Command::Subscribe { entries })
@@ -108,7 +118,7 @@ where
     pub fn subscribe<Instrument>(
         &self,
         subscriptions: Vec<Subscription<Exchange, Instrument, Kind>>,
-    ) -> Result<Vec<SubscriptionId>, SocketError>
+    ) -> Result<Vec<SubscriptionId>, DataError>
     where
         Instrument: InstrumentData<Key = InstrumentKey>,
         Subscription<Exchange, Instrument, Kind>:
@@ -120,15 +130,15 @@ where
                 let exchange_sub = ExchangeSub::new(sub);
                 let sub_id = exchange_sub.id();
                 let instrument_key = sub.instrument.key().clone();
-                (sub_id, exchange_sub, instrument_key)
+                SubEntry { id: sub_id, exchange_sub, instrument_key }
             })
             .collect();
 
-        let sub_ids = entries.iter().map(|(id, _, _)| id.clone()).collect();
+        let sub_ids = entries.iter().map(|e| e.id.clone()).collect();
 
         self.command_tx
             .send(Command::Subscribe { entries })
-            .map_err(|_| SocketError::Subscribe("command channel closed".to_string()))?;
+            .map_err(|_| DataError::CommandChannelClosed)?;
 
         Ok(sub_ids)
     }
@@ -137,34 +147,87 @@ where
     pub fn unsubscribe(
         &self,
         subscription_ids: Vec<SubscriptionId>,
-    ) -> Result<(), SocketError> {
+    ) -> Result<(), DataError> {
         self.command_tx
             .send(Command::Unsubscribe { subscription_ids })
-            .map_err(|_| {
-                SocketError::Subscribe("unsubscribe command channel closed".to_string())
-            })
+            .map_err(|_| DataError::CommandChannelClosed)
     }
 
     /// Subscribe to a single instrument. Convenience wrapper around `subscribe`.
     pub fn subscribe_one<Instrument>(
         &self,
         subscription: Subscription<Exchange, Instrument, Kind>,
-    ) -> Result<SubscriptionId, SocketError>
+    ) -> Result<SubscriptionId, DataError>
     where
         Instrument: InstrumentData<Key = InstrumentKey>,
         Subscription<Exchange, Instrument, Kind>:
             Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
     {
-        self.subscribe(vec![subscription])
-            .map(|ids| ids.into_iter().next().expect("subscribe returned empty ids"))
+        let mut ids = self.subscribe(vec![subscription])?;
+        debug_assert_eq!(ids.len(), 1);
+        Ok(ids.swap_remove(0))
     }
 
     /// Unsubscribe from a single instrument. Convenience wrapper around `unsubscribe`.
     pub fn unsubscribe_one(
         &self,
         subscription_id: SubscriptionId,
-    ) -> Result<(), SocketError> {
+    ) -> Result<(), DataError> {
         self.unsubscribe(vec![subscription_id])
+    }
+}
+
+/// Type-erased handle for dynamic subscribe/unsubscribe operations.
+///
+/// Stored in `DynamicStreamHandles` as `Box<dyn DynHandle<Instrument>>`.
+/// Eliminates the need for `Box<dyn Any>` and `downcast_ref`.
+pub trait DynHandle<Instrument>: Send + Sync {
+    fn subscribe_erased(
+        &self,
+        subscriptions: Vec<Subscription<ExchangeId, Instrument, SubKind>>,
+    ) -> Result<Vec<SubscriptionId>, DataError>;
+
+    fn unsubscribe_erased(
+        &self,
+        subscription_ids: Vec<SubscriptionId>,
+    ) -> Result<(), DataError>;
+}
+
+impl<Instrument> std::fmt::Debug for dyn DynHandle<Instrument> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("dyn DynHandle").finish()
+    }
+}
+
+impl<Exchange, Instrument, Kind> DynHandle<Instrument>
+    for TypedHandle<Exchange, Instrument::Key, Kind>
+where
+    Exchange: Connector + 'static,
+    Instrument: InstrumentData + Clone + 'static,
+    Instrument::Key: Clone + Send + Sync + 'static,
+    Kind: SubscriptionKind + TryFrom<SubKind, Error = DataError> + Send + Sync + 'static,
+    Subscription<Exchange, Instrument, Kind>:
+        Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+{
+    fn subscribe_erased(
+        &self,
+        subscriptions: Vec<Subscription<ExchangeId, Instrument, SubKind>>,
+    ) -> Result<Vec<SubscriptionId>, DataError> {
+        let typed_subs = subscriptions
+            .into_iter()
+            .map(|sub| {
+                let kind = Kind::try_from(sub.kind)?;
+                Ok(Subscription::new(Exchange::default(), sub.instrument, kind))
+            })
+            .collect::<Result<Vec<_>, DataError>>()?;
+        self.subscribe(typed_subs)
+    }
+
+    fn unsubscribe_erased(
+        &self,
+        subscription_ids: Vec<SubscriptionId>,
+    ) -> Result<(), DataError> {
+        self.unsubscribe(subscription_ids)
     }
 }
 
@@ -184,14 +247,14 @@ mod tests {
     fn test_subscribe_sends_command() {
         let (handle, mut rx) = test_handle();
 
-        let entries = vec![(
-            SubscriptionId::from("test|btcusdt"),
-            ExchangeSub {
+        let entries = vec![SubEntry {
+            id: SubscriptionId::from("test|btcusdt"),
+            exchange_sub: ExchangeSub {
                 channel: "trades".to_string(),
                 market: "btcusdt".to_string(),
             },
-            "BTC".to_string(),
-        )];
+            instrument_key: "BTC".to_string(),
+        }];
 
         handle.subscribe(entries.clone()).unwrap();
 
@@ -199,9 +262,9 @@ mod tests {
         match cmd {
             Command::Subscribe { entries: e } => {
                 assert_eq!(e.len(), 1);
-                assert_eq!(e[0].2, "BTC");
-                assert_eq!(e[0].1.channel, "trades");
-                assert_eq!(e[0].1.market, "btcusdt");
+                assert_eq!(e[0].instrument_key, "BTC");
+                assert_eq!(e[0].exchange_sub.channel, "trades");
+                assert_eq!(e[0].exchange_sub.market, "btcusdt");
             }
             _ => panic!("expected Subscribe command"),
         }
@@ -229,14 +292,14 @@ mod tests {
         let (handle, rx) = test_handle();
         drop(rx);
 
-        let result = handle.subscribe(vec![(
-            SubscriptionId::from("test|btcusdt"),
-            ExchangeSub {
+        let result = handle.subscribe(vec![SubEntry {
+            id: SubscriptionId::from("test|btcusdt"),
+            exchange_sub: ExchangeSub {
                 channel: "trades".to_string(),
                 market: "btcusdt".to_string(),
             },
-            "BTC".to_string(),
-        )]);
+            instrument_key: "BTC".to_string(),
+        }]);
         assert!(
             result.is_err(),
             "subscribe should fail when command channel is closed"
@@ -257,6 +320,7 @@ mod tests {
 
     mod typed_handle {
         use super::*;
+        use super::SubEntry;
         use crate::{
             Identifier,
             exchange::binance::{channel::BinanceChannel, market::BinanceMarket, spot::BinanceSpot},
@@ -304,11 +368,11 @@ mod tests {
                 Command::Subscribe { entries } => {
                     assert_eq!(entries.len(), 1);
 
-                    let (sub_id, exchange_sub, instrument_key) = &entries[0];
+                    let entry = &entries[0];
 
                     // Verify ExchangeSub channel and market match Identifier impls
-                    assert_eq!(exchange_sub.channel, expected_channel);
-                    assert_eq!(exchange_sub.market, expected_market);
+                    assert_eq!(entry.exchange_sub.channel, expected_channel);
+                    assert_eq!(entry.exchange_sub.market, expected_market);
 
                     // Verify SubscriptionId is "{channel}|{market}"
                     let expected_sub_id = SubscriptionId::from(format!(
@@ -316,11 +380,11 @@ mod tests {
                         expected_channel.as_ref(),
                         expected_market.as_ref()
                     ));
-                    assert_eq!(*sub_id, expected_sub_id);
+                    assert_eq!(entry.id, expected_sub_id);
 
                     // Verify the instrument key is the MarketDataInstrument itself
                     assert_eq!(
-                        *instrument_key,
+                        entry.instrument_key,
                         MarketDataInstrument::from((
                             "btc",
                             "usdt",

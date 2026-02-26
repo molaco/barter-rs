@@ -135,9 +135,9 @@ where
         })
     }
 
-    fn requests(exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage> {
+    fn requests(exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>]) -> Vec<WsMessage> {
         let stream_names = exchange_subs
-            .into_iter()
+            .iter()
             .map(|sub| format!("{}.{}", sub.channel.as_ref(), sub.market.as_ref(),))
             .collect::<Vec<String>>();
 
@@ -151,10 +151,10 @@ where
     }
 
     fn unsubscribe_requests(
-        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+        exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>],
     ) -> Vec<WsMessage> {
         let stream_names = exchange_subs
-            .into_iter()
+            .iter()
             .map(|sub| format!("{}.{}", sub.channel.as_ref(), sub.market.as_ref()))
             .collect::<Vec<String>>();
 
@@ -285,7 +285,7 @@ mod tests {
             },
         ];
 
-        let messages = BybitSpot::unsubscribe_requests(exchange_subs);
+        let messages = BybitSpot::unsubscribe_requests(&exchange_subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();

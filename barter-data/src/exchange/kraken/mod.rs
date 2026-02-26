@@ -121,9 +121,9 @@ impl Connector for Kraken {
         Url::parse(BASE_URL_KRAKEN).map_err(SocketError::UrlParse)
     }
 
-    fn requests(exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage> {
+    fn requests(exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>]) -> Vec<WsMessage> {
         exchange_subs
-            .into_iter()
+            .iter()
             .map(|ExchangeSub { channel, market }| {
                 let channel_str = channel.as_ref();
 
@@ -155,10 +155,10 @@ impl Connector for Kraken {
     }
 
     fn unsubscribe_requests(
-        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+        exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>],
     ) -> Vec<WsMessage> {
         exchange_subs
-            .into_iter()
+            .iter()
             .map(|ExchangeSub { channel, market }| {
                 let channel_str = channel.as_ref();
 
@@ -249,7 +249,7 @@ mod tests {
             market: KrakenMarket(SmolStr::new("XBT/USD")),
         }];
 
-        let messages = Kraken::unsubscribe_requests(subs);
+        let messages = Kraken::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -265,7 +265,7 @@ mod tests {
             market: KrakenMarket(SmolStr::new("XBT/USD")),
         }];
 
-        let messages = Kraken::unsubscribe_requests(subs);
+        let messages = Kraken::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -288,7 +288,7 @@ mod tests {
             },
         ];
 
-        let messages = Kraken::unsubscribe_requests(subs);
+        let messages = Kraken::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 2);
 
         let payload0: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();

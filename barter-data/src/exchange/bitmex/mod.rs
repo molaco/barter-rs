@@ -81,9 +81,9 @@ impl Connector for Bitmex {
         Url::parse(BASE_URL_BITMEX).map_err(SocketError::UrlParse)
     }
 
-    fn requests(exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage> {
+    fn requests(exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>]) -> Vec<WsMessage> {
         let stream_names = exchange_subs
-            .into_iter()
+            .iter()
             .map(|sub| format!("{}:{}", sub.channel.as_ref(), sub.market.as_ref(),))
             .collect::<Vec<String>>();
 
@@ -97,10 +97,10 @@ impl Connector for Bitmex {
     }
 
     fn unsubscribe_requests(
-        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+        exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>],
     ) -> Vec<WsMessage> {
         let stream_names = exchange_subs
-            .into_iter()
+            .iter()
             .map(|sub| format!("{}:{}", sub.channel.as_ref(), sub.market.as_ref(),))
             .collect::<Vec<String>>();
 
@@ -197,7 +197,7 @@ mod tests {
             market: BitmexMarket(SmolStr::new("XBTUSD")),
         }];
 
-        let messages = Bitmex::unsubscribe_requests(subs);
+        let messages = Bitmex::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -218,7 +218,7 @@ mod tests {
             },
         ];
 
-        let messages = Bitmex::unsubscribe_requests(subs);
+        let messages = Bitmex::unsubscribe_requests(&subs);
         // Bitmex batches all unsubscribes into a single message
         assert_eq!(messages.len(), 1);
 

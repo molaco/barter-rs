@@ -37,17 +37,23 @@ use tracing::warn;
 pub async fn init_indexed_multi_exchange_market_stream(
     instruments: &IndexedInstruments,
     sub_kinds: &[SubKind],
-) -> Result<impl Stream<Item = MarketStreamEvent<InstrumentIndex, DataKind>> + use<>, DataError> {
+) -> Result<
+    (
+        impl Stream<Item = MarketStreamEvent<InstrumentIndex, DataKind>> + use<>,
+        super::DynamicStreamHandles<MarketInstrumentData<InstrumentIndex>>,
+    ),
+    DataError,
+> {
     // Generate indexed market data Subscriptions
     let subscriptions = generate_indexed_market_data_subscription_batches(instruments, sub_kinds);
 
     // Initialise an indexed MarketStream via DynamicStreams
-    let (streams, _handles) = DynamicStreams::init(subscriptions).await?;
+    let (streams, handles) = DynamicStreams::init(subscriptions).await?;
     let stream = streams
         .select_all::<MarketStreamResult<InstrumentIndex, DataKind>>()
         .with_error_handler(|error| warn!(?error, "MarketStream generated error"));
 
-    Ok(stream)
+    Ok((stream, handles))
 }
 
 /// Generates batches of indexed market data `Subscriptions` from a collection of

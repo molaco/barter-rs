@@ -135,14 +135,14 @@ where
 
     /// Defines how to translate a collection of [`ExchangeSub`]s into the [`WsMessage`]
     /// subscription payloads sent to the exchange server.
-    fn requests(exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage>;
+    fn requests(exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>]) -> Vec<WsMessage>;
 
     /// Defines how to translate a collection of [`ExchangeSub`]s into the [`WsMessage`]
     /// unsubscription payloads sent to the exchange server.
     ///
     /// Default implementation returns an empty vec (no unsubscribe support).
     fn unsubscribe_requests(
-        _exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+        _exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>],
     ) -> Vec<WsMessage> {
         vec![]
     }

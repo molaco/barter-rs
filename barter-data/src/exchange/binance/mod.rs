@@ -102,9 +102,9 @@ where
         Url::parse(Server::websocket_url()).map_err(SocketError::UrlParse)
     }
 
-    fn requests(exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage> {
+    fn requests(exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>]) -> Vec<WsMessage> {
         let stream_names = exchange_subs
-            .into_iter()
+            .iter()
             .map(|sub| {
                 // Note:
                 // Market must be lowercase when subscribing, but lowercase in general since
@@ -128,10 +128,10 @@ where
     }
 
     fn unsubscribe_requests(
-        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+        exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>],
     ) -> Vec<WsMessage> {
         let stream_names = exchange_subs
-            .into_iter()
+            .iter()
             .map(|sub| {
                 format!(
                     "{}{}",
@@ -259,7 +259,7 @@ mod tests {
             },
         ];
 
-        let messages = BinanceSpot::unsubscribe_requests(exchange_subs);
+        let messages = BinanceSpot::unsubscribe_requests(&exchange_subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();

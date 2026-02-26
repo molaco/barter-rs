@@ -97,9 +97,9 @@ where
         Url::parse(Server::websocket_url()).map_err(SocketError::UrlParse)
     }
 
-    fn requests(exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage> {
+    fn requests(exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>]) -> Vec<WsMessage> {
         exchange_subs
-            .into_iter()
+            .iter()
             .map(|ExchangeSub { channel, market }| {
                 WsMessage::text(
                     json!({
@@ -115,10 +115,10 @@ where
     }
 
     fn unsubscribe_requests(
-        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+        exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>],
     ) -> Vec<WsMessage> {
         exchange_subs
-            .into_iter()
+            .iter()
             .map(|ExchangeSub { channel, market }| {
                 WsMessage::text(
                     json!({
@@ -203,7 +203,7 @@ mod tests {
             market: GateioMarket(SmolStr::new("BTC_USDT")),
         }];
 
-        let messages = GateioSpot::unsubscribe_requests(subs);
+        let messages = GateioSpot::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -222,7 +222,7 @@ mod tests {
             market: GateioMarket(SmolStr::new("BTC_USDT")),
         }];
 
-        let messages = GateioPerpetualsUsd::unsubscribe_requests(subs);
+        let messages = GateioPerpetualsUsd::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -241,7 +241,7 @@ mod tests {
             market: GateioMarket(SmolStr::new("BTC_USDT")),
         }];
 
-        let messages = GateioFuturesUsd::unsubscribe_requests(subs);
+        let messages = GateioFuturesUsd::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -259,7 +259,7 @@ mod tests {
             market: GateioMarket(SmolStr::new("BTC_USDT")),
         }];
 
-        let messages = GateioOptions::unsubscribe_requests(subs);
+        let messages = GateioOptions::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -283,7 +283,7 @@ mod tests {
             },
         ];
 
-        let messages = GateioSpot::unsubscribe_requests(subs);
+        let messages = GateioSpot::unsubscribe_requests(&subs);
         assert_eq!(messages.len(), 2);
 
         let payload0: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();

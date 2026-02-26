@@ -25,6 +25,9 @@ pub enum DataError {
     #[error("initial snapshot invalid: {0}")]
     InitialSnapshotInvalid(String),
 
+    #[error("command channel closed")]
+    CommandChannelClosed,
+
     #[error("SocketError: {0}")]
     Socket(String),
 
@@ -36,12 +39,6 @@ pub enum DataError {
 
     #[error("no connection for {exchange} {sub_kind}")]
     NoConnection {
-        exchange: ExchangeId,
-        sub_kind: SubKind,
-    },
-
-    #[error("handle type mismatch for {exchange} {sub_kind} (downcast failed)")]
-    HandleTypeMismatch {
         exchange: ExchangeId,
         sub_kind: SubKind,
     },

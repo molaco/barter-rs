@@ -116,9 +116,9 @@ impl Connector for Hyperliquid {
         })
     }
 
-    fn requests(exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>) -> Vec<WsMessage> {
+    fn requests(exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>]) -> Vec<WsMessage> {
         exchange_subs
-            .into_iter()
+            .iter()
             .map(|sub| {
                 let subscription =
                     serde_json::to_value(&sub).expect("failed to serialize ExchangeSub");
@@ -133,10 +133,10 @@ impl Connector for Hyperliquid {
     }
 
     fn unsubscribe_requests(
-        exchange_subs: Vec<ExchangeSub<Self::Channel, Self::Market>>,
+        exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>],
     ) -> Vec<WsMessage> {
         exchange_subs
-            .into_iter()
+            .iter()
             .map(|sub| {
                 let subscription =
                     serde_json::to_value(&sub).expect("failed to serialize ExchangeSub");
@@ -204,7 +204,7 @@ mod tests {
             market: HyperliquidMarket(SmolStr::new_static("BTC")),
         }];
 
-        let messages = Hyperliquid::unsubscribe_requests(exchange_subs);
+        let messages = Hyperliquid::unsubscribe_requests(&exchange_subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -223,7 +223,7 @@ mod tests {
             market: HyperliquidMarket(SmolStr::new_static("ETH")),
         }];
 
-        let messages = Hyperliquid::unsubscribe_requests(exchange_subs);
+        let messages = Hyperliquid::unsubscribe_requests(&exchange_subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
@@ -247,7 +247,7 @@ mod tests {
             },
         ];
 
-        let messages = Hyperliquid::unsubscribe_requests(exchange_subs);
+        let messages = Hyperliquid::unsubscribe_requests(&exchange_subs);
         // Hyperliquid sends one message per subscription
         assert_eq!(messages.len(), 2);
 

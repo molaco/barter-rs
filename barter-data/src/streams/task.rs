@@ -5,7 +5,7 @@ use crate::{
     exchange::{Connector, subscription::ExchangeSub},
     instrument::InstrumentData,
     process_buffered_events, schedule_pings_to_exchange,
-    streams::{consumer::MarketStreamResult, handle::Command, reconnect},
+    streams::{consumer::MarketStreamResult, handle::{Command, SubEntry}, reconnect},
     subscriber::{Subscribed, Subscriber},
     subscription::{Subscription, SubscriptionKind},
     transformer::ExchangeTransformer,
@@ -43,13 +43,13 @@ where
     /// Insert entries. Returns the ExchangeSubs for Connector::requests().
     fn subscribe(
         &mut self,
-        entries: Vec<(SubscriptionId, ExchangeSub<Channel, Market>, InstrumentKey)>,
+        entries: Vec<SubEntry<Channel, Market, InstrumentKey>>,
     ) -> Vec<ExchangeSub<Channel, Market>> {
         entries
             .into_iter()
-            .map(|(id, exchange_sub, key)| {
-                let sub = exchange_sub.clone();
-                self.map.insert(id, (exchange_sub, key));
+            .map(|entry| {
+                let sub = entry.exchange_sub.clone();
+                self.map.insert(entry.id, (entry.exchange_sub, entry.instrument_key));
                 sub
             })
             .collect()
@@ -174,7 +174,7 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
             transformer.insert_map_entries(active_subs.instrument_entries());
 
             // Re-subscribe via Connector::requests()
-            let ws_msgs = Exchange::requests(active_subs.all_exchange_subs());
+            let ws_msgs = Exchange::requests(&active_subs.all_exchange_subs());
             for msg in ws_msgs {
                 if ws_sink_tx.send(msg).is_err() {
                     warn!(%exchange, "ws_sink closed during reconnect replay, will reconnect");
@@ -194,7 +194,7 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
                                     // 1. Extract (id, key) pairs before consuming entries
                                     let map_entries: Vec<_> = entries
                                         .iter()
-                                        .map(|(id, _, key)| (id.clone(), key.clone()))
+                                        .map(|e| (e.id.clone(), e.instrument_key.clone()))
                                         .collect();
 
                                     // 2. Insert into active_subs (consumes entries, returns ExchangeSubs)
@@ -204,7 +204,7 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
                                     transformer.insert_map_entries(map_entries);
 
                                     // 4. Generate and send WS messages
-                                    let ws_msgs = Exchange::requests(exchange_subs);
+                                    let ws_msgs = Exchange::requests(&exchange_subs);
                                     for msg in ws_msgs {
                                         if ws_sink_tx.send(msg).is_err() {
                                             break 'inner; // ws_sink closed -> reconnect
@@ -221,7 +221,7 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
                                     transformer.remove_map_entries(&removed_ids);
 
                                     // 3. Generate and send unsubscribe WS messages
-                                    let ws_msgs = Exchange::unsubscribe_requests(exchange_subs);
+                                    let ws_msgs = Exchange::unsubscribe_requests(&exchange_subs);
                                     for msg in ws_msgs {
                                         if ws_sink_tx.send(msg).is_err() {
                                             break 'inner;
@@ -358,6 +358,7 @@ where
 mod tests {
     use super::*;
     use crate::exchange::subscription::ExchangeSub;
+    use crate::streams::handle::SubEntry;
 
     fn test_sub(channel: &str, market: &str) -> ExchangeSub<String, String> {
         ExchangeSub {
@@ -371,8 +372,8 @@ mod tests {
         let mut subs = ActiveSubs::<String, String, String>::new();
 
         let entries = vec![
-            (SubscriptionId::from("c1|m1"), test_sub("c1", "m1"), "BTC".to_string()),
-            (SubscriptionId::from("c2|m2"), test_sub("c2", "m2"), "ETH".to_string()),
+            SubEntry { id: SubscriptionId::from("c1|m1"), exchange_sub: test_sub("c1", "m1"), instrument_key: "BTC".to_string() },
+            SubEntry { id: SubscriptionId::from("c2|m2"), exchange_sub: test_sub("c2", "m2"), instrument_key: "ETH".to_string() },
         ];
 
         let exchange_subs = subs.subscribe(entries);
@@ -385,7 +386,7 @@ mod tests {
         let mut subs = ActiveSubs::<String, String, String>::new();
 
         let entries = vec![
-            (SubscriptionId::from("c1|m1"), test_sub("c1", "m1"), "BTC".to_string()),
+            SubEntry { id: SubscriptionId::from("c1|m1"), exchange_sub: test_sub("c1", "m1"), instrument_key: "BTC".to_string() },
         ];
         subs.subscribe(entries);
 
@@ -400,7 +401,7 @@ mod tests {
         let mut subs = ActiveSubs::<String, String, String>::new();
 
         subs.subscribe(vec![
-            (SubscriptionId::from("c1|m1"), test_sub("c1", "m1"), "BTC".to_string()),
+            SubEntry { id: SubscriptionId::from("c1|m1"), exchange_sub: test_sub("c1", "m1"), instrument_key: "BTC".to_string() },
         ]);
         subs.unsubscribe(&[SubscriptionId::from("c1|m1")]);
 
@@ -414,8 +415,8 @@ mod tests {
         let mut subs = ActiveSubs::<String, String, String>::new();
 
         subs.subscribe(vec![
-            (SubscriptionId::from("c1|m1"), test_sub("c1", "m1"), "BTC".to_string()),
-            (SubscriptionId::from("c2|m2"), test_sub("c2", "m2"), "ETH".to_string()),
+            SubEntry { id: SubscriptionId::from("c1|m1"), exchange_sub: test_sub("c1", "m1"), instrument_key: "BTC".to_string() },
+            SubEntry { id: SubscriptionId::from("c2|m2"), exchange_sub: test_sub("c2", "m2"), instrument_key: "ETH".to_string() },
         ]);
         subs.unsubscribe(&[SubscriptionId::from("c1|m1")]);
 
@@ -431,8 +432,8 @@ mod tests {
         let mut subs = ActiveSubs::<String, String, String>::new();
 
         subs.subscribe(vec![
-            (SubscriptionId::from("c1|m1"), test_sub("c1", "m1"), "BTC".to_string()),
-            (SubscriptionId::from("c2|m2"), test_sub("c2", "m2"), "ETH".to_string()),
+            SubEntry { id: SubscriptionId::from("c1|m1"), exchange_sub: test_sub("c1", "m1"), instrument_key: "BTC".to_string() },
+            SubEntry { id: SubscriptionId::from("c2|m2"), exchange_sub: test_sub("c2", "m2"), instrument_key: "ETH".to_string() },
         ]);
 
         let entries = subs.instrument_entries();
