@@ -205,7 +205,7 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         SubBatchIter: IntoIterator<Item = SubIter>,
         SubIter: IntoIterator<Item = Sub>,
         Sub: Into<Subscription<ExchangeId, Instrument, SubKind>>,
-        Instrument: InstrumentData<Key = InstrumentKey> + Ord + Display + Clone + Send + Sync + 'static,
+        Instrument: InstrumentData<Key = InstrumentKey> + Ord + Display + Send + Sync + 'static,
         InstrumentKey: Debug + Clone + PartialEq + Send + Sync + 'static,
         Subscription<BinanceSpot, Instrument, PublicTrades>: Identifier<BinanceMarket>,
         Subscription<BinanceSpot, Instrument, OrderBooksL1>: Identifier<BinanceMarket>,
@@ -301,8 +301,6 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                             factory?
                                 .init_and_forward(
                                     subs,
-                                    exchange,
-                                    sub_kind,
                                     STREAM_RECONNECTION_POLICY,
                                     handles_ref,
                                     txs_ref,
@@ -669,12 +667,12 @@ trait OutputSelector<IK>: SubscriptionKind {
     /// The [`SubKindVariant`] for this kind, used as the registry lookup key.
     const VARIANT: SubKindVariant;
 
-    /// Returns a clone of the output sender for `exchange`, or `None` if
+    /// Returns a reference to the output sender for `exchange`, or `None` if
     /// no channel was created for that exchange.
     fn sender(
         txs: &Txs<IK>,
         exchange: ExchangeId,
-    ) -> Option<UnboundedTx<MarketStreamResult<IK, Self::Event>>>;
+    ) -> Option<&UnboundedTx<MarketStreamResult<IK, Self::Event>>>;
 }
 
 impl<IK> OutputSelector<IK> for PublicTrades {
@@ -683,8 +681,8 @@ impl<IK> OutputSelector<IK> for PublicTrades {
     fn sender(
         txs: &Txs<IK>,
         exchange: ExchangeId,
-    ) -> Option<UnboundedTx<MarketStreamResult<IK, PublicTrade>>> {
-        txs.trades.get(&exchange).map(|tx| UnboundedTx::new(tx.tx.clone()))
+    ) -> Option<&UnboundedTx<MarketStreamResult<IK, PublicTrade>>> {
+        txs.trades.get(&exchange)
     }
 }
 
@@ -694,8 +692,8 @@ impl<IK> OutputSelector<IK> for OrderBooksL1 {
     fn sender(
         txs: &Txs<IK>,
         exchange: ExchangeId,
-    ) -> Option<UnboundedTx<MarketStreamResult<IK, OrderBookL1>>> {
-        txs.l1s.get(&exchange).map(|tx| UnboundedTx::new(tx.tx.clone()))
+    ) -> Option<&UnboundedTx<MarketStreamResult<IK, OrderBookL1>>> {
+        txs.l1s.get(&exchange)
     }
 }
 
@@ -705,8 +703,8 @@ impl<IK> OutputSelector<IK> for OrderBooksL2 {
     fn sender(
         txs: &Txs<IK>,
         exchange: ExchangeId,
-    ) -> Option<UnboundedTx<MarketStreamResult<IK, OrderBookEvent>>> {
-        txs.l2s.get(&exchange).map(|tx| UnboundedTx::new(tx.tx.clone()))
+    ) -> Option<&UnboundedTx<MarketStreamResult<IK, OrderBookEvent>>> {
+        txs.l2s.get(&exchange)
     }
 }
 
@@ -716,8 +714,8 @@ impl<IK> OutputSelector<IK> for Liquidations {
     fn sender(
         txs: &Txs<IK>,
         exchange: ExchangeId,
-    ) -> Option<UnboundedTx<MarketStreamResult<IK, Liquidation>>> {
-        txs.liquidations.get(&exchange).map(|tx| UnboundedTx::new(tx.tx.clone()))
+    ) -> Option<&UnboundedTx<MarketStreamResult<IK, Liquidation>>> {
+        txs.liquidations.get(&exchange)
     }
 }
 
@@ -727,8 +725,8 @@ impl<IK> OutputSelector<IK> for Candles {
     fn sender(
         txs: &Txs<IK>,
         exchange: ExchangeId,
-    ) -> Option<UnboundedTx<MarketStreamResult<IK, Candle>>> {
-        txs.candles.get(&exchange).map(|tx| UnboundedTx::new(tx.tx.clone()))
+    ) -> Option<&UnboundedTx<MarketStreamResult<IK, Candle>>> {
+        txs.candles.get(&exchange)
     }
 }
 
@@ -738,16 +736,10 @@ impl<IK> OutputSelector<IK> for Candles {
 /// Each `(Exchange, Kind)` pair is represented by one [`TypedStreamFactory`]
 /// that implements this trait.
 #[async_trait]
-trait StreamFactory<Instrument, IK>: Send + Sync
-where
-    Instrument: Send + 'static,
-    IK: Send + 'static,
-{
+trait StreamFactory<Instrument, IK>: Send + Sync {
     async fn init_and_forward(
         &self,
         subs: Vec<Subscription<ExchangeId, Instrument, SubKind>>,
-        exchange: ExchangeId,
-        sub_kind: SubKind,
         policy: crate::streams::reconnect::stream::ReconnectionBackoffPolicy,
         collected_handles: &Mutex<FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>>>,
         txs: &Txs<IK>,
@@ -768,7 +760,7 @@ impl<E, K> TypedStreamFactory<E, K> {
 impl<E, Instrument, K, IK> StreamFactory<Instrument, IK> for TypedStreamFactory<E, K>
 where
     E: crate::exchange::StreamSelector<Instrument, K> + Send + Sync + 'static,
-    Instrument: InstrumentData<Key = IK> + Display + Clone + Send + Sync + 'static,
+    Instrument: InstrumentData<Key = IK> + Display + Send + Sync + 'static,
     IK: Debug + Clone + PartialEq + Send + Sync + 'static,
     K: SubscriptionKind + OutputSelector<IK> + TryFrom<SubKind, Error = DataError> + Display + Send + Sync + 'static,
     K::Event: Clone + Debug + Send + 'static,
@@ -779,12 +771,14 @@ where
     async fn init_and_forward(
         &self,
         subs: Vec<Subscription<ExchangeId, Instrument, SubKind>>,
-        exchange: ExchangeId,
-        sub_kind: SubKind,
         policy: crate::streams::reconnect::stream::ReconnectionBackoffPolicy,
         collected_handles: &Mutex<FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>>>,
         txs: &Txs<IK>,
     ) -> Result<(), DataError> {
+        let first = subs.first().ok_or(DataError::SubscriptionsEmpty)?;
+        let exchange = first.exchange;
+        let sub_kind = first.kind;
+
         // Convert erased subs to typed subs via TryFrom<SubKind>
         let typed_subs: Vec<Subscription<E, Instrument, K>> = subs
             .into_iter()
@@ -808,7 +802,8 @@ where
 
         // Route events to the correct output channel via OutputSelector
         let tx = K::sender(txs, exchange)
-            .expect("output channel not found for exchange");
+            .ok_or(DataError::NoConnection { exchange, sub_kind })?
+            .clone();
         tokio::spawn(
             UnboundedReceiverStream::new(event_rx).forward_to(tx),
         );
@@ -821,10 +816,7 @@ where
 /// [`StreamFactory`].
 struct StreamRegistry<Instrument, IK>(
     FnvHashMap<(ExchangeId, SubKindVariant), Box<dyn StreamFactory<Instrument, IK>>>,
-)
-where
-    Instrument: Send + 'static,
-    IK: Send + 'static;
+);
 
 impl<Instrument, IK> StreamRegistry<Instrument, IK>
 where
