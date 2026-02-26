@@ -177,7 +177,6 @@ where
             Interval::H6,
             Interval::H12,
             Interval::D1,
-            Interval::D3,
             Interval::W1,
             Interval::Month1,
         ]
