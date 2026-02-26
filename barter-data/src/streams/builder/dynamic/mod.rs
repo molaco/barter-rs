@@ -94,7 +94,7 @@ where
             .ok_or(DataError::SubscriptionsEmpty)?;
         let key = HandleKey {
             exchange,
-            sub_kind: sub_kind.into(),
+            sub_kind,
         };
         let handle = self
             .handles

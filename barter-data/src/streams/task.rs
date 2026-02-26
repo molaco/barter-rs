@@ -69,8 +69,8 @@ where
 
     /// All ExchangeSubs for reconnect replay via Connector::requests().
     ///
-    /// Clone required: Connector::requests() takes &[ExchangeSub], but HashMap
-    /// values aren't contiguous in memory, so we must collect into a Vec.
+    /// Clone required: HashMap values aren't contiguous in memory, so we collect
+    /// cloned ExchangeSubs into a Vec to pass as a `&[ExchangeSub]` slice.
     fn all_exchange_subs(&self) -> Vec<ExchangeSub<Channel, Market>> {
         self.map.values().map(|(sub, _)| sub.clone()).collect()
     }

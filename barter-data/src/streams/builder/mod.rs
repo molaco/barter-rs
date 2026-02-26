@@ -44,6 +44,11 @@ where
 {
     pub channels: HashMap<ExchangeId, Channel<MarketStreamResult<InstrumentKey, Kind::Event>>>,
     pub futures: Vec<SubscribeFuture>,
+    /// Type-erased handles collected during `subscribe()` calls.
+    ///
+    /// `Box<dyn Any>` is required here (unlike `DynamicStreams` which uses `Box<dyn DynHandle>`)
+    /// because each `subscribe()` call may introduce a different `Instrument` type, making it
+    /// impossible to name a single `DynHandle<Instrument>` trait object for the collection.
     pub handles: Arc<Mutex<Vec<(ExchangeId, Box<dyn Any + Send + Sync>)>>>,
 }
 
