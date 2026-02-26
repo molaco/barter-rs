@@ -6,7 +6,6 @@ use crate::{
     exchange::Connector,
     subscription::{Map, SubscriptionKind},
 };
-use async_trait::async_trait;
 use barter_instrument::exchange::ExchangeId;
 use barter_integration::{
     Transformer, protocol::websocket::WsMessage, subscription::SubscriptionId,
@@ -25,7 +24,6 @@ pub struct StatelessTransformer<Exchange, InstrumentKey, Kind, Input> {
     phantom: PhantomData<(Exchange, Kind, Input)>,
 }
 
-#[async_trait]
 impl<Exchange, InstrumentKey, Kind, Input> ExchangeTransformer<Exchange, InstrumentKey, Kind>
     for StatelessTransformer<Exchange, InstrumentKey, Kind, Input>
 where
@@ -35,15 +33,17 @@ where
     Input: Identifier<Option<SubscriptionId>> + for<'de> Deserialize<'de>,
     MarketIter<InstrumentKey, Kind::Event>: From<(ExchangeId, InstrumentKey, Input)>,
 {
-    async fn init(
+    fn init(
         instrument_map: Map<InstrumentKey>,
         _: &[MarketEvent<InstrumentKey, Kind::Event>],
         _ws_sink_tx: mpsc::UnboundedSender<WsMessage>,
-    ) -> Result<Self, DataError> {
-        Ok(Self {
-            instrument_map,
-            phantom: PhantomData,
-        })
+    ) -> impl std::future::Future<Output = Result<Self, DataError>> + Send {
+        async move {
+            Ok(Self {
+                instrument_map,
+                phantom: PhantomData,
+            })
+        }
     }
 
     fn insert_map_entries(&mut self, entries: Vec<(SubscriptionId, InstrumentKey)>) {

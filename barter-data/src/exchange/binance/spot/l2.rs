@@ -19,7 +19,6 @@ use crate::{
     },
     transformer::ExchangeTransformer,
 };
-use async_trait::async_trait;
 use barter_instrument::exchange::ExchangeId;
 use barter_integration::{
     Transformer, error::SocketError, protocol::websocket::WsMessage, subscription::SubscriptionId,
@@ -81,18 +80,17 @@ pub struct BinanceSpotOrderBooksL2Transformer<InstrumentKey> {
     instrument_map: Map<BinanceOrderBookL2Meta<InstrumentKey, BinanceSpotOrderBookL2Sequencer>>,
 }
 
-#[async_trait]
 impl<InstrumentKey> ExchangeTransformer<BinanceSpot, InstrumentKey, OrderBooksL2>
     for BinanceSpotOrderBooksL2Transformer<InstrumentKey>
 where
     InstrumentKey: Clone + PartialEq + Send + Sync,
 {
-    async fn init(
+    fn init(
         instrument_map: Map<InstrumentKey>,
         initial_snapshots: &[MarketEvent<InstrumentKey, OrderBookEvent>],
         _: UnboundedSender<WsMessage>,
-    ) -> Result<Self, DataError> {
-        let instrument_map = instrument_map
+    ) -> impl std::future::Future<Output = Result<Self, DataError>> + Send {
+        let result = instrument_map
             .0
             .into_iter()
             .map(|(sub_id, instrument_key)| {
@@ -114,9 +112,10 @@ where
 
                 Ok((sub_id, book_meta))
             })
-            .collect::<Result<Map<_>, _>>()?;
+            .collect::<Result<Map<_>, _>>()
+            .map(|instrument_map| Self { instrument_map });
 
-        Ok(Self { instrument_map })
+        async move { result }
     }
 
     fn insert_map_entries(&mut self, entries: Vec<(SubscriptionId, InstrumentKey)>) {

@@ -45,7 +45,7 @@ use futures_util::{StreamExt, future::try_join_all};
 use itertools::Itertools;
 use std::{
     fmt::{Debug, Display},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use async_trait::async_trait;
@@ -276,12 +276,7 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
             Okx               => [PublicTrades, Candles],
         };
 
-        // Shared collector for DynHandle (type-erased) from all init calls
-        let collected_handles: Mutex<FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>>> =
-            Mutex::new(FnvHashMap::default());
-
         // Group subs by (ExchangeId, SubKind) and launch all connections concurrently
-        let handles_ref = &collected_handles;
         let txs_ref = &channels.txs;
 
         let futures = batches.into_iter().map(|mut batch| {
@@ -302,7 +297,6 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                                 .init_and_forward(
                                     subs,
                                     STREAM_RECONNECTION_POLICY,
-                                    handles_ref,
                                     txs_ref,
                                 )
                                 .await
@@ -312,16 +306,14 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
             try_join_all(batch_futures)
         });
 
-        try_join_all(futures).await?;
+        // Collect handle pairs from all batches and flatten into a single map
+        let nested_results = try_join_all(futures).await?;
+        let collected_handles: FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>> =
+            nested_results.into_iter().flatten().collect();
 
-        // Extract collected handles into an Arc'd map
-        let handles = Arc::new(
-            collected_handles
-                .into_inner()
-                .expect("handles mutex poisoned")
-        );
-
-        let handles = DynamicStreamHandles { handles };
+        let handles = DynamicStreamHandles {
+            handles: Arc::new(collected_handles),
+        };
 
         Ok((
             Self {
@@ -741,9 +733,8 @@ trait StreamFactory<Instrument, IK>: Send + Sync {
         &self,
         subs: Vec<Subscription<ExchangeId, Instrument, SubKind>>,
         policy: crate::streams::reconnect::stream::ReconnectionBackoffPolicy,
-        collected_handles: &Mutex<FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>>>,
         txs: &Txs<IK>,
-    ) -> Result<(), DataError>;
+    ) -> Result<(HandleKey, Box<dyn DynHandle<Instrument>>), DataError>;
 }
 
 /// Zero-sized generic factory that monomorphizes [`init_market_stream`] for a
@@ -772,9 +763,8 @@ where
         &self,
         subs: Vec<Subscription<ExchangeId, Instrument, SubKind>>,
         policy: crate::streams::reconnect::stream::ReconnectionBackoffPolicy,
-        collected_handles: &Mutex<FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>>>,
         txs: &Txs<IK>,
-    ) -> Result<(), DataError> {
+    ) -> Result<(HandleKey, Box<dyn DynHandle<Instrument>>), DataError> {
         let first = subs.first().ok_or(DataError::SubscriptionsEmpty)?;
         let exchange = first.exchange;
         let sub_kind = first.kind;
@@ -791,15 +781,6 @@ where
         // Initialize the market stream (returns event receiver + typed handle)
         let (event_rx, handle) = init_market_stream(policy, typed_subs).await?;
 
-        // Store type-erased handle keyed by (ExchangeId, SubKind)
-        collected_handles
-            .lock()
-            .expect("handles mutex poisoned")
-            .insert(
-                HandleKey { exchange, sub_kind },
-                Box::new(handle) as Box<dyn DynHandle<Instrument>>,
-            );
-
         // Route events to the correct output channel via OutputSelector
         let tx = K::sender(txs, exchange)
             .ok_or(DataError::NoConnection { exchange, sub_kind })?
@@ -808,7 +789,11 @@ where
             UnboundedReceiverStream::new(event_rx).forward_to(tx),
         );
 
-        Ok(())
+        // Return the handle pair for collection by the caller
+        Ok((
+            HandleKey { exchange, sub_kind },
+            Box::new(handle) as Box<dyn DynHandle<Instrument>>,
+        ))
     }
 }
 

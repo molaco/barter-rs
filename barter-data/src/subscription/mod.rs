@@ -31,7 +31,7 @@ pub trait SubscriptionKind
 where
     Self: Debug + Clone,
 {
-    type Event: Debug;
+    type Event: Debug + Send + Sync;
     fn as_str(&self) -> &'static str;
 }
 
