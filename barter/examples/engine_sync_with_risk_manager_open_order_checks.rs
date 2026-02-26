@@ -205,7 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let instruments = IndexedInstruments::new(instruments);
 
     // Initialise MarketData Stream
-    let market_stream = init_indexed_multi_exchange_market_stream(
+    let (market_stream, _handles) = init_indexed_multi_exchange_market_stream(
         &instruments,
         &[SubKind::PublicTrades, SubKind::OrderBooksL1],
     )

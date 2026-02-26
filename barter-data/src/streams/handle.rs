@@ -197,7 +197,6 @@ mod tests {
 
     mod typed_handle {
         use super::*;
-        use super::SubEntry;
         use crate::{
             Identifier,
             exchange::binance::{channel::BinanceChannel, market::BinanceMarket, spot::BinanceSpot},
