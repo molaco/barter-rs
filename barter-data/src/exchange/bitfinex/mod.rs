@@ -20,16 +20,17 @@
 //! - Therefore, tag="tu" trades are filtered out and considered only as additional Heartbeats.
 
 use self::{
-    candle::BitfinexCandleMessage, channel::BitfinexChannel, market::BitfinexMarket,
+    candle::BitfinexCandleMessage, channel::BitfinexChannel,
+    market::{BitfinexMarket, bitfinex_market},
     message::BitfinexMessage, subscription::BitfinexPlatformEvent,
     validator::BitfinexWebSocketSubValidator,
 };
 use crate::{
     NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, StreamSelector},
-    instrument::InstrumentData,
+    instrument::{InstrumentData, MarketInput},
     subscriber::WebSocketSubscriber,
-    subscription::{candle::Candles, trade::PublicTrades},
+    subscription::{SubKind, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -40,6 +41,7 @@ use barter_integration::{
 use barter_macro::{DeExchange, SerExchange};
 use derive_more::Display;
 use serde_json::json;
+use smol_str::{ToSmolStr, format_smolstr};
 use url::Url;
 
 /// Public candle/kline types for [`Bitfinex`].
@@ -177,6 +179,23 @@ impl Connector for Bitfinex {
                 WsMessage::text(payload.to_string())
             })
             .collect()
+    }
+
+    fn resolve_market(input: MarketInput<'_>, sub_kind: &SubKind) -> Self::Market {
+        let symbol = match input {
+            MarketInput::Components { base, quote, .. } => bitfinex_market(base, quote),
+            MarketInput::ExchangeName(name) => BitfinexMarket(name.to_smolstr()),
+        };
+
+        if let SubKind::Candles(interval) = sub_kind {
+            BitfinexMarket(format_smolstr!(
+                "trade:{}:{}",
+                bitfinex_interval(*interval).expect("validated"),
+                symbol.0
+            ))
+        } else {
+            symbol
+        }
     }
 }
 

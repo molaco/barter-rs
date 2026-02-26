@@ -1,13 +1,14 @@
 use self::{
-    book::l1::KrakenOrderBookL1, candle::KrakenKline, channel::KrakenChannel, market::KrakenMarket,
+    book::l1::KrakenOrderBookL1, candle::KrakenKline, channel::KrakenChannel,
+    market::{KrakenMarket, kraken_market},
     message::KrakenMessage, subscription::KrakenSubResponse, trade::KrakenTrades,
 };
 use crate::{
     NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, StreamSelector},
-    instrument::InstrumentData,
+    instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{book::OrderBooksL1, candle::Candles, trade::PublicTrades},
+    subscription::{SubKind, book::OrderBooksL1, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -184,6 +185,13 @@ impl Connector for Kraken {
                 )
             })
             .collect()
+    }
+
+    fn resolve_market(input: MarketInput<'_>, _sub_kind: &SubKind) -> Self::Market {
+        match input {
+            MarketInput::Components { base, quote, .. } => kraken_market(base, quote),
+            MarketInput::ExchangeName(name) => KrakenMarket(name.name().clone()),
+        }
     }
 }
 

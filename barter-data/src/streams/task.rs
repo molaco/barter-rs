@@ -110,8 +110,7 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
     TransformerT: ExchangeTransformer<Exchange, Instrument::Key, Kind> + Send,
     Parser: StreamParser<TransformerT::Input, Message = WsMessage, Error = WsError> + Send,
     SnapFetcher: SnapshotFetcher<Exchange, Kind>,
-    Subscription<Exchange, Instrument, Kind>:
-        Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+    Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel>,
 {
     let exchange = Exchange::ID;
     let mut init_result_tx = Some(init_result_tx);
@@ -308,8 +307,7 @@ where
     TransformerT: ExchangeTransformer<Exchange, Instrument::Key, Kind> + Send,
     Parser: StreamParser<TransformerT::Input, Message = WsMessage, Error = WsError> + Send,
     SnapFetcher: SnapshotFetcher<Exchange, Kind>,
-    Subscription<Exchange, Instrument, Kind>:
-        Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+    Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel>,
 {
     let exchange = Exchange::ID;
 

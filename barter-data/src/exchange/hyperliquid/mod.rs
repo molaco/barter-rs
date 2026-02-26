@@ -1,13 +1,14 @@
 use self::{
-    candle::HyperliquidKline, channel::HyperliquidChannel, market::HyperliquidMarket,
+    candle::HyperliquidKline, channel::HyperliquidChannel,
+    market::{HyperliquidMarket, hyperliquid_market},
     subscription::HyperliquidSubResponse, trade::HyperliquidTrades,
 };
 use crate::{
     NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, PingInterval, StreamSelector},
-    instrument::InstrumentData,
+    instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{Map, candle::Candles, trade::PublicTrades},
+    subscription::{Map, SubKind, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -152,6 +153,17 @@ impl Connector for Hyperliquid {
 
     fn expected_responses<InstrumentKey>(map: &Map<InstrumentKey>) -> usize {
         map.0.len()
+    }
+
+    fn resolve_market(input: MarketInput<'_>, _sub_kind: &SubKind) -> Self::Market {
+        match input {
+            MarketInput::Components {
+                base,
+                quote,
+                instrument_kind,
+            } => hyperliquid_market(base, quote, instrument_kind),
+            MarketInput::ExchangeName(name) => HyperliquidMarket(name.name().clone()),
+        }
     }
 }
 

@@ -2,13 +2,13 @@ use crate::{
     NoInitialSnapshots,
     exchange::{
         Connector, ExchangeServer, PingInterval, StreamSelector,
-        bybit::{channel::BybitChannel, market::BybitMarket, subscription::BybitResponse},
+        bybit::{channel::BybitChannel, market::{BybitMarket, bybit_market}, subscription::BybitResponse},
         subscription::ExchangeSub,
     },
-    instrument::InstrumentData,
+    instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
     subscription::{
-        Map,
+        Map, SubKind,
         book::{OrderBooksL1, OrderBooksL2},
         candle::Candles,
         trade::PublicTrades,
@@ -169,6 +169,13 @@ where
 
     fn expected_responses<InstrumentKey>(_: &Map<InstrumentKey>) -> usize {
         1
+    }
+
+    fn resolve_market(input: MarketInput<'_>, _sub_kind: &SubKind) -> Self::Market {
+        match input {
+            MarketInput::Components { base, quote, .. } => bybit_market(base, quote),
+            MarketInput::ExchangeName(name) => BybitMarket(name.name().clone()),
+        }
     }
 }
 

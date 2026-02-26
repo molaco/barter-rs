@@ -9,7 +9,6 @@ use crate::{
         binance::{
             book::l2::{BinanceOrderBookL2Meta, BinanceOrderBookL2Snapshot},
             futures::BinanceFuturesUsd,
-            market::BinanceMarket,
         },
     },
     instrument::InstrumentData,
@@ -47,11 +46,13 @@ impl SnapshotFetcher<BinanceFuturesUsd, OrderBooksL2>
     + Send
     where
         Instrument: InstrumentData,
-        Subscription<BinanceFuturesUsd, Instrument, OrderBooksL2>: Identifier<BinanceMarket>,
     {
         let l2_snapshot_futures = subscriptions.iter().map(|sub| {
             // Construct initial OrderBook snapshot GET url
-            let market = sub.id();
+            let market = BinanceFuturesUsd::resolve_market(
+                sub.instrument.market_input(),
+                &crate::subscription::SubKind::OrderBooksL2,
+            );
             let snapshot_url = format!(
                 "{}?symbol={}&limit=100",
                 HTTP_BOOK_L2_SNAPSHOT_URL_BINANCE_FUTURES_USD,

@@ -1,4 +1,7 @@
 use crate::{Identifier, subscription::Subscription};
+use crate::exchange::Connector;
+use crate::instrument::InstrumentData;
+use crate::subscription::SubscriptionKind;
 use barter_integration::subscription::SubscriptionId;
 use serde::Deserialize;
 
@@ -63,11 +66,17 @@ where
     /// Construct a new exchange specific [`Self`] with the Barter [`Subscription`] provided.
     pub fn new<Exchange, Instrument, Kind>(sub: &Subscription<Exchange, Instrument, Kind>) -> Self
     where
-        Subscription<Exchange, Instrument, Kind>: Identifier<Channel> + Identifier<Market>,
+        Exchange: Connector<Channel = Channel, Market = Market>,
+        Subscription<Exchange, Instrument, Kind>: Identifier<Channel>,
+        Instrument: InstrumentData,
+        Kind: SubscriptionKind,
     {
         Self {
             channel: sub.id(),
-            market: sub.id(),
+            market: Exchange::resolve_market(
+                sub.instrument.market_input(),
+                &sub.kind.as_sub_kind(),
+            ),
         }
     }
 }

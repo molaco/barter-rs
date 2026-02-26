@@ -1,13 +1,13 @@
 use self::{
     book::l1::BinanceOrderBookL1, candle::BinanceKline, channel::BinanceChannel,
-    market::BinanceMarket, subscription::BinanceSubResponse, trade::BinanceTrade,
+    market::{BinanceMarket, binance_market}, subscription::BinanceSubResponse, trade::BinanceTrade,
 };
 use crate::{
     NoInitialSnapshots,
     exchange::{Connector, ExchangeServer, ExchangeSub, StreamSelector},
-    instrument::InstrumentData,
+    instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{Map, book::OrderBooksL1, candle::Candles, trade::PublicTrades},
+    subscription::{Map, SubKind, book::OrderBooksL1, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -153,6 +153,13 @@ where
 
     fn expected_responses<InstrumentKey>(_: &Map<InstrumentKey>) -> usize {
         1
+    }
+
+    fn resolve_market(input: MarketInput<'_>, _sub_kind: &SubKind) -> Self::Market {
+        match input {
+            MarketInput::Components { base, quote, .. } => binance_market(base, quote),
+            MarketInput::ExchangeName(name) => BinanceMarket(name.name().clone()),
+        }
     }
 }
 

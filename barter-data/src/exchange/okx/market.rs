@@ -1,10 +1,8 @@
-use super::Okx;
-use crate::{Identifier, instrument::MarketInstrumentData, subscription::Subscription};
 use barter_instrument::{
-    Keyed,
+    asset::name::AssetNameInternal,
     instrument::{
         kind::option::OptionKind,
-        market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind::*},
+        market_data::kind::{MarketDataInstrumentKind, MarketDataInstrumentKind::*},
     },
 };
 use chrono::{
@@ -21,37 +19,17 @@ use smol_str::{SmolStr, StrExt, format_smolstr};
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 pub struct OkxMarket(pub SmolStr);
 
-impl<Kind> Identifier<OkxMarket> for Subscription<Okx, MarketDataInstrument, Kind> {
-    fn id(&self) -> OkxMarket {
-        okx_market(&self.instrument)
-    }
-}
-
-impl<InstrumentKey, Kind> Identifier<OkxMarket>
-    for Subscription<Okx, Keyed<InstrumentKey, MarketDataInstrument>, Kind>
-{
-    fn id(&self) -> OkxMarket {
-        okx_market(&self.instrument.value)
-    }
-}
-
-impl<InstrumentKey, Kind> Identifier<OkxMarket>
-    for Subscription<Okx, MarketInstrumentData<InstrumentKey>, Kind>
-{
-    fn id(&self) -> OkxMarket {
-        OkxMarket(self.instrument.name_exchange.name().clone())
-    }
-}
-
 impl AsRef<str> for OkxMarket {
     fn as_ref(&self) -> &str {
         &self.0
     }
 }
 
-fn okx_market(instrument: &MarketDataInstrument) -> OkxMarket {
-    let MarketDataInstrument { base, quote, kind } = instrument;
-
+pub(in crate::exchange::okx) fn okx_market(
+    base: &AssetNameInternal,
+    quote: &AssetNameInternal,
+    kind: &MarketDataInstrumentKind,
+) -> OkxMarket {
     OkxMarket(match kind {
         Spot => format_smolstr!("{base}-{quote}").to_uppercase_smolstr(),
         Future(contract) => format_smolstr!("{base}-{quote}-{}", format_expiry(contract.expiry))

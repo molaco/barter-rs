@@ -1,4 +1,4 @@
-use super::SubscriptionKind;
+use super::{SubKind, SubscriptionKind};
 use barter_instrument::Side;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,10 @@ impl SubscriptionKind for Liquidations {
 
     fn as_str(&self) -> &'static str {
         "liquidations"
+    }
+
+    fn as_sub_kind(&self) -> SubKind {
+        SubKind::Liquidations
     }
 }
 

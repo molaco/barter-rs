@@ -1,9 +1,9 @@
 use self::subscription::ExchangeSub;
 use crate::{
     SnapshotFetcher,
-    instrument::InstrumentData,
+    instrument::{InstrumentData, MarketInput},
     subscriber::{Subscriber, validator::SubscriptionValidator},
-    subscription::{Map, SubscriptionKind},
+    subscription::{Map, SubKind, SubscriptionKind},
     transformer::ExchangeTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -159,6 +159,9 @@ where
     fn subscription_timeout() -> Duration {
         DEFAULT_SUBSCRIPTION_TIMEOUT
     }
+
+    /// Resolve a [`MarketInput`] and [`SubKind`] into the exchange-specific [`Self::Market`].
+    fn resolve_market(input: MarketInput<'_>, sub_kind: &SubKind) -> Self::Market;
 }
 
 /// Used when an exchange has servers different

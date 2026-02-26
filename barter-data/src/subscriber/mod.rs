@@ -38,8 +38,7 @@ pub trait Subscriber {
         Exchange: Connector + Send + Sync,
         Kind: SubscriptionKind + Send + Sync,
         Instrument: InstrumentData,
-        Subscription<Exchange, Instrument, Kind>:
-            Identifier<Exchange::Channel> + Identifier<Exchange::Market>;
+        Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel>;
 }
 
 #[derive(Debug)]
@@ -64,8 +63,7 @@ impl Subscriber for WebSocketSubscriber {
         Exchange: Connector + Send + Sync,
         Kind: SubscriptionKind + Send + Sync,
         Instrument: InstrumentData,
-        Subscription<Exchange, Instrument, Kind>:
-            Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+        Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel>,
     {
         // Define variables for logging ergonomics
         let exchange = Exchange::ID;

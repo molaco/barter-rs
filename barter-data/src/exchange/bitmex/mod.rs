@@ -3,14 +3,15 @@ use crate::{
     exchange::{
         Connector, StreamSelector,
         bitmex::{
-            candle::BitmexKline, channel::BitmexChannel, market::BitmexMarket,
+            candle::BitmexKline, channel::BitmexChannel,
+            market::{BitmexMarket, bitmex_market},
             subscription::BitmexSubResponse, trade::BitmexTrade,
         },
         subscription::ExchangeSub,
     },
-    instrument::InstrumentData,
+    instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{Map, candle::Candles, trade::PublicTrades},
+    subscription::{Map, SubKind, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -115,6 +116,13 @@ impl Connector for Bitmex {
 
     fn expected_responses<InstrumentKey>(_: &Map<InstrumentKey>) -> usize {
         1
+    }
+
+    fn resolve_market(input: MarketInput<'_>, _sub_kind: &SubKind) -> Self::Market {
+        match input {
+            MarketInput::Components { base, quote, .. } => bitmex_market(base, quote),
+            MarketInput::ExchangeName(name) => BitmexMarket(name.name().clone()),
+        }
     }
 }
 

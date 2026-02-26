@@ -18,8 +18,7 @@ pub trait SubscriptionMapper {
         Exchange: Connector,
         Instrument: InstrumentData,
         Kind: SubscriptionKind,
-        Subscription<Exchange, Instrument, Kind>:
-            Identifier<Exchange::Channel> + Identifier<Exchange::Market>;
+        Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel>;
 }
 
 /// Standard [`SubscriptionMapper`] for
@@ -35,8 +34,7 @@ impl SubscriptionMapper for WebSocketSubMapper {
         Exchange: Connector,
         Instrument: InstrumentData,
         Kind: SubscriptionKind,
-        Subscription<Exchange, Instrument, Kind>:
-            Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+        Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel>,
         ExchangeSub<Exchange::Channel, Exchange::Market>: Identifier<SubscriptionId>,
     {
         // Allocate SubscriptionIds HashMap to track identifiers for each actioned Subscription

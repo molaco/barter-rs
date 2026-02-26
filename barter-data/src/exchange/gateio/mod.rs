@@ -1,7 +1,9 @@
-use self::{channel::GateioChannel, market::GateioMarket, subscription::GateioSubResponse};
+use self::{channel::GateioChannel, market::{GateioMarket, gateio_market}, subscription::GateioSubResponse};
 use crate::{
     exchange::{Connector, ExchangeServer, subscription::ExchangeSub},
+    instrument::MarketInput,
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
+    subscription::SubKind,
 };
 use barter_instrument::exchange::ExchangeId;
 use barter_integration::{error::SocketError, protocol::websocket::WsMessage};
@@ -131,6 +133,17 @@ where
                 )
             })
             .collect()
+    }
+
+    fn resolve_market(input: MarketInput<'_>, _sub_kind: &SubKind) -> Self::Market {
+        match input {
+            MarketInput::Components {
+                base,
+                quote,
+                instrument_kind,
+            } => gateio_market(base, quote, instrument_kind),
+            MarketInput::ExchangeName(name) => GateioMarket(name.name().clone()),
+        }
     }
 }
 

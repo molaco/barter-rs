@@ -1,5 +1,6 @@
 use barter_instrument::{
     Keyed,
+    asset::name::AssetNameInternal,
     instrument::{
         Instrument,
         market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind},
@@ -8,6 +9,22 @@ use barter_instrument::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+
+/// All data an exchange needs to resolve a market identifier.
+///
+/// Separates instrument data extraction (instrument-specific, exchange-agnostic)
+/// from market string formatting (exchange-specific, instrument-agnostic).
+#[derive(Debug, Clone)]
+pub enum MarketInput<'a> {
+    /// Derived from [`MarketDataInstrument`] or [`Keyed<K, MarketDataInstrument>`].
+    Components {
+        base: &'a AssetNameInternal,
+        quote: &'a AssetNameInternal,
+        instrument_kind: &'a MarketDataInstrumentKind,
+    },
+    /// Pre-computed exchange name from [`MarketInstrumentData`].
+    ExchangeName(&'a InstrumentNameExchange),
+}
 
 /// Instrument related data that defines an associated unique `Id`.
 ///
@@ -21,6 +38,7 @@ where
     type Key: Debug + Clone + Eq + Send + Sync;
     fn key(&self) -> &Self::Key;
     fn kind(&self) -> &MarketDataInstrumentKind;
+    fn market_input(&self) -> MarketInput<'_>;
 }
 
 impl<InstrumentKey> InstrumentData for Keyed<InstrumentKey, MarketDataInstrument>
@@ -36,6 +54,14 @@ where
     fn kind(&self) -> &MarketDataInstrumentKind {
         &self.value.kind
     }
+
+    fn market_input(&self) -> MarketInput<'_> {
+        MarketInput::Components {
+            base: &self.value.base,
+            quote: &self.value.quote,
+            instrument_kind: &self.value.kind,
+        }
+    }
 }
 
 impl InstrumentData for MarketDataInstrument {
@@ -47,6 +73,14 @@ impl InstrumentData for MarketDataInstrument {
 
     fn kind(&self) -> &MarketDataInstrumentKind {
         &self.kind
+    }
+
+    fn market_input(&self) -> MarketInput<'_> {
+        MarketInput::Components {
+            base: &self.base,
+            quote: &self.quote,
+            instrument_kind: &self.kind,
+        }
     }
 }
 
@@ -69,6 +103,10 @@ where
 
     fn kind(&self) -> &MarketDataInstrumentKind {
         &self.kind
+    }
+
+    fn market_input(&self) -> MarketInput<'_> {
+        MarketInput::ExchangeName(&self.name_exchange)
     }
 }
 

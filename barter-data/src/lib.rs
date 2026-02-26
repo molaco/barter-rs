@@ -182,8 +182,7 @@ pub trait SnapshotFetcher<Exchange, Kind> {
         Exchange: Connector,
         Instrument: InstrumentData,
         Kind: SubscriptionKind,
-        Kind::Event: Send,
-        Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Market>;
+        Kind::Event: Send;
 }
 
 /// Implementation of [`SnapshotFetcher`] that does not fetch any initial market data snapshots.
@@ -200,7 +199,6 @@ impl<Exchange, Kind> SnapshotFetcher<Exchange, Kind> for NoInitialSnapshots {
         Instrument: InstrumentData,
         Kind: SubscriptionKind,
         Kind::Event: Send,
-        Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Market>,
     {
         std::future::ready(Ok(vec![]))
     }

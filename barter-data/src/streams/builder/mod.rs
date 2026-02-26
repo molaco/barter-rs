@@ -92,8 +92,7 @@ where
         Instrument::Key: Debug + Clone + Send + Sync + 'static,
         Kind: Ord + Display + Send + Sync + 'static,
         Kind::Event: Clone + Send + 'static,
-        Subscription<Exchange, Instrument, Kind>:
-            Identifier<Exchange::Channel> + Identifier<Exchange::Market> + 'static,
+        Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel> + 'static,
     {
         // Construct Vec<Subscriptions> from input SubIter
         let subscriptions = subscriptions.into_iter().map(Sub::into).collect::<Vec<_>>();

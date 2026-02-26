@@ -1,4 +1,4 @@
-use super::SubscriptionKind;
+use super::{SubKind, SubscriptionKind};
 use barter_instrument::Side;
 use barter_macro::{DeSubKind, SerSubKind};
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,10 @@ impl SubscriptionKind for PublicTrades {
 
     fn as_str(&self) -> &'static str {
         "public_trades"
+    }
+
+    fn as_sub_kind(&self) -> SubKind {
+        SubKind::PublicTrades
     }
 }
 

@@ -1,13 +1,13 @@
 use self::{
-    candle::OkxKline, channel::OkxChannel, market::OkxMarket, subscription::OkxSubResponse,
-    trade::OkxTrades,
+    candle::OkxKline, channel::OkxChannel, market::{OkxMarket, okx_market},
+    subscription::OkxSubResponse, trade::OkxTrades,
 };
 use crate::{
     NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, PingInterval, StreamSelector},
-    instrument::InstrumentData,
+    instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{candle::Candles, trade::PublicTrades},
+    subscription::{SubKind, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -136,6 +136,17 @@ impl Connector for Okx {
             })
             .to_string(),
         )]
+    }
+
+    fn resolve_market(input: MarketInput<'_>, _sub_kind: &SubKind) -> Self::Market {
+        match input {
+            MarketInput::Components {
+                base,
+                quote,
+                instrument_kind,
+            } => okx_market(base, quote, instrument_kind),
+            MarketInput::ExchangeName(name) => OkxMarket(name.name().clone()),
+        }
     }
 }
 

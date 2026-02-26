@@ -57,8 +57,7 @@ where
     Instrument::Key: Clone + Send + Sync + 'static,
     Kind: SubscriptionKind + Display + Send + Sync + 'static,
     Kind::Event: Send + 'static,
-    Subscription<Exchange, Instrument, Kind>:
-        Identifier<Exchange::Channel> + Identifier<Exchange::Market> + 'static,
+    Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel> + 'static,
     // 'static required here (not on Connector trait) because tokio::spawn
     // captures Command<Channel, Market, IK> via the mpsc receiver.
     Exchange::Channel: 'static,

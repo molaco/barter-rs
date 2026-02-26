@@ -1,13 +1,14 @@
 use self::{
-    candle::CoinbaseKline, channel::CoinbaseChannel, market::CoinbaseMarket,
+    candle::CoinbaseKline, channel::CoinbaseChannel,
+    market::{CoinbaseMarket, coinbase_market},
     subscription::CoinbaseSubResponse, trade::CoinbaseTrade,
 };
 use crate::{
     NoInitialSnapshots,
     exchange::{Connector, ExchangeSub, StreamSelector},
-    instrument::InstrumentData,
+    instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{candle::Candles, trade::PublicTrades},
+    subscription::{SubKind, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -132,6 +133,13 @@ impl Connector for Coinbase {
                 )
             })
             .collect()
+    }
+
+    fn resolve_market(input: MarketInput<'_>, _sub_kind: &SubKind) -> Self::Market {
+        match input {
+            MarketInput::Components { base, quote, .. } => coinbase_market(base, quote),
+            MarketInput::ExchangeName(name) => CoinbaseMarket(name.name().clone()),
+        }
     }
 }
 

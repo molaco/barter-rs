@@ -81,8 +81,7 @@ where
     ) -> Result<Vec<SubscriptionId>, DataError>
     where
         Instrument: InstrumentData<Key = InstrumentKey>,
-        Subscription<Exchange, Instrument, Kind>:
-            Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+        Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel>,
     {
         let entries: Vec<_> = subscriptions
             .iter()
@@ -120,8 +119,7 @@ where
     ) -> Result<SubscriptionId, DataError>
     where
         Instrument: InstrumentData<Key = InstrumentKey>,
-        Subscription<Exchange, Instrument, Kind>:
-            Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+        Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel>,
     {
         let mut ids = self.subscribe(vec![subscription])?;
         debug_assert_eq!(ids.len(), 1);
@@ -166,8 +164,7 @@ where
     Instrument: InstrumentData + Clone + 'static,
     Instrument::Key: Clone + Send + Sync + 'static,
     Kind: SubscriptionKind + TryFrom<SubKind, Error = DataError> + Send + Sync + 'static,
-    Subscription<Exchange, Instrument, Kind>:
-        Identifier<Exchange::Channel> + Identifier<Exchange::Market>,
+    Subscription<Exchange, Instrument, Kind>: Identifier<Exchange::Channel>,
 {
     fn subscribe_erased(
         &self,
@@ -199,8 +196,10 @@ mod tests {
         use super::*;
         use crate::{
             Identifier,
+            exchange::Connector,
             exchange::binance::{channel::BinanceChannel, market::BinanceMarket, spot::BinanceSpot},
-            subscription::trade::PublicTrades,
+            instrument::InstrumentData,
+            subscription::{SubscriptionKind, trade::PublicTrades},
         };
         use barter_instrument::instrument::market_data::{
             MarketDataInstrument, kind::MarketDataInstrumentKind,
@@ -235,7 +234,10 @@ mod tests {
             // Derive expected ExchangeSub and SubscriptionId from the subscription
             // to compare against what TypedHandle produces internally.
             let expected_channel: BinanceChannel = sub.id();
-            let expected_market: BinanceMarket = sub.id();
+            let expected_market: BinanceMarket = BinanceSpot::resolve_market(
+                sub.instrument.market_input(),
+                &sub.kind.as_sub_kind(),
+            );
 
             handle.subscribe(vec![sub]).unwrap();
 
@@ -246,7 +248,7 @@ mod tests {
 
                     let entry = &entries[0];
 
-                    // Verify ExchangeSub channel and market match Identifier impls
+                    // Verify ExchangeSub channel and market match expected values
                     assert_eq!(entry.exchange_sub.channel, expected_channel);
                     assert_eq!(entry.exchange_sub.market, expected_market);
 

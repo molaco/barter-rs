@@ -1,8 +1,4 @@
-use super::Binance;
-use crate::{Identifier, instrument::MarketInstrumentData, subscription::Subscription};
-use barter_instrument::{
-    Keyed, asset::name::AssetNameInternal, instrument::market_data::MarketDataInstrument,
-};
+use barter_instrument::asset::name::AssetNameInternal;
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, StrExt, format_smolstr};
 
@@ -13,33 +9,6 @@ use smol_str::{SmolStr, StrExt, format_smolstr};
 /// See docs: <https://binance-docs.github.io/apidocs/futures/en/#websocket-market-streams>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 pub struct BinanceMarket(pub SmolStr);
-
-impl<Server, Kind> Identifier<BinanceMarket>
-    for Subscription<Binance<Server>, MarketDataInstrument, Kind>
-{
-    fn id(&self) -> BinanceMarket {
-        binance_market(&self.instrument.base, &self.instrument.quote)
-    }
-}
-
-impl<Server, InstrumentKey, Kind> Identifier<BinanceMarket>
-    for Subscription<Binance<Server>, Keyed<InstrumentKey, MarketDataInstrument>, Kind>
-{
-    fn id(&self) -> BinanceMarket {
-        binance_market(
-            &self.instrument.as_ref().base,
-            &self.instrument.as_ref().quote,
-        )
-    }
-}
-
-impl<Server, InstrumentKey, Kind> Identifier<BinanceMarket>
-    for Subscription<Binance<Server>, MarketInstrumentData<InstrumentKey>, Kind>
-{
-    fn id(&self) -> BinanceMarket {
-        BinanceMarket(self.instrument.name_exchange.name().clone())
-    }
-}
 
 impl AsRef<str> for BinanceMarket {
     fn as_ref(&self) -> &str {

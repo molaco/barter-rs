@@ -33,6 +33,7 @@ where
 {
     type Event: Debug + Send + Sync;
     fn as_str(&self) -> &'static str;
+    fn as_sub_kind(&self) -> SubKind;
 }
 
 /// Barter [`Subscription`] used to subscribe to a [`SubscriptionKind`] for a particular exchange

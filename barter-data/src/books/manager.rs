@@ -85,8 +85,7 @@ where
     Exchange: StreamSelector<Instrument, OrderBooksL2> + Ord + Display + Send + Sync + 'static,
     Instrument: InstrumentData + Ord + Display + 'static,
     Instrument::Key: Eq + Hash + Send + Sync + 'static,
-    Subscription<Exchange, Instrument, OrderBooksL2>:
-        Identifier<Exchange::Channel> + Identifier<Exchange::Market> + 'static,
+    Subscription<Exchange, Instrument, OrderBooksL2>: Identifier<Exchange::Channel> + 'static,
 {
     // Generate Streams from provided OrderBooksL2 Subscription batches
     let (stream_builder, books) = subscription_batches.into_iter().fold(

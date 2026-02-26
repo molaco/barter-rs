@@ -1,4 +1,4 @@
-use super::SubscriptionKind;
+use super::{SubKind, SubscriptionKind};
 use crate::books::{Level, OrderBook, mid_price, volume_weighted_mid_price};
 use barter_macro::{DeSubKind, SerSubKind};
 use chrono::{DateTime, Utc};
@@ -20,6 +20,10 @@ impl SubscriptionKind for OrderBooksL1 {
     type Event = OrderBookL1;
     fn as_str(&self) -> &'static str {
         "l1"
+    }
+
+    fn as_sub_kind(&self) -> SubKind {
+        SubKind::OrderBooksL1
     }
 }
 
@@ -76,6 +80,10 @@ impl SubscriptionKind for OrderBooksL2 {
     fn as_str(&self) -> &'static str {
         "l2"
     }
+
+    fn as_sub_kind(&self) -> SubKind {
+        SubKind::OrderBooksL2
+    }
 }
 
 impl std::fmt::Display for OrderBooksL2 {
@@ -99,6 +107,10 @@ impl SubscriptionKind for OrderBooksL3 {
 
     fn as_str(&self) -> &'static str {
         "l3"
+    }
+
+    fn as_sub_kind(&self) -> SubKind {
+        SubKind::OrderBooksL3
     }
 }
 
