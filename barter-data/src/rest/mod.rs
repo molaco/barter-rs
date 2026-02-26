@@ -25,6 +25,14 @@ pub struct KlineRequest {
 
 /// Trait for fetching historical kline/candlestick data from an exchange.
 pub trait KlineFetcher {
+    /// Return the list of [`Interval`]s that this exchange supports for REST
+    /// kline fetching.
+    ///
+    /// This is a static method (no `&self`) because the set of supported
+    /// intervals is determined by the exchange, not by a particular client
+    /// instance.
+    fn supported_intervals() -> &'static [Interval];
+
     /// Fetch a single batch of klines for the given request parameters.
     fn fetch_klines(
         &self,

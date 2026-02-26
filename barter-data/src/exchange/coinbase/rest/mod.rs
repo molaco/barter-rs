@@ -128,6 +128,19 @@ struct PaginationState {
 }
 
 impl KlineFetcher for CoinbaseRestClient {
+    fn supported_intervals() -> &'static [Interval] {
+        &[
+            Interval::M1,
+            Interval::M5,
+            Interval::M15,
+            Interval::M30,
+            Interval::H1,
+            Interval::H2,
+            Interval::H6,
+            Interval::D1,
+        ]
+    }
+
     /// Fetch a single batch of klines from the Coinbase REST API.
     ///
     /// Builds a [`GetCoinbaseKlines`](klines::GetCoinbaseKlines) request from the provided

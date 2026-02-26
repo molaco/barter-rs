@@ -199,6 +199,19 @@ struct PaginationState {
 }
 
 impl KlineFetcher for KrakenRestClient {
+    fn supported_intervals() -> &'static [Interval] {
+        &[
+            Interval::M1,
+            Interval::M5,
+            Interval::M15,
+            Interval::M30,
+            Interval::H1,
+            Interval::H4,
+            Interval::D1,
+            Interval::W1,
+        ]
+    }
+
     /// Fetch a single batch of OHLC data from the Kraken REST API.
     ///
     /// Builds a [`GetKrakenOhlc`](klines::GetKrakenOhlc) request from the

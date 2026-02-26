@@ -37,6 +37,10 @@ pub mod market;
 /// [`Validator`](barter_integration::Validator) for [`Hyperliquid`].
 pub mod subscription;
 
+/// REST client for fetching historical klines from [`Hyperliquid`].
+#[cfg(feature = "rest")]
+pub mod rest;
+
 /// Public trade types for [`Hyperliquid`].
 pub mod trade;
 

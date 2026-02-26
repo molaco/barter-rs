@@ -137,6 +137,25 @@ struct PaginationState {
 }
 
 impl KlineFetcher for OkxRestClient {
+    fn supported_intervals() -> &'static [Interval] {
+        &[
+            Interval::M1,
+            Interval::M3,
+            Interval::M5,
+            Interval::M15,
+            Interval::M30,
+            Interval::H1,
+            Interval::H2,
+            Interval::H4,
+            Interval::H6,
+            Interval::H12,
+            Interval::D1,
+            Interval::D3,
+            Interval::W1,
+            Interval::Month1,
+        ]
+    }
+
     /// Fetch a single batch of klines from the OKX REST API.
     ///
     /// Builds a [`GetOkxKlines`](klines::GetOkxKlines) request from the
