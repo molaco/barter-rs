@@ -57,13 +57,13 @@ pub mod indexed;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct HandleKey {
     exchange: ExchangeId,
-    sub_kind: SubKind,
+    sub_kind: SubKindVariant,
 }
 
 /// Discriminant-only version of [`SubKind`] for registry lookup keys.
 /// Strips the [`Interval`] data from [`SubKind::Candles`] so that a single
 /// factory handles all candle intervals for a given exchange.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum SubKindVariant {
     PublicTrades,
     OrderBooksL1,
@@ -111,7 +111,8 @@ where
 {
     /// Subscribe to new instruments on a live connection.
     ///
-    /// Derives the `(ExchangeId, SubKind)` key from the first subscription.
+    /// Derives the `(ExchangeId, SubKindVariant)` key from the first subscription.
+    /// All subscriptions in the batch must share the same exchange and sub-kind variant.
     pub fn subscribe(
         &self,
         subscriptions: Vec<Subscription<ExchangeId, Instrument, SubKind>>,
@@ -120,9 +121,23 @@ where
             .first()
             .map(|s| (s.exchange, s.kind))
             .ok_or(DataError::SubscriptionsEmpty)?;
+
+        let variant = SubKindVariant::from(sub_kind);
+
+        if let Some(bad) = subscriptions.iter().skip(1).find(|s| {
+            s.exchange != exchange || SubKindVariant::from(s.kind) != variant
+        }) {
+            return Err(DataError::SubscriptionMismatch {
+                expected_exchange: exchange,
+                expected_sub_kind: sub_kind,
+                actual_exchange: bad.exchange,
+                actual_sub_kind: bad.kind,
+            });
+        }
+
         let key = HandleKey {
             exchange,
-            sub_kind,
+            sub_kind: variant,
         };
         let handle = self
             .handles
@@ -143,7 +158,7 @@ where
     ) -> Result<(), DataError> {
         let key = HandleKey {
             exchange,
-            sub_kind,
+            sub_kind: SubKindVariant::from(sub_kind),
         };
         let handle = self
             .handles
@@ -237,18 +252,21 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         let txs_ref = &channels.txs;
 
         let futures = batches.into_iter().map(|mut batch| {
-            batch.sort_unstable_by_key(|sub| (sub.exchange, sub.kind));
+            batch.sort_unstable_by_key(|sub| (sub.exchange, SubKindVariant::from(sub.kind)));
             let by_exchange_by_sub_kind =
-                batch.into_iter().chunk_by(|sub| (sub.exchange, sub.kind));
+                batch.into_iter().chunk_by(|sub| (sub.exchange, SubKindVariant::from(sub.kind)));
 
             let batch_futures =
                 by_exchange_by_sub_kind
                     .into_iter()
-                    .map(|((exchange, sub_kind), subs)| {
+                    .map(|((exchange, sub_kind_variant), subs)| {
                         let subs = subs.into_iter().collect::<Vec<_>>();
                         let factory = registry
-                            .get(exchange, sub_kind)
-                            .ok_or(DataError::Unsupported { exchange, sub_kind });
+                            .get(exchange, sub_kind_variant)
+                            .ok_or_else(|| DataError::Unsupported {
+                                exchange,
+                                sub_kind: subs[0].kind,
+                            });
                         async move {
                             factory?
                                 .init_and_forward(
@@ -263,7 +281,9 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
             try_join_all(batch_futures)
         });
 
-        // Collect handle pairs from all batches and flatten into a single map
+        // Note: if any factory fails, try_join_all returns early. Tasks spawned by
+        // successful factories are orphaned but will self-terminate when their
+        // channel counterparts (Txs) are dropped at the end of this scope.
         let nested_results = try_join_all(futures).await?;
         let collected_handles: FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>> =
             nested_results.into_iter().flatten().collect();
@@ -748,7 +768,7 @@ where
 
         // Return the handle pair for collection by the caller
         Ok((
-            HandleKey { exchange, sub_kind },
+            HandleKey { exchange, sub_kind: SubKindVariant::from(sub_kind) },
             Box::new(handle) as Box<dyn DynHandle<Instrument>>,
         ))
     }
@@ -784,10 +804,9 @@ where
     fn get(
         &self,
         exchange: ExchangeId,
-        sub_kind: SubKind,
+        sub_kind: SubKindVariant,
     ) -> Option<&dyn StreamFactory<Instrument, IK>> {
-        let variant = SubKindVariant::from(sub_kind);
-        self.0.get(&(exchange, variant)).map(|f| f.as_ref())
+        self.0.get(&(exchange, sub_kind)).map(|f| f.as_ref())
     }
 }
 

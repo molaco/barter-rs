@@ -43,6 +43,14 @@ pub enum DataError {
         sub_kind: SubKind,
     },
 
+    #[error("subscription batch mismatch: expected ({expected_exchange}, {expected_sub_kind}), got ({actual_exchange}, {actual_sub_kind})")]
+    SubscriptionMismatch {
+        expected_exchange: ExchangeId,
+        expected_sub_kind: SubKind,
+        actual_exchange: ExchangeId,
+        actual_sub_kind: SubKind,
+    },
+
     #[error(
         "\
         InvalidSequence: first_update_id {first_update_id} does not follow on from the \

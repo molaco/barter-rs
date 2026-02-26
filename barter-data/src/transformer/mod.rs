@@ -29,10 +29,24 @@ where
     ) -> impl std::future::Future<Output = Result<Self, DataError>> + Send;
 
     /// Insert entries into the transformer's instrument map for dynamic subscriptions.
-    /// Default: no-op.
-    fn insert_map_entries(&mut self, _entries: Vec<(SubscriptionId, InstrumentKey)>) {}
+    /// Default: logs a warning and drops the entries.
+    fn insert_map_entries(&mut self, entries: Vec<(SubscriptionId, InstrumentKey)>) {
+        if !entries.is_empty() {
+            tracing::warn!(
+                count = entries.len(),
+                "insert_map_entries called on transformer with no override — entries dropped"
+            );
+        }
+    }
 
     /// Remove entries from the transformer's instrument map for dynamic unsubscriptions.
-    /// Default: no-op.
-    fn remove_map_entries(&mut self, _subscription_ids: &[SubscriptionId]) {}
+    /// Default: logs a warning and ignores the subscription IDs.
+    fn remove_map_entries(&mut self, subscription_ids: &[SubscriptionId]) {
+        if !subscription_ids.is_empty() {
+            tracing::warn!(
+                count = subscription_ids.len(),
+                "remove_map_entries called on transformer with no override — entries ignored"
+            );
+        }
+    }
 }

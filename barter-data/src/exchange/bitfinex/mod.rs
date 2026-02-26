@@ -41,7 +41,7 @@ use barter_integration::{
 use barter_macro::{DeExchange, SerExchange};
 use derive_more::Display;
 use serde_json::json;
-use smol_str::{ToSmolStr, format_smolstr};
+use smol_str::format_smolstr;
 use url::Url;
 
 /// Public candle/kline types for [`Bitfinex`].
@@ -184,7 +184,7 @@ impl Connector for Bitfinex {
     fn resolve_market(input: MarketInput<'_>, sub_kind: &SubKind) -> Self::Market {
         let symbol = match input {
             MarketInput::Components { base, quote, .. } => bitfinex_market(base, quote),
-            MarketInput::ExchangeName(name) => BitfinexMarket(name.to_smolstr()),
+            MarketInput::ExchangeName(name) => BitfinexMarket(name.name().clone()),
         };
 
         if let SubKind::Candles(interval) = sub_kind {

@@ -120,10 +120,16 @@ where
     }
 
     fn insert_map_entries(&mut self, entries: Vec<(SubscriptionId, InstrumentKey)>) {
-        tracing::warn!(
-            "dynamic L2 subscription added without snapshot - updates will be dropped until snapshot fetch is implemented"
-        );
         for (id, key) in entries {
+            if self.instrument_map.0.contains_key(&id) {
+                tracing::debug!(%id, "skipping insert_map_entry: already exists");
+                continue;
+            }
+            tracing::warn!(
+                %id,
+                "dynamic L2 subscription added without snapshot — \
+                 updates will be dropped until snapshot fetch is implemented"
+            );
             self.instrument_map
                 .insert(id, BinanceOrderBookL2Meta::new(key, None));
         }

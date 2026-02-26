@@ -40,19 +40,25 @@ where
         }
     }
 
-    /// Insert entries. Returns the ExchangeSubs for Connector::requests().
+    /// Insert entries, skipping duplicates. Returns the ExchangeSubs for
+    /// Connector::requests() and the (SubscriptionId, InstrumentKey) pairs
+    /// that were actually inserted.
     fn subscribe(
         &mut self,
         entries: Vec<SubEntry<Channel, Market, InstrumentKey>>,
-    ) -> Vec<ExchangeSub<Channel, Market>> {
-        entries
-            .into_iter()
-            .map(|entry| {
-                let sub = entry.exchange_sub.clone();
-                self.map.insert(entry.id, (entry.exchange_sub, entry.instrument_key));
-                sub
-            })
-            .collect()
+    ) -> (Vec<ExchangeSub<Channel, Market>>, Vec<(SubscriptionId, InstrumentKey)>) {
+        let mut exchange_subs = Vec::with_capacity(entries.len());
+        let mut map_entries = Vec::with_capacity(entries.len());
+        for entry in entries {
+            if self.map.contains_key(&entry.id) {
+                tracing::warn!(id = %entry.id, "duplicate SubscriptionId — skipping");
+                continue;
+            }
+            exchange_subs.push(entry.exchange_sub.clone());
+            map_entries.push((entry.id.clone(), entry.instrument_key.clone()));
+            self.map.insert(entry.id, (entry.exchange_sub, entry.instrument_key));
+        }
+        (exchange_subs, map_entries)
     }
 
     /// Remove entries. Returns the (SubscriptionId, ExchangeSub) pairs that were
@@ -165,7 +171,7 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
         while let Ok(command) = command_rx.try_recv() {
             match command {
                 Command::Subscribe { entries } => {
-                    active_subs.subscribe(entries);
+                    let _ = active_subs.subscribe(entries);
                 }
                 Command::Unsubscribe { subscription_ids } => {
                     active_subs.unsubscribe(&subscription_ids);
@@ -196,19 +202,8 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
                         Some(command) => {
                             match command {
                                 Command::Subscribe { entries } => {
-                                    // 1. Extract (id, key) pairs before consuming entries
-                                    let map_entries: Vec<_> = entries
-                                        .iter()
-                                        .map(|e| (e.id.clone(), e.instrument_key.clone()))
-                                        .collect();
-
-                                    // 2. Insert into active_subs (consumes entries, returns ExchangeSubs)
-                                    let exchange_subs = active_subs.subscribe(entries);
-
-                                    // 3. Update transformer map
+                                    let (exchange_subs, map_entries) = active_subs.subscribe(entries);
                                     transformer.insert_map_entries(map_entries);
-
-                                    // 4. Generate and send WS messages
                                     let ws_msgs = Exchange::requests(&exchange_subs);
                                     for msg in ws_msgs {
                                         if ws_sink_tx.send(msg).is_err() {
@@ -380,8 +375,9 @@ mod tests {
             SubEntry { id: SubscriptionId::from("c2|m2"), exchange_sub: test_sub("c2", "m2"), instrument_key: "ETH".to_string() },
         ];
 
-        let exchange_subs = subs.subscribe(entries);
+        let (exchange_subs, map_entries) = subs.subscribe(entries);
         assert_eq!(exchange_subs.len(), 2);
+        assert_eq!(map_entries.len(), 2);
         assert_eq!(subs.map.len(), 2);
     }
 
@@ -455,5 +451,35 @@ mod tests {
 
         let removed = subs.unsubscribe(&[SubscriptionId::from("nonexistent")]);
         assert!(removed.is_empty());
+    }
+
+    #[test]
+    fn test_active_subs_subscribe_skips_duplicate() {
+        let mut subs = ActiveSubs::<String, String, String>::new();
+
+        // First subscribe
+        subs.subscribe(vec![
+            SubEntry { id: SubscriptionId::from("c1|m1"), exchange_sub: test_sub("c1", "m1"), instrument_key: "BTC".to_string() },
+        ]);
+
+        // Second subscribe with same id but different data
+        let (exchange_subs, map_entries) = subs.subscribe(vec![
+            SubEntry { id: SubscriptionId::from("c1|m1"), exchange_sub: test_sub("c1_new", "m1_new"), instrument_key: "BTC_NEW".to_string() },
+            SubEntry { id: SubscriptionId::from("c2|m2"), exchange_sub: test_sub("c2", "m2"), instrument_key: "ETH".to_string() },
+        ]);
+
+        // Only the non-duplicate should be returned
+        assert_eq!(exchange_subs.len(), 1);
+        assert_eq!(exchange_subs[0].channel, "c2");
+        assert_eq!(map_entries.len(), 1);
+        assert_eq!(map_entries[0].1, "ETH");
+
+        // Map should have 2 entries total: original BTC + new ETH
+        assert_eq!(subs.map.len(), 2);
+
+        // Original entry should be preserved, not overwritten
+        let (original_sub, original_key) = subs.map.get(&SubscriptionId::from("c1|m1")).unwrap();
+        assert_eq!(original_sub.channel, "c1");
+        assert_eq!(original_key, "BTC");
     }
 }
