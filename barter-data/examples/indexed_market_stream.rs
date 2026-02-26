@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialise indexed MarketStream:
     // - Uses IndexedInstruments to generate a Subscription for each Instrument-SubKind combination
-    let mut stream = init_indexed_multi_exchange_market_stream(
+    let (mut stream, _handles) = init_indexed_multi_exchange_market_stream(
         &instruments,
         &[SubKind::PublicTrades, SubKind::OrderBooksL1, SubKind::OrderBooksL2]
     )

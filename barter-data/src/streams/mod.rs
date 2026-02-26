@@ -10,8 +10,7 @@ use futures::Stream;
 pub mod builder;
 
 /// [`TypedHandle`](handle::TypedHandle) for dynamic runtime subscribe/unsubscribe
-/// on live connections. A lower-level [`SubscriptionHandle`](handle::SubscriptionHandle) is also
-/// available as an escape hatch.
+/// on live connections.
 pub mod handle;
 
 /// Central consumer loop functionality used by the [`StreamBuilder`] to

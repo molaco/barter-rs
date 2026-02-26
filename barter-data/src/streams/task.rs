@@ -68,11 +68,17 @@ where
     }
 
     /// All ExchangeSubs for reconnect replay via Connector::requests().
+    ///
+    /// Clone required: Connector::requests() takes &[ExchangeSub], but HashMap
+    /// values aren't contiguous in memory, so we must collect into a Vec.
     fn all_exchange_subs(&self) -> Vec<ExchangeSub<Channel, Market>> {
         self.map.values().map(|(sub, _)| sub.clone()).collect()
     }
 
     /// All (SubscriptionId, InstrumentKey) pairs for rebuilding the transformer map on reconnect.
+    ///
+    /// Clone required: insert_map_entries() takes owned Vec<(SubscriptionId, InstrumentKey)>,
+    /// and the originals must remain in the HashMap for future reconnects.
     fn instrument_entries(&self) -> Vec<(SubscriptionId, InstrumentKey)> {
         self.map
             .iter()
