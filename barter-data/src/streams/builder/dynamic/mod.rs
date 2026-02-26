@@ -2,6 +2,7 @@ use crate::{
     Identifier,
     error::DataError,
     exchange::{
+        Connector,
         binance::{futures::BinanceFuturesUsd, market::BinanceMarket, spot::BinanceSpot},
         bitfinex::{Bitfinex, market::BitfinexMarket},
         bitmex::{Bitmex, market::BitmexMarket},
@@ -25,7 +26,7 @@ use crate::{
         reconnect::stream::ReconnectingStream,
     },
     subscription::{
-        SubKind, Subscription,
+        SubKind, Subscription, SubscriptionKind,
         book::{OrderBookEvent, OrderBookL1, OrderBooksL1, OrderBooksL2},
         candle::{Candle, Candles},
         liquidation::{Liquidation, Liquidations},
@@ -47,6 +48,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use async_trait::async_trait;
+use std::marker::PhantomData;
 use vecmap::VecMap;
 
 pub mod indexed;
@@ -56,6 +59,32 @@ pub mod indexed;
 struct HandleKey {
     exchange: ExchangeId,
     sub_kind: SubKind,
+}
+
+/// Discriminant-only version of [`SubKind`] for registry lookup keys.
+/// Strips the [`Interval`] data from [`SubKind::Candles`] so that a single
+/// factory handles all candle intervals for a given exchange.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum SubKindVariant {
+    PublicTrades,
+    OrderBooksL1,
+    OrderBooksL2,
+    OrderBooksL3,
+    Liquidations,
+    Candles,
+}
+
+impl From<SubKind> for SubKindVariant {
+    fn from(sk: SubKind) -> Self {
+        match sk {
+            SubKind::PublicTrades => Self::PublicTrades,
+            SubKind::OrderBooksL1 => Self::OrderBooksL1,
+            SubKind::OrderBooksL2 => Self::OrderBooksL2,
+            SubKind::OrderBooksL3 => Self::OrderBooksL3,
+            SubKind::Liquidations => Self::Liquidations,
+            SubKind::Candles(_) => Self::Candles,
+        }
+    }
 }
 
 /// Holds type-erased `TypedHandle`s for runtime subscribe/unsubscribe.
@@ -128,38 +157,18 @@ where
     }
 }
 
-/// Macro to reduce boilerplate in `DynamicStreams::init()` match arms.
+/// Declarative macro that builds a [`StreamRegistry`] from a table of
+/// `Exchange => [Kind1, Kind2, ...]` entries.
 ///
-/// Each invocation initialises one `init_market_stream` call with the concrete Exchange and Kind,
-/// stores the resulting `TypedHandle` (as a `Box<dyn DynHandle<_>>`) in the shared collector,
-/// and spawns a forwarding task to the appropriate channel.
-macro_rules! init_exchange_stream {
-    ($subs:expr, $exchange_ty:ty, $kind_val:expr, $collected_handles:expr,
-     $exchange:expr, $sub_kind:expr, $txs:expr, $tx_field:ident) => {{
-        init_market_stream(
-            STREAM_RECONNECTION_POLICY,
-            $subs
-                .into_iter()
-                .map(|sub| Subscription::new(<$exchange_ty>::default(), sub.instrument, $kind_val))
-                .collect(),
-        )
-        .await
-        .map(|(event_rx, handle)| {
-            $collected_handles
-                .lock()
-                .expect("handles mutex poisoned")
-                .insert(
-                    HandleKey {
-                        exchange: $exchange,
-                        sub_kind: $sub_kind,
-                    },
-                    Box::new(handle) as Box<dyn DynHandle<_>>,
-                );
-            tokio::spawn(
-                UnboundedReceiverStream::new(event_rx)
-                    .forward_to($txs.$tx_field.get(&$exchange).unwrap().clone()),
-            )
-        })
+/// Each entry calls `registry.register::<Exchange, Kind>()`, which inserts a
+/// [`TypedStreamFactory`] keyed by `(Exchange::ID, Kind::VARIANT)`.
+macro_rules! register_streams {
+    ($($exchange_ty:ty => [$($kind_ty:ty),* $(,)?]),* $(,)?) => {{
+        let mut registry = StreamRegistry::new();
+        $($(
+            registry.register::<$exchange_ty, $kind_ty>();
+        )*)*
+        registry
     }};
 }
 
@@ -196,15 +205,17 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         SubBatchIter: IntoIterator<Item = SubIter>,
         SubIter: IntoIterator<Item = Sub>,
         Sub: Into<Subscription<ExchangeId, Instrument, SubKind>>,
-        Instrument: InstrumentData<Key = InstrumentKey> + Ord + Display + 'static,
+        Instrument: InstrumentData<Key = InstrumentKey> + Ord + Display + Clone + Send + Sync + 'static,
         InstrumentKey: Debug + Clone + PartialEq + Send + Sync + 'static,
         Subscription<BinanceSpot, Instrument, PublicTrades>: Identifier<BinanceMarket>,
         Subscription<BinanceSpot, Instrument, OrderBooksL1>: Identifier<BinanceMarket>,
         Subscription<BinanceSpot, Instrument, OrderBooksL2>: Identifier<BinanceMarket>,
+        Subscription<BinanceSpot, Instrument, Candles>: Identifier<BinanceMarket>,
         Subscription<BinanceFuturesUsd, Instrument, PublicTrades>: Identifier<BinanceMarket>,
         Subscription<BinanceFuturesUsd, Instrument, OrderBooksL1>: Identifier<BinanceMarket>,
         Subscription<BinanceFuturesUsd, Instrument, OrderBooksL2>: Identifier<BinanceMarket>,
         Subscription<BinanceFuturesUsd, Instrument, Liquidations>: Identifier<BinanceMarket>,
+        Subscription<BinanceFuturesUsd, Instrument, Candles>: Identifier<BinanceMarket>,
         Subscription<Bitfinex, Instrument, PublicTrades>: Identifier<BitfinexMarket>,
         Subscription<Bitfinex, Instrument, Candles>: Identifier<BitfinexMarket>,
         Subscription<Bitmex, Instrument, PublicTrades>: Identifier<BitmexMarket>,
@@ -212,22 +223,24 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         Subscription<BybitSpot, Instrument, PublicTrades>: Identifier<BybitMarket>,
         Subscription<BybitSpot, Instrument, OrderBooksL1>: Identifier<BybitMarket>,
         Subscription<BybitSpot, Instrument, OrderBooksL2>: Identifier<BybitMarket>,
+        Subscription<BybitSpot, Instrument, Candles>: Identifier<BybitMarket>,
         Subscription<BybitPerpetualsUsd, Instrument, PublicTrades>: Identifier<BybitMarket>,
         Subscription<BybitPerpetualsUsd, Instrument, OrderBooksL1>: Identifier<BybitMarket>,
         Subscription<BybitPerpetualsUsd, Instrument, OrderBooksL2>: Identifier<BybitMarket>,
+        Subscription<BybitPerpetualsUsd, Instrument, Candles>: Identifier<BybitMarket>,
         Subscription<Coinbase, Instrument, PublicTrades>: Identifier<CoinbaseMarket>,
         Subscription<Coinbase, Instrument, Candles>: Identifier<CoinbaseMarket>,
         Subscription<GateioSpot, Instrument, PublicTrades>: Identifier<GateioMarket>,
-        Subscription<GateioFuturesUsd, Instrument, PublicTrades>: Identifier<GateioMarket>,
-        Subscription<GateioFuturesBtc, Instrument, PublicTrades>: Identifier<GateioMarket>,
-        Subscription<GateioPerpetualsUsd, Instrument, PublicTrades>: Identifier<GateioMarket>,
-        Subscription<GateioPerpetualsBtc, Instrument, PublicTrades>: Identifier<GateioMarket>,
-        Subscription<GateioOptions, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<GateioSpot, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<GateioFuturesUsd, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<GateioFuturesUsd, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<GateioFuturesBtc, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<GateioFuturesBtc, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<GateioPerpetualsUsd, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<GateioPerpetualsUsd, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<GateioPerpetualsBtc, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<GateioPerpetualsBtc, Instrument, Candles>: Identifier<GateioMarket>,
+        Subscription<GateioOptions, Instrument, PublicTrades>: Identifier<GateioMarket>,
         Subscription<GateioOptions, Instrument, Candles>: Identifier<GateioMarket>,
         Subscription<Hyperliquid, Instrument, PublicTrades>: Identifier<HyperliquidMarket>,
         Subscription<Hyperliquid, Instrument, Candles>: Identifier<HyperliquidMarket>,
@@ -236,10 +249,6 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         Subscription<Kraken, Instrument, Candles>: Identifier<KrakenMarket>,
         Subscription<Okx, Instrument, PublicTrades>: Identifier<OkxMarket>,
         Subscription<Okx, Instrument, Candles>: Identifier<OkxMarket>,
-        Subscription<BinanceSpot, Instrument, Candles>: Identifier<BinanceMarket>,
-        Subscription<BinanceFuturesUsd, Instrument, Candles>: Identifier<BinanceMarket>,
-        Subscription<BybitSpot, Instrument, Candles>: Identifier<BybitMarket>,
-        Subscription<BybitPerpetualsUsd, Instrument, Candles>: Identifier<BybitMarket>,
     {
         // Validate & dedup Subscription batches
         let batches = validate_batches(subscription_batches)?;
@@ -247,9 +256,33 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         // Generate required Channels from Subscription batches
         let channels = Channels::try_from(&batches)?;
 
-        // Shared collector for DynHandle (type-erased) from all init_market_stream calls
-        let collected_handles: Arc<Mutex<FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>>>> =
-            Arc::new(Mutex::new(FnvHashMap::default()));
+        // Build the stream factory registry
+        let registry = register_streams! {
+            BinanceSpot       => [PublicTrades, OrderBooksL1, OrderBooksL2, Candles],
+            BinanceFuturesUsd => [PublicTrades, OrderBooksL1, OrderBooksL2, Liquidations, Candles],
+            Bitfinex          => [PublicTrades, Candles],
+            Bitmex            => [PublicTrades, Candles],
+            BybitSpot         => [PublicTrades, OrderBooksL1, OrderBooksL2, Candles],
+            BybitPerpetualsUsd => [PublicTrades, OrderBooksL1, OrderBooksL2, Candles],
+            Coinbase          => [PublicTrades, Candles],
+            GateioSpot        => [PublicTrades, Candles],
+            GateioFuturesUsd  => [PublicTrades, Candles],
+            GateioFuturesBtc  => [PublicTrades, Candles],
+            GateioPerpetualsUsd => [PublicTrades, Candles],
+            GateioPerpetualsBtc => [PublicTrades, Candles],
+            GateioOptions     => [PublicTrades, Candles],
+            Hyperliquid       => [PublicTrades, Candles],
+            Kraken            => [PublicTrades, OrderBooksL1, Candles],
+            Okx               => [PublicTrades, Candles],
+        };
+
+        // Shared collector for DynHandle (type-erased) from all init calls
+        let collected_handles: Mutex<FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>>> =
+            Mutex::new(FnvHashMap::default());
+
+        // Group subs by (ExchangeId, SubKind) and launch all connections concurrently
+        let handles_ref = &collected_handles;
+        let txs_ref = &channels.txs;
 
         let futures = batches.into_iter().map(|mut batch| {
             batch.sort_unstable_by_key(|sub| (sub.exchange, sub.kind));
@@ -261,109 +294,20 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
                     .into_iter()
                     .map(|((exchange, sub_kind), subs)| {
                         let subs = subs.into_iter().collect::<Vec<_>>();
-                        let txs = Arc::clone(&channels.txs);
-                        let collected_handles = Arc::clone(&collected_handles);
+                        let factory = registry
+                            .get(exchange, sub_kind)
+                            .ok_or(DataError::Unsupported { exchange, sub_kind });
                         async move {
-                            match (exchange, sub_kind) {
-                                // --- PublicTrades ---
-                                (ExchangeId::BinanceSpot, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, BinanceSpot, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::BinanceFuturesUsd, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, BinanceFuturesUsd, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::Bitfinex, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, Bitfinex, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::Bitmex, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, Bitmex, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::BybitSpot, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, BybitSpot, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::BybitPerpetualsUsd, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, BybitPerpetualsUsd, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::Coinbase, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, Coinbase, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::GateioSpot, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, GateioSpot, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::GateioFuturesUsd, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, GateioFuturesUsd, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::GateioFuturesBtc, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, GateioFuturesBtc, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::GateioPerpetualsUsd, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, GateioPerpetualsUsd, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::GateioPerpetualsBtc, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, GateioPerpetualsBtc, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::GateioOptions, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, GateioOptions, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::Hyperliquid, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, Hyperliquid, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::Kraken, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, Kraken, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-                                (ExchangeId::Okx, SubKind::PublicTrades) =>
-                                    init_exchange_stream!(subs, Okx, PublicTrades, collected_handles, exchange, sub_kind, txs, trades),
-
-                                // --- OrderBooksL1 ---
-                                (ExchangeId::BinanceSpot, SubKind::OrderBooksL1) =>
-                                    init_exchange_stream!(subs, BinanceSpot, OrderBooksL1, collected_handles, exchange, sub_kind, txs, l1s),
-                                (ExchangeId::BinanceFuturesUsd, SubKind::OrderBooksL1) =>
-                                    init_exchange_stream!(subs, BinanceFuturesUsd, OrderBooksL1, collected_handles, exchange, sub_kind, txs, l1s),
-                                (ExchangeId::BybitSpot, SubKind::OrderBooksL1) =>
-                                    init_exchange_stream!(subs, BybitSpot, OrderBooksL1, collected_handles, exchange, sub_kind, txs, l1s),
-                                (ExchangeId::BybitPerpetualsUsd, SubKind::OrderBooksL1) =>
-                                    init_exchange_stream!(subs, BybitPerpetualsUsd, OrderBooksL1, collected_handles, exchange, sub_kind, txs, l1s),
-                                (ExchangeId::Kraken, SubKind::OrderBooksL1) =>
-                                    init_exchange_stream!(subs, Kraken, OrderBooksL1, collected_handles, exchange, sub_kind, txs, l1s),
-
-                                // --- OrderBooksL2 ---
-                                (ExchangeId::BinanceSpot, SubKind::OrderBooksL2) =>
-                                    init_exchange_stream!(subs, BinanceSpot, OrderBooksL2, collected_handles, exchange, sub_kind, txs, l2s),
-                                (ExchangeId::BinanceFuturesUsd, SubKind::OrderBooksL2) =>
-                                    init_exchange_stream!(subs, BinanceFuturesUsd, OrderBooksL2, collected_handles, exchange, sub_kind, txs, l2s),
-                                (ExchangeId::BybitSpot, SubKind::OrderBooksL2) =>
-                                    init_exchange_stream!(subs, BybitSpot, OrderBooksL2, collected_handles, exchange, sub_kind, txs, l2s),
-                                (ExchangeId::BybitPerpetualsUsd, SubKind::OrderBooksL2) =>
-                                    init_exchange_stream!(subs, BybitPerpetualsUsd, OrderBooksL2, collected_handles, exchange, sub_kind, txs, l2s),
-
-                                // --- Liquidations ---
-                                (ExchangeId::BinanceFuturesUsd, SubKind::Liquidations) =>
-                                    init_exchange_stream!(subs, BinanceFuturesUsd, Liquidations, collected_handles, exchange, sub_kind, txs, liquidations),
-
-                                // --- Candles ---
-                                (ExchangeId::BinanceSpot, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, BinanceSpot, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::BinanceFuturesUsd, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, BinanceFuturesUsd, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::Bitfinex, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, Bitfinex, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::Bitmex, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, Bitmex, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::BybitSpot, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, BybitSpot, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::BybitPerpetualsUsd, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, BybitPerpetualsUsd, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::Coinbase, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, Coinbase, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::GateioSpot, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, GateioSpot, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::GateioFuturesUsd, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, GateioFuturesUsd, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::GateioFuturesBtc, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, GateioFuturesBtc, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::GateioPerpetualsUsd, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, GateioPerpetualsUsd, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::GateioPerpetualsBtc, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, GateioPerpetualsBtc, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::GateioOptions, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, GateioOptions, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::Hyperliquid, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, Hyperliquid, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::Kraken, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, Kraken, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-                                (ExchangeId::Okx, SubKind::Candles(interval)) =>
-                                    init_exchange_stream!(subs, Okx, Candles(interval), collected_handles, exchange, sub_kind, txs, candles),
-
-                                // --- Unsupported ---
-                                (exchange, sub_kind) => {
-                                    Err(DataError::Unsupported { exchange, sub_kind })
-                                }
-                            }
+                            factory?
+                                .init_and_forward(
+                                    subs,
+                                    exchange,
+                                    sub_kind,
+                                    STREAM_RECONNECTION_POLICY,
+                                    handles_ref,
+                                    txs_ref,
+                                )
+                                .await
                         }
                     });
 
@@ -375,10 +319,8 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
         // Extract collected handles into an Arc'd map
         let handles = Arc::new(
             collected_handles
-                .lock()
+                .into_inner()
                 .expect("handles mutex poisoned")
-                .drain()
-                .collect::<FnvHashMap<_, _>>(),
         );
 
         let handles = DynamicStreamHandles { handles };
@@ -718,3 +660,200 @@ impl<InstrumentKey> Default for Rxs<InstrumentKey> {
         }
     }
 }
+
+/// Routes a [`SubscriptionKind`] to its corresponding output channel in [`Txs`].
+///
+/// Each concrete kind implements this once; the factory uses it to forward
+/// events to the correct `DynamicStreams` field (trades, l1s, l2s, etc.).
+trait OutputSelector<IK>: SubscriptionKind {
+    /// The [`SubKindVariant`] for this kind, used as the registry lookup key.
+    const VARIANT: SubKindVariant;
+
+    /// Returns a clone of the output sender for `exchange`, or `None` if
+    /// no channel was created for that exchange.
+    fn sender(
+        txs: &Txs<IK>,
+        exchange: ExchangeId,
+    ) -> Option<UnboundedTx<MarketStreamResult<IK, Self::Event>>>;
+}
+
+impl<IK> OutputSelector<IK> for PublicTrades {
+    const VARIANT: SubKindVariant = SubKindVariant::PublicTrades;
+
+    fn sender(
+        txs: &Txs<IK>,
+        exchange: ExchangeId,
+    ) -> Option<UnboundedTx<MarketStreamResult<IK, PublicTrade>>> {
+        txs.trades.get(&exchange).map(|tx| UnboundedTx::new(tx.tx.clone()))
+    }
+}
+
+impl<IK> OutputSelector<IK> for OrderBooksL1 {
+    const VARIANT: SubKindVariant = SubKindVariant::OrderBooksL1;
+
+    fn sender(
+        txs: &Txs<IK>,
+        exchange: ExchangeId,
+    ) -> Option<UnboundedTx<MarketStreamResult<IK, OrderBookL1>>> {
+        txs.l1s.get(&exchange).map(|tx| UnboundedTx::new(tx.tx.clone()))
+    }
+}
+
+impl<IK> OutputSelector<IK> for OrderBooksL2 {
+    const VARIANT: SubKindVariant = SubKindVariant::OrderBooksL2;
+
+    fn sender(
+        txs: &Txs<IK>,
+        exchange: ExchangeId,
+    ) -> Option<UnboundedTx<MarketStreamResult<IK, OrderBookEvent>>> {
+        txs.l2s.get(&exchange).map(|tx| UnboundedTx::new(tx.tx.clone()))
+    }
+}
+
+impl<IK> OutputSelector<IK> for Liquidations {
+    const VARIANT: SubKindVariant = SubKindVariant::Liquidations;
+
+    fn sender(
+        txs: &Txs<IK>,
+        exchange: ExchangeId,
+    ) -> Option<UnboundedTx<MarketStreamResult<IK, Liquidation>>> {
+        txs.liquidations.get(&exchange).map(|tx| UnboundedTx::new(tx.tx.clone()))
+    }
+}
+
+impl<IK> OutputSelector<IK> for Candles {
+    const VARIANT: SubKindVariant = SubKindVariant::Candles;
+
+    fn sender(
+        txs: &Txs<IK>,
+        exchange: ExchangeId,
+    ) -> Option<UnboundedTx<MarketStreamResult<IK, Candle>>> {
+        txs.candles.get(&exchange).map(|tx| UnboundedTx::new(tx.tx.clone()))
+    }
+}
+
+/// Object-safe, type-erased factory for initializing a market stream connection
+/// and forwarding events to the correct output channel.
+///
+/// Each `(Exchange, Kind)` pair is represented by one [`TypedStreamFactory`]
+/// that implements this trait.
+#[async_trait]
+trait StreamFactory<Instrument, IK>: Send + Sync
+where
+    Instrument: Send + 'static,
+    IK: Send + 'static,
+{
+    async fn init_and_forward(
+        &self,
+        subs: Vec<Subscription<ExchangeId, Instrument, SubKind>>,
+        exchange: ExchangeId,
+        sub_kind: SubKind,
+        policy: crate::streams::reconnect::stream::ReconnectionBackoffPolicy,
+        collected_handles: &Mutex<FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>>>,
+        txs: &Txs<IK>,
+    ) -> Result<(), DataError>;
+}
+
+/// Zero-sized generic factory that monomorphizes [`init_market_stream`] for a
+/// specific `(Exchange, Kind)` pair.
+struct TypedStreamFactory<Exchange, Kind>(PhantomData<(Exchange, Kind)>);
+
+impl<E, K> TypedStreamFactory<E, K> {
+    const fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+#[async_trait]
+impl<E, Instrument, K, IK> StreamFactory<Instrument, IK> for TypedStreamFactory<E, K>
+where
+    E: crate::exchange::StreamSelector<Instrument, K> + Send + Sync + 'static,
+    Instrument: InstrumentData<Key = IK> + Display + Clone + Send + Sync + 'static,
+    IK: Debug + Clone + PartialEq + Send + Sync + 'static,
+    K: SubscriptionKind + OutputSelector<IK> + TryFrom<SubKind, Error = DataError> + Display + Send + Sync + 'static,
+    K::Event: Clone + Debug + Send + 'static,
+    Subscription<E, Instrument, K>: Identifier<E::Channel> + Identifier<E::Market> + 'static,
+    E::Channel: 'static,
+    E::Market: 'static,
+{
+    async fn init_and_forward(
+        &self,
+        subs: Vec<Subscription<ExchangeId, Instrument, SubKind>>,
+        exchange: ExchangeId,
+        sub_kind: SubKind,
+        policy: crate::streams::reconnect::stream::ReconnectionBackoffPolicy,
+        collected_handles: &Mutex<FnvHashMap<HandleKey, Box<dyn DynHandle<Instrument>>>>,
+        txs: &Txs<IK>,
+    ) -> Result<(), DataError> {
+        // Convert erased subs to typed subs via TryFrom<SubKind>
+        let typed_subs: Vec<Subscription<E, Instrument, K>> = subs
+            .into_iter()
+            .map(|sub| {
+                let kind = K::try_from(sub.kind)?;
+                Ok(Subscription::new(E::default(), sub.instrument, kind))
+            })
+            .collect::<Result<Vec<_>, DataError>>()?;
+
+        // Initialize the market stream (returns event receiver + typed handle)
+        let (event_rx, handle) = init_market_stream(policy, typed_subs).await?;
+
+        // Store type-erased handle keyed by (ExchangeId, SubKind)
+        collected_handles
+            .lock()
+            .expect("handles mutex poisoned")
+            .insert(
+                HandleKey { exchange, sub_kind },
+                Box::new(handle) as Box<dyn DynHandle<Instrument>>,
+            );
+
+        // Route events to the correct output channel via OutputSelector
+        let tx = K::sender(txs, exchange)
+            .expect("output channel not found for exchange");
+        tokio::spawn(
+            UnboundedReceiverStream::new(event_rx).forward_to(tx),
+        );
+
+        Ok(())
+    }
+}
+
+/// Runtime lookup table mapping `(ExchangeId, SubKindVariant)` to a type-erased
+/// [`StreamFactory`].
+struct StreamRegistry<Instrument, IK>(
+    FnvHashMap<(ExchangeId, SubKindVariant), Box<dyn StreamFactory<Instrument, IK>>>,
+)
+where
+    Instrument: Send + 'static,
+    IK: Send + 'static;
+
+impl<Instrument, IK> StreamRegistry<Instrument, IK>
+where
+    Instrument: Send + 'static,
+    IK: Send + 'static,
+{
+    fn new() -> Self {
+        Self(FnvHashMap::default())
+    }
+
+    fn register<E, K>(&mut self)
+    where
+        TypedStreamFactory<E, K>: StreamFactory<Instrument, IK> + 'static,
+        E: Connector,
+        K: OutputSelector<IK>,
+    {
+        self.0.insert(
+            (E::ID, K::VARIANT),
+            Box::new(TypedStreamFactory::<E, K>::new()),
+        );
+    }
+
+    fn get(
+        &self,
+        exchange: ExchangeId,
+        sub_kind: SubKind,
+    ) -> Option<&dyn StreamFactory<Instrument, IK>> {
+        let variant = SubKindVariant::from(sub_kind);
+        self.0.get(&(exchange, variant)).map(|f| f.as_ref())
+    }
+}
+
