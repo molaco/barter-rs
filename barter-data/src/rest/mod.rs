@@ -76,15 +76,48 @@ pub struct TradeRequest {
 }
 
 /// Trait for fetching historical trades from an exchange REST API.
+///
+/// Implementations provide access to historical trade data via single-batch
+/// fetching ([`TradeFetcher::fetch_trades`]) and paginated streaming
+/// ([`TradeFetcher::stream_trades`]). Not all exchanges support all features;
+/// for example, some exchanges do not support time-based filtering and will
+/// ignore the `start`/`end` fields on [`TradeRequest`], returning only the
+/// most recent trades instead.
+///
+/// # Exchange Support
+///
+/// Known exchange-specific limitations:
+///
+/// - **Binance**: Full pagination via timestamp cursor with +1ms granularity.
+/// - **Bybit**: Single batch only, no time filtering.
+/// - **Coinbase**: Time filtering with client-side validation.
+/// - **Kraken**: Full pagination via trade ID cursor.
+/// - **OKX**: Full pagination with 10K page safety limit.
 pub trait TradeFetcher {
     /// Fetch a single batch of trades for the given request parameters.
+    ///
+    /// Returns a `Vec<RestTrade>` representing one page of historical trades.
+    /// The `start` and `end` fields on [`TradeRequest`] are inclusive when the
+    /// exchange supports time filtering. Exchanges that do not support time
+    /// filtering (e.g., Bybit) will return recent trades and log a warning.
+    ///
+    /// Results should be sorted oldest-first when the exchange provides
+    /// ordering guarantees. An empty `Vec` indicates that no trades exist in
+    /// the requested range.
     fn fetch_trades(
         &self,
         request: TradeRequest,
     ) -> impl Future<Output = Result<Vec<RestTrade>, DataError>> + Send;
 
-    /// Stream paginated batches of trades in chronological order.
-    /// Each batch is a `Vec<RestTrade>` sorted oldest-first.
+    /// Stream paginated batches of trades in chronological order (oldest-first).
+    ///
+    /// Each yielded item is a batch `Vec<RestTrade>`. The stream terminates
+    /// when all trades in the requested time range have been fetched, or when
+    /// the exchange reports that no more data is available.
+    ///
+    /// Not all exchanges support full pagination. For example, Bybit yields a
+    /// single batch. Callers should not assume that all trades in a time range
+    /// will be returned — some exchanges impose per-page or total-page limits.
     fn stream_trades(
         &self,
         request: TradeRequest,
