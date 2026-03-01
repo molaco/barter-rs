@@ -71,6 +71,10 @@ impl RestRequest for GetBybitKlines {
 /// ```
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct BybitKlinesResponse {
+    #[serde(rename = "retCode")]
+    pub ret_code: i64,
+    #[serde(rename = "retMsg")]
+    pub ret_msg: String,
     pub result: BybitKlinesResult,
 }
 

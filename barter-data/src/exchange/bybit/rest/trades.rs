@@ -69,7 +69,9 @@ pub struct GetBybitTradesParams {
     pub category: String,
     /// Trading pair symbol (e.g., "BTCUSDT").
     pub symbol: String,
-    /// Optional limit on the number of trades to return.
+    /// Max trades per request.
+    /// Note: Bybit spot max is 60, linear/inverse max is 1000.
+    /// If a larger limit is requested, the API silently clamps it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
 }
@@ -96,12 +98,12 @@ impl TryFrom<BybitRestTrade> for RestTrade {
     type Error = String;
 
     fn try_from(raw: BybitRestTrade) -> Result<Self, Self::Error> {
-        let time_ms: u64 = raw
+        let time_ms: i64 = raw
             .time
             .parse()
-            .map_err(|e| format!("failed to parse time '{}': {}", raw.time, e))?;
+            .map_err(|e| format!("failed to parse time as i64 '{}': {}", raw.time, e))?;
 
-        let time = DateTime::from_timestamp_millis(time_ms as i64)
+        let time = DateTime::from_timestamp_millis(time_ms)
             .ok_or_else(|| format!("invalid timestamp millis: {}", time_ms))?;
 
         let price = raw
@@ -212,5 +214,41 @@ mod tests {
 
         assert_eq!(trade_buy.id, "2100000000007764456");
         assert_eq!(trade_buy.side, Side::Buy);
+    }
+
+    #[test]
+    fn test_try_from_bybit_rest_trade_invalid_time() {
+        let raw = BybitRestTrade {
+            exec_id: "1".to_string(),
+            price: "26260.98".to_string(),
+            size: "0.003425".to_string(),
+            side: "Buy".to_string(),
+            time: "not_a_number".to_string(),
+        };
+        assert!(RestTrade::try_from(raw).is_err());
+    }
+
+    #[test]
+    fn test_try_from_bybit_rest_trade_invalid_price() {
+        let raw = BybitRestTrade {
+            exec_id: "1".to_string(),
+            price: "bad".to_string(),
+            size: "0.003425".to_string(),
+            side: "Buy".to_string(),
+            time: "1679907065209".to_string(),
+        };
+        assert!(RestTrade::try_from(raw).is_err());
+    }
+
+    #[test]
+    fn test_try_from_bybit_rest_trade_invalid_side() {
+        let raw = BybitRestTrade {
+            exec_id: "1".to_string(),
+            price: "26260.98".to_string(),
+            size: "0.003425".to_string(),
+            side: "UNKNOWN".to_string(),
+            time: "1679907065209".to_string(),
+        };
+        assert!(RestTrade::try_from(raw).is_err());
     }
 }

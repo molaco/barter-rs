@@ -149,7 +149,7 @@ impl TryFrom<KrakenTradeRaw> for RestTrade {
 
     fn try_from(raw: KrakenTradeRaw) -> Result<Self, Self::Error> {
         // Kraken time is a float in seconds; convert to millis for DateTime
-        let time_ms = (raw.time * 1000.0) as i64;
+        let time_ms = (raw.time * 1000.0).round() as i64;
         let time = DateTime::from_timestamp_millis(time_ms)
             .ok_or_else(|| format!("invalid time seconds: {}", raw.time))?;
 
@@ -250,7 +250,7 @@ mod tests {
         let trade = RestTrade::try_from(raw).unwrap();
 
         assert_eq!(trade.id, "391120170");
-        // 1679907065.2091 * 1000 = 1679907065209.1 → truncated to 1679907065209
+        // 1679907065.2091 * 1000 = 1679907065209.1 → rounded to 1679907065209
         assert_eq!(
             trade.time,
             DateTime::from_timestamp_millis(1679907065209).unwrap()
@@ -374,5 +374,33 @@ mod tests {
         assert_eq!(trades.len(), 2);
         assert_eq!(trades[0].trade_id, 391120170);
         assert_eq!(trades[1].trade_id, 391120171);
+    }
+
+    #[test]
+    fn test_try_from_kraken_trade_raw_invalid_price() {
+        let raw = KrakenTradeRaw {
+            price: "not_a_number".to_string(),
+            volume: "1.0".to_string(),
+            time: 1672502400.0,
+            buy_sell: "b".to_string(),
+            trade_id: 12345,
+        };
+        let result = RestTrade::try_from(raw);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("failed to parse price"));
+    }
+
+    #[test]
+    fn test_try_from_kraken_trade_raw_invalid_volume() {
+        let raw = KrakenTradeRaw {
+            price: "16800.00".to_string(),
+            volume: "bad".to_string(),
+            time: 1672502400.0,
+            buy_sell: "b".to_string(),
+            trade_id: 12345,
+        };
+        let result = RestTrade::try_from(raw);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("failed to parse volume"));
     }
 }

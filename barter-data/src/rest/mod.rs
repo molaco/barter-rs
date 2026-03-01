@@ -11,15 +11,15 @@ use serde::{Deserialize, Serialize};
 use std::future::Future;
 
 /// Request parameters for fetching historical kline/candlestick data.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct KlineRequest {
     /// Exchange-specific market string (e.g., "BTCUSDT").
     pub market: String,
     /// Candlestick interval period.
     pub interval: Interval,
-    /// Optional start time filter.
+    /// Optional start time filter (inclusive). Klines at or after this time are included.
     pub start: Option<DateTime<Utc>>,
-    /// Optional end time filter.
+    /// Optional end time filter (inclusive). Klines at or before this time are included.
     pub end: Option<DateTime<Utc>>,
     /// Optional limit on the number of klines to return.
     pub limit: Option<u32>,
@@ -63,13 +63,13 @@ pub struct RestTrade {
 }
 
 /// Request parameters for fetching historical trades.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TradeRequest {
     /// Exchange-specific market string (e.g., "BTCUSDT").
     pub market: String,
-    /// Optional start time filter.
+    /// Optional start time filter (inclusive). Trades at or after this time are included.
     pub start: Option<DateTime<Utc>>,
-    /// Optional end time filter.
+    /// Optional end time filter (inclusive). Trades at or before this time are included.
     pub end: Option<DateTime<Utc>>,
     /// Optional limit on the number of trades to return per batch.
     pub limit: Option<u32>,

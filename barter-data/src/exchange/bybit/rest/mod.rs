@@ -248,6 +248,16 @@ where
                     }
                 };
 
+            // Check for Bybit API-level error (non-zero retCode)
+            if response.ret_code != 0 {
+                let msg = format!(
+                    "Bybit API error (code {}): {}",
+                    response.ret_code, response.ret_msg
+                );
+                warn!(%msg, "klines fetch returned error");
+                return Err(DataError::Socket(msg));
+            }
+
             // Extract raw klines from nested response and reverse
             // (Bybit returns newest-first, we want oldest-first)
             let mut raw_klines = response.result.list;
@@ -366,6 +376,13 @@ where
         );
         async move {
             debug!("building trades request");
+
+            if request.start.is_some() || request.end.is_some() {
+                warn!(
+                    "Bybit recent-trade endpoint does not support time filtering; \
+                     start/end parameters will be ignored"
+                );
+            }
 
             let get_trades_request = trades::GetBybitTrades {
                 path: Server::trades_path(),

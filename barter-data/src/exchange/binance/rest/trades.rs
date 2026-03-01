@@ -197,4 +197,32 @@ mod tests {
         assert!(trades[0].buyer_is_maker);
         assert!(!trades[1].buyer_is_maker);
     }
+
+    #[test]
+    fn test_try_from_binance_agg_trade_invalid_price() {
+        let raw = BinanceAggTrade {
+            agg_trade_id: 1,
+            price: "not_a_number".to_string(),
+            amount: "0.5".to_string(),
+            timestamp: 1679907065209,
+            buyer_is_maker: false,
+        };
+        let result = RestTrade::try_from(raw);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("failed to parse price"));
+    }
+
+    #[test]
+    fn test_try_from_binance_agg_trade_invalid_amount() {
+        let raw = BinanceAggTrade {
+            agg_trade_id: 1,
+            price: "26260.98".to_string(),
+            amount: "bad".to_string(),
+            timestamp: 1679907065209,
+            buyer_is_maker: false,
+        };
+        let result = RestTrade::try_from(raw);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("failed to parse amount"));
+    }
 }

@@ -430,9 +430,18 @@ impl TradeFetcher for KrakenRestClient {
         async move {
             debug!("building Kraken trades request");
 
-            let since = request
-                .start
-                .map(|dt| dt.timestamp_nanos_opt().unwrap_or(0).to_string());
+            let since = match request.start {
+                Some(dt) => {
+                    let nanos = dt.timestamp_nanos_opt().ok_or_else(|| {
+                        DataError::Socket(format!(
+                            "timestamp out of nanosecond range: {}",
+                            dt
+                        ))
+                    })?;
+                    Some(nanos.to_string())
+                }
+                None => None,
+            };
 
             let (trades, _last) = this
                 .fetch_trades_raw(&request.market, since, request.limit)
@@ -476,18 +485,36 @@ impl TradeFetcher for KrakenRestClient {
         &self,
         request: TradeRequest,
     ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
+        let since = request.start.map(|dt| {
+            dt.timestamp_nanos_opt()
+                .ok_or_else(|| {
+                    DataError::Socket(format!("timestamp out of nanosecond range: {}", dt))
+                })
+                .map(|n| n.to_string())
+        });
+
+        // If the nanosecond conversion failed, start with done=true and
+        // yield the error on the first iteration.
+        let (since, init_error) = match since {
+            Some(Err(err)) => (None, Some(err)),
+            Some(Ok(val)) => (Some(val), None),
+            None => (None, None),
+        };
+
         let state = TradePaginationState {
             client: self.clone(),
             market: request.market,
-            since: request
-                .start
-                .map(|dt| dt.timestamp_nanos_opt().unwrap_or(0).to_string()),
+            since,
             end: request.end,
             limit: request.limit,
-            done: false,
+            done: init_error.is_some(),
         };
 
-        stream::unfold(state, |mut state| async move {
+        stream::unfold((state, init_error), |(mut state, init_error)| async move {
+            // Yield initialization error if present
+            if let Some(err) = init_error {
+                return Some((Err(err), (state, None)));
+            }
             if state.done {
                 return None;
             }
@@ -505,7 +532,7 @@ impl TradeFetcher for KrakenRestClient {
             {
                 Err(err) => {
                     state.done = true;
-                    Some((Err(err), state))
+                    Some((Err(err), (state, None)))
                 }
                 Ok((batch, _last)) if batch.is_empty() => {
                     debug!("Kraken trades pagination complete (empty batch)");
@@ -558,7 +585,7 @@ impl TradeFetcher for KrakenRestClient {
                         "advancing Kraken trades pagination"
                     );
 
-                    Some((Ok(filtered), state))
+                    Some((Ok(filtered), (state, None)))
                 }
             }
         })

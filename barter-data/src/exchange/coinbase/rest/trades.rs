@@ -246,6 +246,20 @@ mod tests {
     }
 
     #[test]
+    fn test_try_from_coinbase_rest_trade_invalid_size() {
+        let raw = CoinbaseRestTrade {
+            trade_id: "1".to_string(),
+            price: "26260.98".to_string(),
+            size: "bad".to_string(),
+            side: "BUY".to_string(),
+            time: "2023-03-27T10:51:05.209Z".to_string(),
+        };
+        let result = RestTrade::try_from(raw);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("failed to parse size"));
+    }
+
+    #[test]
     fn test_get_coinbase_trades_path() {
         let request = GetCoinbaseTrades {
             path: "/api/v3/brokerage/market/products/BTC-USD/ticker".to_string(),

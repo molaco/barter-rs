@@ -335,6 +335,8 @@ impl TradeFetcher for CoinbaseRestClient {
         request: TradeRequest,
     ) -> impl std::future::Future<Output = Result<Vec<RestTrade>, DataError>> + Send {
         let this = self.clone();
+        let start = request.start;
+        let end = request.end;
         let span = tracing::info_span!(
             "fetch_trades",
             exchange = "coinbase",
@@ -384,15 +386,33 @@ impl TradeFetcher for CoinbaseRestClient {
             let mut raw_trades = response.trades;
             raw_trades.reverse();
 
-            let rest_trades = raw_trades
+            let trades: Vec<RestTrade> = raw_trades
                 .into_iter()
                 .map(RestTrade::try_from)
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(DataError::Socket)?;
 
-            debug!(count = rest_trades.len(), "fetched trades batch");
+            // Filter to [start, end] range if specified
+            let trades: Vec<RestTrade> = trades
+                .into_iter()
+                .filter(|t| {
+                    if let Some(start) = start
+                        && t.time < start
+                    {
+                        return false;
+                    }
+                    if let Some(end) = end
+                        && t.time > end
+                    {
+                        return false;
+                    }
+                    true
+                })
+                .collect();
 
-            Ok(rest_trades)
+            debug!(count = trades.len(), "fetched trades batch");
+
+            Ok(trades)
         }
         .instrument(span)
     }
@@ -404,8 +424,7 @@ impl TradeFetcher for CoinbaseRestClient {
     /// The stream terminates when an empty batch is returned, when the cursor passes the
     /// requested end time, or on the first error (which is yielded before stopping).
     ///
-    /// Coinbase uses seconds-based timestamps, so the cursor is advanced by
-    /// one second past the last trade's time.
+    /// The cursor is advanced by one millisecond past the last trade's time.
     fn stream_trades(
         &self,
         request: TradeRequest,
@@ -448,9 +467,8 @@ impl TradeFetcher for CoinbaseRestClient {
                 }
                 Ok(batch) => {
                     // Advance cursor past the time of the last trade
-                    // Coinbase uses seconds, so advance by 1 second
                     if let Some(last) = batch.last() {
-                        state.cursor = last.time + TimeDelta::seconds(1);
+                        state.cursor = last.time + TimeDelta::milliseconds(1);
 
                         // If cursor has passed the requested end, mark done
                         if let Some(end) = state.end

@@ -187,7 +187,12 @@ pub trait RestExchangeServer: Default + Debug + Clone + Send {
     /// Path to the klines endpoint (e.g., "/api/v3/klines")
     fn klines_path() -> &'static str;
 
-    /// Path to the trades endpoint (e.g., "/api/v3/aggTrades")
+    /// Path to the trades endpoint (e.g., "/api/v3/aggTrades").
+    ///
+    /// Note: Some exchanges (e.g., Coinbase) require dynamic paths that
+    /// include the symbol in the URL. In those cases, the `TradeFetcher`
+    /// implementation constructs the full path directly rather than using
+    /// this method.
     fn trades_path() -> &'static str;
 
     /// Maximum time window allowed per trades request.

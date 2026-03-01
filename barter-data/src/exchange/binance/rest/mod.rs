@@ -455,12 +455,34 @@ where
                     Some((Err(err), state))
                 }
                 Ok(batch) if batch.is_empty() => {
-                    debug!("trades pagination complete");
-                    None
+                    // If we're using sub-windows and haven't reached the overall end,
+                    // an empty sub-window doesn't mean we're done — advance cursor.
+                    if let Some(max_window) = Server::max_trades_time_window() {
+                        let window_end = state.cursor + max_window;
+                        if state.end.is_none()
+                            || state.end.is_some_and(|end| window_end < end)
+                        {
+                            state.cursor = window_end + TimeDelta::milliseconds(1);
+                            debug!(cursor = %state.cursor, "empty sub-window, advancing cursor");
+                            // Yield empty batch to allow the stream to continue
+                            Some((Ok(batch), state))
+                        } else {
+                            debug!("trades pagination complete");
+                            None
+                        }
+                    } else {
+                        debug!("trades pagination complete");
+                        None
+                    }
                 }
                 Ok(batch) => {
                     // Advance cursor past the timestamp of the last trade
                     if let Some(last) = batch.last() {
+                        // Note: advancing by 1ms means trades sharing the exact same
+                        // millisecond timestamp as the last trade could be skipped if
+                        // they span batch boundaries. This is acceptable for candle-building
+                        // use cases. For exact-trade-count accuracy, ID-based pagination
+                        // (using fromId) would be needed.
                         state.cursor = last.time + TimeDelta::milliseconds(1);
 
                         // If cursor has passed the requested end, mark done

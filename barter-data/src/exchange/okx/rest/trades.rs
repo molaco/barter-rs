@@ -250,6 +250,18 @@ mod tests {
     }
 
     #[test]
+    fn test_try_from_okx_rest_trade_invalid_amount() {
+        let raw = OkxRestTrade {
+            trade_id: "1".to_string(),
+            price: "26260.98".to_string(),
+            amount: "bad".to_string(),
+            side: "buy".to_string(),
+            ts: "1679907065209".to_string(),
+        };
+        assert!(RestTrade::try_from(raw).is_err());
+    }
+
+    #[test]
     fn test_okx_trades_error_response() {
         let json = r#"{
             "code": "51001",
