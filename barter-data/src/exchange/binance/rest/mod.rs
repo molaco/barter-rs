@@ -327,12 +327,23 @@ where
 
 /// Internal pagination state used by [`TradeFetcher::stream_trades`] to
 /// track the cursor position when fetching consecutive batches.
+///
+/// Uses ID-based pagination via Binance's `fromId` parameter for precise
+/// cursor advancement after the first request. The first request uses
+/// `startTime`/`endTime` to establish the time range; subsequent requests
+/// use `fromId` (set to `last_agg_trade_id + 1`) which avoids skipping
+/// trades that share the same millisecond timestamp at batch boundaries.
 struct TradePaginationState<Server> {
     client: BinanceRestClient<Server>,
     market: String,
+    /// Time-based cursor used for the first request and for sub-window
+    /// advancement when `max_trades_time_window` is set.
     cursor: DateTime<Utc>,
     end: Option<DateTime<Utc>>,
     limit: Option<u32>,
+    /// The aggregate trade ID to use as the `fromId` parameter for the
+    /// next request. `None` for the initial request (uses `startTime`).
+    next_from_id: Option<u64>,
     done: bool,
 }
 
@@ -364,6 +375,7 @@ where
                     symbol: request.market,
                     start_time: request.start.map(|dt| dt.timestamp_millis()),
                     end_time: request.end.map(|dt| dt.timestamp_millis()),
+                    from_id: None,
                     limit: request.limit,
                 },
             };
@@ -403,12 +415,18 @@ where
         .instrument(span)
     }
 
-    /// Stream paginated batches of trades using time-cursor based pagination.
+    /// Stream paginated batches of trades using ID-based cursor pagination.
     ///
-    /// Uses [`futures::stream::unfold`] to repeatedly call [`fetch_trades`](Self::fetch_trades),
-    /// advancing the `startTime` cursor past the last trade's timestamp in each batch.
-    /// The stream terminates when an empty batch is returned, when the cursor passes the
-    /// requested end time, or on the first error (which is yielded before stopping).
+    /// Uses [`futures::stream::unfold`] to repeatedly fetch trade batches.
+    /// The first request uses `startTime`/`endTime` to establish the time
+    /// range. Subsequent requests use `fromId` (set to last aggregate trade
+    /// ID + 1) for precise cursor advancement that never skips trades
+    /// sharing the same millisecond timestamp at batch boundaries.
+    ///
+    /// The `endTime` filter is kept on all requests to know when to stop.
+    /// The stream terminates when an empty batch is returned, when the last
+    /// trade's timestamp passes the requested end time, or on the first
+    /// error (which is yielded before stopping).
     fn stream_trades(
         &self,
         request: TradeRequest,
@@ -419,6 +437,7 @@ where
             cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
             end: request.end,
             limit: request.limit,
+            next_from_id: None,
             done: false,
         };
 
@@ -430,77 +449,124 @@ where
             info!(
                 market = %state.market,
                 cursor = %state.cursor,
+                from_id = ?state.next_from_id,
                 "starting trades pagination"
             );
 
-            // Clamp per-request end time to respect exchange time window limits
-            // (e.g., Binance Futures limits endTime - startTime to < 1 hour)
-            let request_end = match (state.end, Server::max_trades_time_window()) {
-                (Some(end), Some(max_window)) => Some(end.min(state.cursor + max_window)),
-                (Some(end), None) => Some(end),
-                (None, Some(max_window)) => Some(state.cursor + max_window),
-                (None, None) => None,
+            // Build request params depending on whether we have an ID cursor.
+            // First request: use startTime + endTime (clamped by max window).
+            // Subsequent requests: use fromId + endTime (no startTime needed).
+            let (start_time, from_id, request_end) = if let Some(from_id) = state.next_from_id {
+                // ID-based pagination: fromId is set, no startTime needed.
+                // Still pass endTime so the API stops at the right boundary.
+                (None, Some(from_id), state.end)
+            } else {
+                // First request: use time-based range with sub-window clamping.
+                let request_end = match (state.end, Server::max_trades_time_window()) {
+                    (Some(end), Some(max_window)) => Some(end.min(state.cursor + max_window)),
+                    (Some(end), None) => Some(end),
+                    (None, Some(max_window)) => Some(state.cursor + max_window),
+                    (None, None) => None,
+                };
+                (Some(state.cursor.timestamp_millis()), None, request_end)
             };
 
-            let request = TradeRequest {
-                market: state.market.clone(),
-                start: Some(state.cursor),
-                end: request_end,
-                limit: state.limit,
+            let get_trades_request = trades::GetAggTrades {
+                path: Server::trades_path(),
+                params: trades::GetAggTradesParams {
+                    symbol: state.market.clone(),
+                    start_time,
+                    end_time: request_end.map(|dt| dt.timestamp_millis()),
+                    from_id,
+                    limit: state.limit,
+                },
             };
 
-            match state.client.fetch_trades(request).await {
+            state.client.wait_for_rate_limit().await;
+
+            let raw_result: Result<Vec<trades::BinanceAggTrade>, DataError> =
+                retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
+                    let req = get_trades_request.clone();
+                    let client = state.client.client.clone();
+                    async move {
+                        client
+                            .execute(req)
+                            .await
+                            .map(|(response, _metric)| response)
+                    }
+                })
+                .await;
+
+            match raw_result {
                 Err(err) => {
+                    warn!(?err, "trades fetch failed");
                     state.done = true;
                     Some((Err(err), state))
                 }
-                Ok(batch) if batch.is_empty() => {
-                    // If we're using sub-windows and haven't reached the overall end,
+                Ok(raw_trades) if raw_trades.is_empty() => {
+                    // If we're using sub-windows (first request path with
+                    // max_trades_time_window) and haven't reached the overall end,
                     // an empty sub-window doesn't mean we're done — advance cursor.
-                    if let Some(max_window) = Server::max_trades_time_window() {
-                        let window_end = state.cursor + max_window;
-                        if state.end.is_none()
-                            || state.end.is_some_and(|end| window_end < end)
-                        {
-                            state.cursor = window_end + TimeDelta::milliseconds(1);
-                            debug!(cursor = %state.cursor, "empty sub-window, advancing cursor");
-                            // Yield empty batch to allow the stream to continue
-                            Some((Ok(batch), state))
-                        } else {
-                            debug!("trades pagination complete");
-                            None
+                    if state.next_from_id.is_none() {
+                        if let Some(max_window) = Server::max_trades_time_window() {
+                            let window_end = state.cursor + max_window;
+                            if state.end.is_none()
+                                || state.end.is_some_and(|end| window_end < end)
+                            {
+                                state.cursor = window_end + TimeDelta::milliseconds(1);
+                                debug!(cursor = %state.cursor, "empty sub-window, advancing cursor");
+                                return Some((Ok(Vec::new()), state));
+                            }
                         }
-                    } else {
-                        debug!("trades pagination complete");
-                        None
                     }
+                    debug!("trades pagination complete");
+                    None
                 }
-                Ok(batch) => {
-                    // Advance cursor past the timestamp of the last trade
-                    if let Some(last) = batch.last() {
-                        // Note: advancing by 1ms means trades sharing the exact same
-                        // millisecond timestamp as the last trade could be skipped if
-                        // they span batch boundaries. This is acceptable for candle-building
-                        // use cases. For exact-trade-count accuracy, ID-based pagination
-                        // (using fromId) would be needed.
-                        state.cursor = last.time + TimeDelta::milliseconds(1);
+                Ok(raw_trades) => {
+                    // Extract the last aggregate trade ID for ID-based cursor.
+                    if let Some(last_raw) = raw_trades.last() {
+                        let last_id = last_raw.agg_trade_id;
+                        let last_ts = last_raw.timestamp;
+                        state.next_from_id = Some(last_id + 1);
 
-                        // If cursor has passed the requested end, mark done
-                        if let Some(end) = state.end
-                            && state.cursor >= end
-                        {
-                            state.done = true;
-                            debug!("trades pagination complete");
+                        // Update the time cursor for logging/debugging purposes
+                        if let Some(ts) = DateTime::from_timestamp_millis(last_ts as i64) {
+                            state.cursor = ts;
+                        }
+
+                        // If the last trade's timestamp has passed the requested end,
+                        // mark done after yielding this batch.
+                        if let Some(end) = state.end {
+                            let last_ts_ms = last_ts as i64;
+                            if last_ts_ms >= end.timestamp_millis() {
+                                state.done = true;
+                                debug!("trades pagination complete");
+                            }
                         }
                     }
 
-                    debug!(
-                        batch_size = batch.len(),
-                        cursor = %state.cursor,
-                        "advancing trades pagination"
-                    );
+                    // Convert raw trades to RestTrade
+                    let batch: Result<Vec<RestTrade>, DataError> = raw_trades
+                        .into_iter()
+                        .map(RestTrade::try_from)
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(DataError::Socket);
 
-                    Some((Ok(batch), state))
+                    match batch {
+                        Ok(trades) => {
+                            debug!(
+                                batch_size = trades.len(),
+                                from_id = ?state.next_from_id,
+                                cursor = %state.cursor,
+                                "advancing trades pagination via ID cursor"
+                            );
+                            Some((Ok(trades), state))
+                        }
+                        Err(err) => {
+                            state.done = true;
+                            Some((Err(err), state))
+                        }
+                    }
                 }
             }
         })

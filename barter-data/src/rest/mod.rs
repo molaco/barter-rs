@@ -88,7 +88,7 @@ pub struct TradeRequest {
 ///
 /// Known exchange-specific limitations:
 ///
-/// - **Binance**: Full pagination via timestamp cursor with +1ms granularity.
+/// - **Binance**: Full pagination via aggregate trade ID cursor (`fromId`).
 /// - **Bybit**: Single batch only, no time filtering.
 /// - **Coinbase**: Time filtering with client-side validation.
 /// - **Kraken**: Full pagination via trade ID cursor.

@@ -48,6 +48,13 @@ pub struct GetAggTradesParams {
     pub start_time: Option<i64>,
     #[serde(rename = "endTime", skip_serializing_if = "Option::is_none")]
     pub end_time: Option<i64>,
+    /// Aggregate trade ID to fetch from (inclusive).
+    ///
+    /// When set, the API returns trades starting from this ID, ignoring
+    /// `startTime`. Used for ID-based pagination which avoids skipping
+    /// trades that share the same millisecond timestamp at batch boundaries.
+    #[serde(rename = "fromId", skip_serializing_if = "Option::is_none")]
+    pub from_id: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
 }
