@@ -5,26 +5,22 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
-/// Coinbase REST API endpoint prefix for trades.
-/// The full path includes the product ID: `/api/v3/brokerage/market/products/{product_id}/trades`
-pub const COINBASE_TRADES_PATH_PREFIX: &str = "/api/v3/brokerage/market/products";
+/// Coinbase REST API endpoint prefix for market ticker (trades).
+/// The full path includes the product ID: `/api/v3/brokerage/market/products/{product_id}/ticker`
+pub const COINBASE_TICKER_PATH_PREFIX: &str = "/api/v3/brokerage/market/products";
 
-/// Top-level response from the Coinbase trades endpoint.
+/// Top-level response from the Coinbase ticker endpoint.
 ///
 /// ```json
 /// {
 ///     "trades": [...],
 ///     "best_bid": "26260.97",
-///     "best_ask": "26261.00",
-///     "cursor": "..."
+///     "best_ask": "26261.00"
 /// }
 /// ```
 #[derive(Debug, Clone, Deserialize)]
 pub struct CoinbaseTradesResponse {
     pub trades: Vec<CoinbaseRestTrade>,
-    /// Cursor for the next page of results.
-    #[serde(default)]
-    pub cursor: Option<String>,
 }
 
 /// A single trade from the Coinbase REST API.
@@ -49,7 +45,7 @@ pub struct CoinbaseRestTrade {
 #[derive(Debug, Clone)]
 pub struct GetCoinbaseTrades {
     /// Full endpoint path including product_id, e.g.
-    /// `/api/v3/brokerage/market/products/BTC-USD/trades`.
+    /// `/api/v3/brokerage/market/products/BTC-USD/ticker`.
     pub path: String,
     /// Query parameters for the trades request.
     pub params: GetCoinbaseTradesParams,
@@ -67,9 +63,6 @@ pub struct GetCoinbaseTradesParams {
     /// Max trades per request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    /// Cursor for pagination.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cursor: Option<String>,
 }
 
 impl RestRequest for GetCoinbaseTrades {
@@ -154,8 +147,7 @@ mod tests {
                 }
             ],
             "best_bid": "26260.97",
-            "best_ask": "26261.00",
-            "cursor": "next_page_cursor"
+            "best_ask": "26261.00"
         }"#;
 
         let response: CoinbaseTradesResponse = serde_json::from_str(json).unwrap();
@@ -167,10 +159,6 @@ mod tests {
         assert_eq!(response.trades[0].time, "2023-03-27T10:51:05.209Z");
         assert_eq!(response.trades[1].trade_id, "34964584");
         assert_eq!(response.trades[1].side, "SELL");
-        assert_eq!(
-            response.cursor,
-            Some("next_page_cursor".to_string())
-        );
     }
 
     #[test]
@@ -258,45 +246,20 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialize_coinbase_trades_response_no_cursor() {
-        let json = r#"{
-            "trades": [
-                {
-                    "trade_id": "34964583",
-                    "product_id": "BTC-USD",
-                    "price": "26260.98",
-                    "size": "0.003425",
-                    "time": "2023-03-27T10:51:05.209Z",
-                    "side": "BUY",
-                    "bid": "",
-                    "ask": ""
-                }
-            ],
-            "best_bid": "26260.97",
-            "best_ask": "26261.00"
-        }"#;
-
-        let response: CoinbaseTradesResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(response.trades.len(), 1);
-        assert_eq!(response.cursor, None);
-    }
-
-    #[test]
     fn test_get_coinbase_trades_path() {
         let request = GetCoinbaseTrades {
-            path: "/api/v3/brokerage/market/products/BTC-USD/trades".to_string(),
+            path: "/api/v3/brokerage/market/products/BTC-USD/ticker".to_string(),
             params: GetCoinbaseTradesParams {
                 start: Some(1672502400),
                 end: Some(1672588800),
                 limit: Some(100),
-                cursor: None,
             },
         };
 
         assert_eq!(
             request.path(),
             Cow::<str>::Owned(
-                "/api/v3/brokerage/market/products/BTC-USD/trades".to_string()
+                "/api/v3/brokerage/market/products/BTC-USD/ticker".to_string()
             )
         );
         assert_eq!(GetCoinbaseTrades::method(), reqwest::Method::GET);

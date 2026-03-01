@@ -189,6 +189,13 @@ pub trait RestExchangeServer: Default + Debug + Clone + Send {
 
     /// Path to the trades endpoint (e.g., "/api/v3/aggTrades")
     fn trades_path() -> &'static str;
+
+    /// Maximum time window allowed per trades request.
+    /// Returns `None` if there is no limit (default).
+    /// Binance Futures limits `endTime - startTime` to < 1 hour.
+    fn max_trades_time_window() -> Option<chrono::TimeDelta> {
+        None
+    }
 }
 
 /// Defines the frequency and construction function for custom

@@ -74,7 +74,9 @@ impl TryFrom<BinanceAggTrade> for RestTrade {
     type Error = String;
 
     fn try_from(raw: BinanceAggTrade) -> Result<Self, Self::Error> {
-        let time = DateTime::from_timestamp_millis(raw.timestamp as i64)
+        let timestamp_i64 = i64::try_from(raw.timestamp)
+            .map_err(|_| format!("timestamp overflow: {} exceeds i64::MAX", raw.timestamp))?;
+        let time = DateTime::from_timestamp_millis(timestamp_i64)
             .ok_or_else(|| format!("invalid timestamp millis: {}", raw.timestamp))?;
 
         let price = raw

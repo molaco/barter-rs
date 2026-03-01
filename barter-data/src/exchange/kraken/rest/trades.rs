@@ -75,7 +75,7 @@ impl KrakenTradesResponse {
 /// - `buy_sell`: "b" for buy, "s" for sell
 /// - `market_limit`: "m" or "l" (ignored)
 /// - `misc`: String (ignored)
-/// - `trade_id`: String (integer as string)
+/// - `trade_id`: integer (unquoted)
 ///
 /// Uses a custom [`Deserialize`] implementation with a sequence visitor.
 #[derive(Debug, Clone)]
@@ -86,8 +86,8 @@ pub struct KrakenTradeRaw {
     pub time: f64,
     /// "b" for buy, "s" for sell.
     pub buy_sell: String,
-    /// Trade ID as string.
-    pub trade_id: String,
+    /// Trade ID as integer.
+    pub trade_id: u64,
 }
 
 impl<'de> serde::Deserialize<'de> for KrakenTradeRaw {
@@ -118,7 +118,7 @@ impl<'de> serde::Deserialize<'de> for KrakenTradeRaw {
                 // [3] buy_sell     (String, "b" or "s")
                 // [4] market_limit (String, "m" or "l" — ignored)
                 // [5] misc         (String — ignored)
-                // [6] trade_id     (String)
+                // [6] trade_id     (u64)
                 let price = extract_next(&mut seq, "price")?;
                 let volume = extract_next(&mut seq, "volume")?;
                 let time = extract_next(&mut seq, "time")?;
@@ -170,7 +170,7 @@ impl TryFrom<KrakenTradeRaw> for RestTrade {
         };
 
         Ok(RestTrade {
-            id: raw.trade_id,
+            id: raw.trade_id.to_string(),
             time,
             price,
             amount,
@@ -227,14 +227,14 @@ mod tests {
     #[test]
     fn test_deserialize_kraken_trade_raw() {
         let json =
-            r#"["26260.98000", "0.00342500", 1679907065.2091, "b", "m", "", "391120170"]"#;
+            r#"["26260.98000", "0.00342500", 1679907065.2091, "b", "m", "", 391120170]"#;
 
         let raw: KrakenTradeRaw = serde_json::from_str(json).unwrap();
         assert_eq!(raw.price, "26260.98000");
         assert_eq!(raw.volume, "0.00342500");
         assert!((raw.time - 1679907065.2091).abs() < 1e-4);
         assert_eq!(raw.buy_sell, "b");
-        assert_eq!(raw.trade_id, "391120170");
+        assert_eq!(raw.trade_id, 391120170);
     }
 
     #[test]
@@ -244,7 +244,7 @@ mod tests {
             volume: "0.00342500".to_string(),
             time: 1679907065.2091,
             buy_sell: "b".to_string(),
-            trade_id: "391120170".to_string(),
+            trade_id: 391120170,
         };
 
         let trade = RestTrade::try_from(raw).unwrap();
@@ -265,7 +265,7 @@ mod tests {
             volume: "0.01000000".to_string(),
             time: 1679907066.5432,
             buy_sell: "s".to_string(),
-            trade_id: "391120171".to_string(),
+            trade_id: 391120171,
         };
 
         let trade_sell = RestTrade::try_from(raw_sell).unwrap();
@@ -277,7 +277,7 @@ mod tests {
             volume: "1.0".to_string(),
             time: 1679907066.0,
             buy_sell: "x".to_string(),
-            trade_id: "1".to_string(),
+            trade_id: 1,
         };
 
         assert!(RestTrade::try_from(raw_invalid).is_err());
@@ -289,8 +289,8 @@ mod tests {
             "error": [],
             "result": {
                 "XXBTZUSD": [
-                    ["26260.98000", "0.00342500", 1679907065.2091, "b", "m", "", "391120170"],
-                    ["26261.50000", "0.01000000", 1679907066.5432, "s", "l", "", "391120171"]
+                    ["26260.98000", "0.00342500", 1679907065.2091, "b", "m", "", 391120170],
+                    ["26261.50000", "0.01000000", 1679907066.5432, "s", "l", "", 391120171]
                 ],
                 "last": "1679907066543200000"
             }
@@ -303,10 +303,10 @@ mod tests {
         assert_eq!(trades.len(), 2);
         assert_eq!(trades[0].price, "26260.98000");
         assert_eq!(trades[0].buy_sell, "b");
-        assert_eq!(trades[0].trade_id, "391120170");
+        assert_eq!(trades[0].trade_id, 391120170);
         assert_eq!(trades[1].price, "26261.50000");
         assert_eq!(trades[1].buy_sell, "s");
-        assert_eq!(trades[1].trade_id, "391120171");
+        assert_eq!(trades[1].trade_id, 391120171);
         assert_eq!(last, Some("1679907066543200000".to_string()));
     }
 
@@ -317,7 +317,7 @@ mod tests {
             "error": [],
             "result": {
                 "XETHZUSD": [
-                    ["1200.50000", "2.50000000", 1679900000.1234, "s", "l", "", "500000001"]
+                    ["1200.50000", "2.50000000", 1679900000.1234, "s", "l", "", 500000001]
                 ],
                 "last": "1679900000123400000"
             }
@@ -328,7 +328,7 @@ mod tests {
         assert_eq!(trades.len(), 1);
         assert_eq!(trades[0].price, "1200.50000");
         assert_eq!(trades[0].buy_sell, "s");
-        assert_eq!(trades[0].trade_id, "500000001");
+        assert_eq!(trades[0].trade_id, 500000001);
         assert_eq!(last, Some("1679900000123400000".to_string()));
     }
 
@@ -366,13 +366,13 @@ mod tests {
     #[test]
     fn test_deserialize_kraken_trade_raw_vec() {
         let json = r#"[
-            ["26260.98000", "0.00342500", 1679907065.2091, "b", "m", "", "391120170"],
-            ["26261.50000", "0.01000000", 1679907066.5432, "s", "l", "", "391120171"]
+            ["26260.98000", "0.00342500", 1679907065.2091, "b", "m", "", 391120170],
+            ["26261.50000", "0.01000000", 1679907066.5432, "s", "l", "", 391120171]
         ]"#;
 
         let trades: Vec<KrakenTradeRaw> = serde_json::from_str(json).unwrap();
         assert_eq!(trades.len(), 2);
-        assert_eq!(trades[0].trade_id, "391120170");
-        assert_eq!(trades[1].trade_id, "391120171");
+        assert_eq!(trades[0].trade_id, 391120170);
+        assert_eq!(trades[1].trade_id, 391120171);
     }
 }

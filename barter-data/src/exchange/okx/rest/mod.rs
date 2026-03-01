@@ -372,6 +372,10 @@ impl TradeFetcher for OkxRestClient {
         async move {
             debug!("building trades request");
 
+            // Capture start/end before moving request fields
+            let request_start = request.start;
+            let request_end = request.end;
+
             let get_trades_request = trades::GetOkxTrades {
                 params: trades::GetOkxTradesParams {
                     inst_id: request.market,
@@ -420,9 +424,27 @@ impl TradeFetcher for OkxRestClient {
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(DataError::Socket)?;
 
-            debug!(count = rest_trades.len(), "fetched trades batch");
+            // Filter to [start, end] if specified
+            let filtered: Vec<RestTrade> = rest_trades
+                .into_iter()
+                .filter(|t| {
+                    if let Some(start) = &request_start
+                        && t.time < *start
+                    {
+                        return false;
+                    }
+                    if let Some(end) = &request_end
+                        && t.time > *end
+                    {
+                        return false;
+                    }
+                    true
+                })
+                .collect();
 
-            Ok(rest_trades)
+            debug!(count = filtered.len(), "fetched trades batch");
+
+            Ok(filtered)
         }
         .instrument(span)
     }
@@ -524,8 +546,22 @@ impl TradeFetcher for OkxRestClient {
 
             // Check if the oldest trade in the batch (now batch_raw.first())
             // is older than our start boundary — if so, we've gone far enough.
-            if let (Some(start), Some(oldest)) = (state.start, batch_raw.first()) {
-                let oldest_ts: i64 = oldest.ts.parse().unwrap_or(0);
+            if let Some(start) = state.start
+                && let Some(oldest) = batch_raw.first()
+            {
+                let oldest_ts: i64 = match oldest.ts.parse() {
+                    Ok(ts) => ts,
+                    Err(e) => {
+                        state.done = true;
+                        return Some((
+                            Err(DataError::Socket(format!(
+                                "failed to parse trade timestamp '{}': {}",
+                                oldest.ts, e
+                            ))),
+                            state,
+                        ));
+                    }
+                };
                 if let Some(oldest_time) = DateTime::from_timestamp_millis(oldest_ts)
                     && oldest_time < start
                 {
@@ -569,6 +605,12 @@ impl TradeFetcher for OkxRestClient {
                 cursor = ?state.cursor,
                 "advancing trades pagination"
             );
+
+            // If all trades were filtered out and pagination is done,
+            // terminate cleanly instead of yielding an empty batch.
+            if filtered.is_empty() && state.done {
+                return None;
+            }
 
             Some((Ok(filtered), state))
         })

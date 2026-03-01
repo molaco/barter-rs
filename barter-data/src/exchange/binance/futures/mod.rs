@@ -59,6 +59,10 @@ impl RestExchangeServer for BinanceServerFuturesUsd {
     fn trades_path() -> &'static str {
         "/fapi/v1/aggTrades"
     }
+
+    fn max_trades_time_window() -> Option<chrono::TimeDelta> {
+        Some(chrono::TimeDelta::minutes(59))
+    }
 }
 
 impl<Instrument> StreamSelector<Instrument, OrderBooksL2> for BinanceFuturesUsd

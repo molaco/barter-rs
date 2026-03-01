@@ -309,18 +309,17 @@ impl KlineFetcher for CoinbaseRestClient {
 }
 
 /// Internal pagination state used by [`TradeFetcher::stream_trades`] to
-/// track the cursor position when fetching consecutive batches of trades.
+/// track the time-cursor position when fetching consecutive batches of trades.
 ///
-/// Coinbase uses cursor-based pagination: the response may contain a `cursor`
-/// field that is passed as a query parameter on the next request.
+/// Mirrors the kline [`PaginationState`] pattern: each batch advances the
+/// `cursor` past the last trade's timestamp so the next request picks up
+/// where the previous one left off.
 struct TradePaginationState {
     client: CoinbaseRestClient,
     market: String,
-    start: Option<DateTime<Utc>>,
+    cursor: DateTime<Utc>,
     end: Option<DateTime<Utc>>,
     limit: Option<u32>,
-    /// Cursor string for the next page of results.
-    cursor: Option<String>,
     done: bool,
 }
 
@@ -345,8 +344,8 @@ impl TradeFetcher for CoinbaseRestClient {
             debug!("building trades request");
 
             let path = format!(
-                "{}/{}/trades",
-                trades::COINBASE_TRADES_PATH_PREFIX,
+                "{}/{}/ticker",
+                trades::COINBASE_TICKER_PATH_PREFIX,
                 request.market
             );
 
@@ -356,7 +355,6 @@ impl TradeFetcher for CoinbaseRestClient {
                     start: request.start.map(|dt| dt.timestamp()),
                     end: request.end.map(|dt| dt.timestamp()),
                     limit: request.limit,
-                    cursor: None,
                 },
             };
 
@@ -399,19 +397,15 @@ impl TradeFetcher for CoinbaseRestClient {
         .instrument(span)
     }
 
-    /// Stream paginated batches of trades using cursor-based backward pagination.
+    /// Stream paginated batches of trades using time-cursor based pagination.
     ///
-    /// Coinbase returns trades newest-first. The response may contain a `cursor`
-    /// field for fetching the next page of older trades. Each batch is reversed
-    /// to oldest-first before yielding.
+    /// Uses [`futures::stream::unfold`] to repeatedly call [`fetch_trades`](Self::fetch_trades),
+    /// advancing the `start` cursor past the last trade's timestamp in each batch.
+    /// The stream terminates when an empty batch is returned, when the cursor passes the
+    /// requested end time, or on the first error (which is yielded before stopping).
     ///
-    /// On the first request, `start` and `end` time parameters are used. On
-    /// subsequent requests, the cursor from the previous response is used.
-    ///
-    /// Each batch is filtered to the `[start, end]` time range. The stream
-    /// terminates when an empty batch is returned, when the cursor is absent
-    /// or empty, when all trades in a batch are older than the requested start
-    /// time, or on the first error (which is yielded before stopping).
+    /// Coinbase uses seconds-based timestamps, so the cursor is advanced by
+    /// one second past the last trade's time.
     fn stream_trades(
         &self,
         request: TradeRequest,
@@ -419,10 +413,9 @@ impl TradeFetcher for CoinbaseRestClient {
         let state = TradePaginationState {
             client: self.clone(),
             market: request.market,
-            start: request.start,
+            cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
             end: request.end,
             limit: request.limit,
-            cursor: None,
             done: false,
         };
 
@@ -433,128 +426,50 @@ impl TradeFetcher for CoinbaseRestClient {
 
             info!(
                 market = %state.market,
-                cursor = ?state.cursor,
+                cursor = %state.cursor,
                 "starting trades pagination"
             );
 
-            let path = format!(
-                "{}/{}/trades",
-                trades::COINBASE_TRADES_PATH_PREFIX,
-                state.market
-            );
-
-            let get_trades_request = trades::GetCoinbaseTrades {
-                path,
-                params: trades::GetCoinbaseTradesParams {
-                    // Only use start/end on the first request (no cursor yet)
-                    start: if state.cursor.is_none() {
-                        state.start.map(|dt| dt.timestamp())
-                    } else {
-                        None
-                    },
-                    end: if state.cursor.is_none() {
-                        state.end.map(|dt| dt.timestamp())
-                    } else {
-                        None
-                    },
-                    limit: state.limit,
-                    cursor: state.cursor.clone(),
-                },
+            let request = TradeRequest {
+                market: state.market.clone(),
+                start: Some(state.cursor),
+                end: state.end,
+                limit: state.limit,
             };
 
-            state.client.wait_for_rate_limit().await;
-
-            let response: trades::CoinbaseTradesResponse =
-                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
-                    let req = get_trades_request.clone();
-                    let client = state.client.client.clone();
-                    async move {
-                        client
-                            .execute(req)
-                            .await
-                            .map(|(response, _metric)| response)
-                    }
-                })
-                .await
-                {
-                    Ok(resp) => resp,
-                    Err(error) => {
-                        warn!(?error, "trades fetch failed");
-                        state.done = true;
-                        return Some((Err(error), state));
-                    }
-                };
-
-            let raw_trades = response.trades;
-
-            // Empty batch means no more data
-            if raw_trades.is_empty() {
-                debug!("trades pagination complete (empty batch)");
-                return None;
-            }
-
-            // Update cursor from response for next page
-            match response.cursor {
-                Some(ref c) if !c.is_empty() => {
-                    state.cursor = Some(c.clone());
-                }
-                _ => {
-                    // No cursor means this is the last page
+            match state.client.fetch_trades(request).await {
+                Err(err) => {
                     state.done = true;
+                    Some((Err(err), state))
+                }
+                Ok(batch) if batch.is_empty() => {
+                    debug!("trades pagination complete");
+                    None
+                }
+                Ok(batch) => {
+                    // Advance cursor past the time of the last trade
+                    // Coinbase uses seconds, so advance by 1 second
+                    if let Some(last) = batch.last() {
+                        state.cursor = last.time + TimeDelta::seconds(1);
+
+                        // If cursor has passed the requested end, mark done
+                        if let Some(end) = state.end
+                            && state.cursor >= end
+                        {
+                            state.done = true;
+                            debug!("trades pagination complete");
+                        }
+                    }
+
+                    debug!(
+                        batch_size = batch.len(),
+                        cursor = %state.cursor,
+                        "advancing trades pagination"
+                    );
+
+                    Some((Ok(batch), state))
                 }
             }
-
-            // Coinbase returns newest-first; reverse to oldest-first
-            let mut batch_raw = raw_trades;
-            batch_raw.reverse();
-
-            // Check if the oldest trade in the batch (now batch_raw.first())
-            // is older than our start boundary — if so, we've gone far enough.
-            if let (Some(start), Some(oldest)) = (state.start, batch_raw.first())
-                && let Ok(oldest_time) = DateTime::parse_from_rfc3339(&oldest.time)
-                && oldest_time.with_timezone(&Utc) < start
-            {
-                state.done = true;
-            }
-
-            // Convert DTOs to RestTrade
-            let rest_trades = match batch_raw
-                .into_iter()
-                .map(RestTrade::try_from)
-                .collect::<Result<Vec<_>, _>>()
-            {
-                Ok(trades) => trades,
-                Err(e) => {
-                    state.done = true;
-                    return Some((Err(DataError::Socket(e)), state));
-                }
-            };
-
-            // Filter to [start, end] range
-            let filtered: Vec<RestTrade> = rest_trades
-                .into_iter()
-                .filter(|t| {
-                    if let Some(start) = state.start
-                        && t.time < start
-                    {
-                        return false;
-                    }
-                    if let Some(end) = state.end
-                        && t.time > end
-                    {
-                        return false;
-                    }
-                    true
-                })
-                .collect();
-
-            debug!(
-                batch_size = filtered.len(),
-                cursor = ?state.cursor,
-                "advancing trades pagination"
-            );
-
-            Some((Ok(filtered), state))
         })
     }
 }

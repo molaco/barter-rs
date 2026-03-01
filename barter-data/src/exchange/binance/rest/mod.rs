@@ -433,10 +433,19 @@ where
                 "starting trades pagination"
             );
 
+            // Clamp per-request end time to respect exchange time window limits
+            // (e.g., Binance Futures limits endTime - startTime to < 1 hour)
+            let request_end = match (state.end, Server::max_trades_time_window()) {
+                (Some(end), Some(max_window)) => Some(end.min(state.cursor + max_window)),
+                (Some(end), None) => Some(end),
+                (None, Some(max_window)) => Some(state.cursor + max_window),
+                (None, None) => None,
+            };
+
             let request = TradeRequest {
                 market: state.market.clone(),
                 start: Some(state.cursor),
-                end: state.end,
+                end: request_end,
                 limit: state.limit,
             };
 
