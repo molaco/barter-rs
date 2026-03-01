@@ -35,6 +35,10 @@ impl RestExchangeServer for BybitServerPerpetualsUsd {
     fn klines_path() -> &'static str {
         "/v5/market/kline"
     }
+
+    fn trades_path() -> &'static str {
+        "/v5/market/recent-trade"
+    }
 }
 
 #[cfg(feature = "rest")]

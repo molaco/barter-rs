@@ -33,17 +33,15 @@ where
     Input: Identifier<Option<SubscriptionId>> + for<'de> Deserialize<'de>,
     MarketIter<InstrumentKey, Kind::Event>: From<(ExchangeId, InstrumentKey, Input)>,
 {
-    fn init(
+    async fn init(
         instrument_map: Map<InstrumentKey>,
         _: &[MarketEvent<InstrumentKey, Kind::Event>],
         _ws_sink_tx: mpsc::UnboundedSender<WsMessage>,
-    ) -> impl std::future::Future<Output = Result<Self, DataError>> + Send {
-        async move {
-            Ok(Self {
-                instrument_map,
-                phantom: PhantomData,
-            })
-        }
+    ) -> Result<Self, DataError> {
+        Ok(Self {
+            instrument_map,
+            phantom: PhantomData,
+        })
     }
 
     fn insert_map_entries(&mut self, entries: Vec<(SubscriptionId, InstrumentKey)>) {

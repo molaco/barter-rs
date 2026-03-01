@@ -70,7 +70,7 @@ pub struct GateioKlineInner {
 impl Identifier<Option<SubscriptionId>> for GateioKline {
     fn id(&self) -> Option<SubscriptionId> {
         // name is like "1m_BTC_USDT" - split at first '_' to get market
-        let market = self.data.name.splitn(2, '_').nth(1)?;
+        let market = self.data.name.split_once('_')?.1;
         Some(ExchangeSub::from((&self.channel, market)).id())
     }
 }

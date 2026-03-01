@@ -101,6 +101,7 @@ where
 ///
 /// Outer loop handles reconnection with exponential backoff.
 /// Inner loop uses `tokio::select!` to multiplex command processing and frame reading.
+#[allow(clippy::cognitive_complexity)]
 pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Parser, SnapFetcher>(
     subscriptions: Vec<Subscription<Exchange, Instrument, Kind>>,
     mut command_rx: mpsc::UnboundedReceiver<Command<Exchange::Channel, Exchange::Market, Instrument::Key>>,

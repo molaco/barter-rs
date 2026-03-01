@@ -186,6 +186,9 @@ pub trait RestExchangeServer: Default + Debug + Clone + Send {
 
     /// Path to the klines endpoint (e.g., "/api/v3/klines")
     fn klines_path() -> &'static str;
+
+    /// Path to the trades endpoint (e.g., "/api/v3/aggTrades")
+    fn trades_path() -> &'static str;
 }
 
 /// Defines the frequency and construction function for custom

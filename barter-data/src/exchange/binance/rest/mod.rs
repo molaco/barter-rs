@@ -2,7 +2,7 @@ use crate::{
     error::DataError,
     exchange::RestExchangeServer,
     rest::{
-        KlineFetcher, KlineRequest,
+        KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
         retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
     subscription::candle::{Candle, Interval},
@@ -20,6 +20,9 @@ use tracing::{Instrument, debug, info, warn};
 
 /// Binance kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
+
+/// Binance aggregate trade REST request, raw DTO, and conversion to [`RestTrade`](crate::rest::RestTrade).
+pub mod trades;
 
 /// Binance REST API error payload.
 ///
@@ -80,6 +83,15 @@ impl<Server> fmt::Debug for BinanceRestClient<Server> {
             .field("client", &self.client)
             .field("rate_limiter", &"BinanceRateLimiter { .. }")
             .finish()
+    }
+}
+
+impl<Server> Default for BinanceRestClient<Server>
+where
+    Server: RestExchangeServer,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -251,7 +263,7 @@ where
             client: self.clone(),
             market: request.market,
             interval: request.interval,
-            cursor: request.start.unwrap_or_else(|| DateTime::UNIX_EPOCH),
+            cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
             end: request.end,
             limit: request.limit,
             done: false,
@@ -292,11 +304,11 @@ where
                         state.cursor = last.close_time + TimeDelta::milliseconds(1);
 
                         // If cursor has passed the requested end, mark done
-                        if let Some(end) = state.end {
-                            if state.cursor >= end {
-                                state.done = true;
-                                debug!("klines pagination complete");
-                            }
+                        if let Some(end) = state.end
+                            && state.cursor >= end
+                        {
+                            state.done = true;
+                            debug!("klines pagination complete");
                         }
                     }
 
@@ -304,6 +316,157 @@ where
                         batch_size = batch.len(),
                         cursor = %state.cursor,
                         "advancing klines pagination"
+                    );
+
+                    Some((Ok(batch), state))
+                }
+            }
+        })
+    }
+}
+
+/// Internal pagination state used by [`TradeFetcher::stream_trades`] to
+/// track the cursor position when fetching consecutive batches.
+struct TradePaginationState<Server> {
+    client: BinanceRestClient<Server>,
+    market: String,
+    cursor: DateTime<Utc>,
+    end: Option<DateTime<Utc>>,
+    limit: Option<u32>,
+    done: bool,
+}
+
+impl<Server> TradeFetcher for BinanceRestClient<Server>
+where
+    Server: RestExchangeServer + Sync + 'static,
+{
+    /// Fetch a single batch of aggregate trades from the Binance REST API.
+    ///
+    /// Builds a [`GetAggTrades`](trades::GetAggTrades) request from the provided
+    /// [`TradeRequest`], waits for the rate limiter, executes the request with
+    /// exponential-backoff retry, and converts raw DTOs into [`RestTrade`]s.
+    fn fetch_trades(
+        &self,
+        request: TradeRequest,
+    ) -> impl std::future::Future<Output = Result<Vec<RestTrade>, DataError>> + Send {
+        let this = self.clone();
+        let span = tracing::info_span!(
+            "fetch_trades",
+            exchange = "binance",
+            market = %request.market,
+        );
+        async move {
+            debug!("building trades request");
+
+            let get_trades_request = trades::GetAggTrades {
+                path: Server::trades_path(),
+                params: trades::GetAggTradesParams {
+                    symbol: request.market,
+                    start_time: request.start.map(|dt| dt.timestamp_millis()),
+                    end_time: request.end.map(|dt| dt.timestamp_millis()),
+                    limit: request.limit,
+                },
+            };
+
+            this.wait_for_rate_limit().await;
+
+            let raw_trades: Vec<trades::BinanceAggTrade> =
+                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
+                    let req = get_trades_request.clone();
+                    let client = this.client.clone();
+                    async move {
+                        client
+                            .execute(req)
+                            .await
+                            .map(|(response, _metric)| response)
+                    }
+                })
+                .await
+                {
+                    Ok(trades) => trades,
+                    Err(error) => {
+                        warn!(?error, "trades fetch failed");
+                        return Err(error);
+                    }
+                };
+
+            let rest_trades = raw_trades
+                .into_iter()
+                .map(RestTrade::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(DataError::Socket)?;
+
+            debug!(count = rest_trades.len(), "fetched trades batch");
+
+            Ok(rest_trades)
+        }
+        .instrument(span)
+    }
+
+    /// Stream paginated batches of trades using time-cursor based pagination.
+    ///
+    /// Uses [`futures::stream::unfold`] to repeatedly call [`fetch_trades`](Self::fetch_trades),
+    /// advancing the `startTime` cursor past the last trade's timestamp in each batch.
+    /// The stream terminates when an empty batch is returned, when the cursor passes the
+    /// requested end time, or on the first error (which is yielded before stopping).
+    fn stream_trades(
+        &self,
+        request: TradeRequest,
+    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
+        let state = TradePaginationState {
+            client: self.clone(),
+            market: request.market,
+            cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
+            end: request.end,
+            limit: request.limit,
+            done: false,
+        };
+
+        stream::unfold(state, |mut state| async move {
+            if state.done {
+                return None;
+            }
+
+            info!(
+                market = %state.market,
+                cursor = %state.cursor,
+                "starting trades pagination"
+            );
+
+            let request = TradeRequest {
+                market: state.market.clone(),
+                start: Some(state.cursor),
+                end: state.end,
+                limit: state.limit,
+            };
+
+            match state.client.fetch_trades(request).await {
+                Err(err) => {
+                    state.done = true;
+                    Some((Err(err), state))
+                }
+                Ok(batch) if batch.is_empty() => {
+                    debug!("trades pagination complete");
+                    None
+                }
+                Ok(batch) => {
+                    // Advance cursor past the timestamp of the last trade
+                    if let Some(last) = batch.last() {
+                        state.cursor = last.time + TimeDelta::milliseconds(1);
+
+                        // If cursor has passed the requested end, mark done
+                        if let Some(end) = state.end
+                            && state.cursor >= end
+                        {
+                            state.done = true;
+                            debug!("trades pagination complete");
+                        }
+                    }
+
+                    debug!(
+                        batch_size = batch.len(),
+                        cursor = %state.cursor,
+                        "advancing trades pagination"
                     );
 
                     Some((Ok(batch), state))

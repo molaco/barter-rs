@@ -49,6 +49,10 @@ impl RestExchangeServer for BinanceServerSpot {
     fn klines_path() -> &'static str {
         "/api/v3/klines"
     }
+
+    fn trades_path() -> &'static str {
+        "/api/v3/aggTrades"
+    }
 }
 
 impl<Instrument> StreamSelector<Instrument, OrderBooksL2> for BinanceSpot

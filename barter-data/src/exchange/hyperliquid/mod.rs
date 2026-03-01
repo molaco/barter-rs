@@ -126,7 +126,7 @@ impl Connector for Hyperliquid {
             .iter()
             .map(|sub| {
                 let subscription =
-                    serde_json::to_value(&sub).expect("failed to serialize ExchangeSub");
+                    serde_json::to_value(sub).expect("failed to serialize ExchangeSub");
 
                 let mut payload = serde_json::Map::new();
                 payload.insert("method".to_string(), json!("subscribe"));
@@ -144,7 +144,7 @@ impl Connector for Hyperliquid {
             .iter()
             .map(|sub| {
                 let subscription =
-                    serde_json::to_value(&sub).expect("failed to serialize ExchangeSub");
+                    serde_json::to_value(sub).expect("failed to serialize ExchangeSub");
 
                 let mut payload = serde_json::Map::new();
                 payload.insert("method".to_string(), json!("unsubscribe"));

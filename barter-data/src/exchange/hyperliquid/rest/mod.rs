@@ -90,6 +90,12 @@ impl fmt::Debug for HyperliquidRestClient {
     }
 }
 
+impl Default for HyperliquidRestClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HyperliquidRestClient {
     /// Construct a new [`HyperliquidRestClient`] using the default Hyperliquid
     /// REST API base URL.
@@ -304,11 +310,11 @@ impl KlineFetcher for HyperliquidRestClient {
                         state.cursor = last.close_time + TimeDelta::milliseconds(1);
 
                         // If cursor has passed the requested end, mark done
-                        if let Some(end) = state.end {
-                            if state.cursor >= end {
-                                state.done = true;
-                                debug!("klines pagination complete");
-                            }
+                        if let Some(end) = state.end
+                            && state.cursor >= end
+                        {
+                            state.done = true;
+                            debug!("klines pagination complete");
                         }
                     }
 

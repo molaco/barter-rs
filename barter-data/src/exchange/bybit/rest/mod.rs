@@ -2,7 +2,7 @@ use crate::{
     error::DataError,
     exchange::RestExchangeServer,
     rest::{
-        KlineFetcher, KlineRequest,
+        KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
         retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
     subscription::candle::{Candle, Interval},
@@ -20,6 +20,9 @@ use tracing::{Instrument, debug, info, warn};
 
 /// Bybit kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
+
+/// Bybit recent trades REST request, raw DTO, and conversion to [`RestTrade`](crate::rest::RestTrade).
+pub mod trades;
 
 /// Bybit REST API error payload.
 ///
@@ -91,6 +94,15 @@ impl<Server> fmt::Debug for BybitRestClient<Server> {
             .field("client", &self.client)
             .field("rate_limiter", &"BybitRateLimiter { .. }")
             .finish()
+    }
+}
+
+impl<Server> Default for BybitRestClient<Server>
+where
+    Server: RestExchangeServer,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -268,7 +280,7 @@ where
             client: self.clone(),
             market: request.market,
             interval: request.interval,
-            cursor: request.start.unwrap_or_else(|| DateTime::UNIX_EPOCH),
+            cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
             end: request.end,
             limit: request.limit,
             done: false,
@@ -310,11 +322,11 @@ where
                         state.cursor = last.open_time + TimeDelta::milliseconds(1);
 
                         // If cursor has passed the requested end, mark done
-                        if let Some(end) = state.end {
-                            if state.cursor >= end {
-                                state.done = true;
-                                debug!("klines pagination complete");
-                            }
+                        if let Some(end) = state.end
+                            && state.cursor >= end
+                        {
+                            state.done = true;
+                            debug!("klines pagination complete");
                         }
                     }
 
@@ -328,5 +340,101 @@ where
                 }
             }
         })
+    }
+}
+
+impl<Server> TradeFetcher for BybitRestClient<Server>
+where
+    Server: RestExchangeServer + BybitCategory + Sync + 'static,
+{
+    /// Fetch a single batch of recent trades from the Bybit REST API.
+    ///
+    /// Builds a [`GetBybitTrades`](trades::GetBybitTrades) request from the provided
+    /// [`TradeRequest`], waits for the rate limiter, executes the request with
+    /// exponential-backoff retry, checks the `retCode` for API-level errors,
+    /// reverses the results (Bybit returns newest-first), and converts raw
+    /// DTOs into [`RestTrade`]s.
+    fn fetch_trades(
+        &self,
+        request: TradeRequest,
+    ) -> impl std::future::Future<Output = Result<Vec<RestTrade>, DataError>> + Send {
+        let this = self.clone();
+        let span = tracing::info_span!(
+            "fetch_trades",
+            exchange = "bybit",
+            market = %request.market,
+        );
+        async move {
+            debug!("building trades request");
+
+            let get_trades_request = trades::GetBybitTrades {
+                path: Server::trades_path(),
+                params: trades::GetBybitTradesParams {
+                    category: Server::category().to_string(),
+                    symbol: request.market,
+                    limit: request.limit,
+                },
+            };
+
+            this.wait_for_rate_limit().await;
+
+            let response: trades::BybitTradesResponse =
+                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
+                    let req = get_trades_request.clone();
+                    let client = this.client.clone();
+                    async move {
+                        client
+                            .execute(req)
+                            .await
+                            .map(|(response, _metric)| response)
+                    }
+                })
+                .await
+                {
+                    Ok(resp) => resp,
+                    Err(error) => {
+                        warn!(?error, "trades fetch failed");
+                        return Err(error);
+                    }
+                };
+
+            // Check for API-level errors
+            if response.ret_code != 0 {
+                let msg = format!(
+                    "Bybit API error (code {}): {}",
+                    response.ret_code, response.ret_msg
+                );
+                warn!(%msg, "trades fetch returned error");
+                return Err(DataError::Socket(msg));
+            }
+
+            // Extract raw trades from nested response and reverse
+            // (Bybit returns newest-first, we want oldest-first)
+            let mut raw_trades = response.result.list;
+            raw_trades.reverse();
+
+            let rest_trades = raw_trades
+                .into_iter()
+                .map(RestTrade::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(DataError::Socket)?;
+
+            debug!(count = rest_trades.len(), "fetched trades batch");
+
+            Ok(rest_trades)
+        }
+        .instrument(span)
+    }
+
+    /// Stream a single batch of recent trades from the Bybit REST API.
+    ///
+    /// Bybit's `/v5/market/recent-trade` endpoint does not support time-based
+    /// pagination, so this yields exactly one batch and then terminates.
+    fn stream_trades(
+        &self,
+        request: TradeRequest,
+    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
+        let this = self.clone();
+        stream::once(async move { this.fetch_trades(request).await })
     }
 }

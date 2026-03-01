@@ -55,6 +55,10 @@ impl RestExchangeServer for BinanceServerFuturesUsd {
     fn klines_path() -> &'static str {
         "/fapi/v1/klines"
     }
+
+    fn trades_path() -> &'static str {
+        "/fapi/v1/aggTrades"
+    }
 }
 
 impl<Instrument> StreamSelector<Instrument, OrderBooksL2> for BinanceFuturesUsd

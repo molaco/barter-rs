@@ -197,7 +197,7 @@ impl<'de> serde::Deserialize<'de> for BitfinexCandleMessage {
                 let payload = match &second {
                     serde_json::Value::String(s) if s == "hb" => BitfinexCandlePayload::Heartbeat,
                     serde_json::Value::Array(arr)
-                        if arr.first().map_or(false, |v| v.is_array()) =>
+                        if arr.first().is_some_and(|v| v.is_array()) =>
                     {
                         // Snapshot: [[MTS, O, C, H, L, V], [MTS, O, C, H, L, V], ...]
                         let candles: Vec<BitfinexCandle> =
