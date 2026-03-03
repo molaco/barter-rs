@@ -4,10 +4,8 @@ use crate::{
     error::DataError,
     subscription::candle::{Candle, Interval},
 };
-use barter_instrument::Side;
 use chrono::{DateTime, Utc};
 use futures::Stream;
-use serde::{Deserialize, Serialize};
 use std::future::Future;
 
 /// Request parameters for fetching historical kline/candlestick data.
@@ -48,19 +46,7 @@ pub trait KlineFetcher {
     ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send;
 }
 
-/// A single trade returned by a REST API, with timestamp included.
-///
-/// Distinct from [`PublicTrade`] because REST trade responses always include
-/// timestamps directly, whereas `PublicTrade` omits `time` (it's provided by
-/// the `MarketEvent` wrapper in the WebSocket path).
-#[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
-pub struct RestTrade {
-    pub id: String,
-    pub time: DateTime<Utc>,
-    pub price: f64,
-    pub amount: f64,
-    pub side: Side,
-}
+pub use crate::trade::RestTrade;
 
 /// Request parameters for fetching historical trades.
 #[derive(Clone, Debug, PartialEq)]

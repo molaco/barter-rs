@@ -158,9 +158,19 @@ pub mod books;
 /// [`futures_usd`](exchange::binance::futures::l2::BinanceFuturesUsdOrderBooksL2Transformer).
 pub mod transformer;
 
+/// Shared trade type used by both REST and bulk modules.
+pub mod trade;
+
+/// Retry policy and backoff logic shared by REST and bulk modules.
+pub mod retry;
+
 /// REST API client for fetching historical kline/candlestick data from exchanges.
 #[cfg(feature = "rest")]
 pub mod rest;
+
+/// Bulk archive download and parsing for historical data.
+#[cfg(feature = "bulk")]
+pub mod bulk;
 
 /// Defines a generic identification type for the implementor.
 pub trait Identifier<T> {

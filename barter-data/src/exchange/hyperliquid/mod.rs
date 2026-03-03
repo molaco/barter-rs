@@ -41,6 +41,10 @@ pub mod subscription;
 #[cfg(feature = "rest")]
 pub mod rest;
 
+/// Bulk archive download client for Hyperliquid.
+#[cfg(feature = "bulk")]
+pub mod bulk;
+
 /// Public trade types for [`Hyperliquid`].
 pub mod trade;
 

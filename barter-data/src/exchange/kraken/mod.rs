@@ -46,6 +46,10 @@ pub mod subscription;
 #[cfg(feature = "rest")]
 pub mod rest;
 
+/// Standalone archive parser for Kraken bulk trade data.
+#[cfg(feature = "bulk")]
+pub mod bulk;
+
 /// Public trade types for [`Kraken`].
 pub mod trade;
 

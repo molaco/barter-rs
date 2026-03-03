@@ -42,6 +42,10 @@ pub mod market;
 #[cfg(feature = "rest")]
 pub mod rest;
 
+/// Bulk archive download client for Binance exchange variants.
+#[cfg(feature = "bulk")]
+pub mod bulk;
+
 /// [`ExchangeServer`] and [`StreamSelector`] implementations for
 /// [`BinanceSpot`](spot::BinanceSpot).
 pub mod spot;

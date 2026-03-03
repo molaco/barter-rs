@@ -14,6 +14,7 @@ categories = ["accessibility", "simulation"]
 [features]
 default = []
 rest = ["dep:governor"]
+bulk = ["dep:zip", "dep:csv", "dep:flate2", "dep:lz4_flex", "dep:sha2"]
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
@@ -22,6 +23,7 @@ wiremock = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 futures = { workspace = true }
+tempfile = { workspace = true }
 
 [dependencies]
 # Barter Ecosystem
@@ -62,3 +64,8 @@ itertools = { workspace = true }
 vecmap-rs = { workspace = true }
 fnv = { workspace = true }
 governor = { workspace = true, optional = true }
+zip = { workspace = true, optional = true }
+csv = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
+lz4_flex = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }

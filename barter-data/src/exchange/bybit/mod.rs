@@ -96,6 +96,10 @@ pub fn bybit_interval(interval: Interval) -> &'static str {
 #[cfg(feature = "rest")]
 pub mod rest;
 
+/// Bulk archive download client for Bybit exchange variants.
+#[cfg(feature = "bulk")]
+pub mod bulk;
+
 /// Generic [`Bybit<Server>`](Bybit) exchange.
 ///
 /// ### Notes
