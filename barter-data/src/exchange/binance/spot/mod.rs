@@ -53,6 +53,10 @@ impl RestExchangeServer for BinanceServerSpot {
     fn trades_path() -> &'static str {
         "/api/v3/aggTrades"
     }
+
+    fn max_trades_time_window() -> Option<chrono::TimeDelta> {
+        Some(chrono::TimeDelta::minutes(59))
+    }
 }
 
 impl<Instrument> StreamSelector<Instrument, OrderBooksL2> for BinanceSpot
