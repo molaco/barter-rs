@@ -67,7 +67,8 @@ impl HyperliquidBulkClient {
         date: NaiveDate,
         hour: u8,
     ) -> Result<Option<Vec<RestTrade>>, DataError> {
-        let url = format!("{BASE_URL}/{date}/{hour:02}");
+        let date_str = date.format("%Y%m%d");
+        let url = format!("{BASE_URL}/{date_str}/{hour}.lz4");
         let market = market.to_owned();
         let credentials = self.credentials.clone();
 
@@ -222,10 +223,11 @@ mod tests {
     #[test]
     fn test_url_format() {
         let date = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
-        let url = format!("{BASE_URL}/{date}/{:02}", 3u8);
+        let date_str = date.format("%Y%m%d");
+        let url = format!("{BASE_URL}/{date_str}/{}.lz4", 3u8);
         assert_eq!(
             url,
-            "https://hl-mainnet-node-data.s3.amazonaws.com/node_fills_by_block/hourly/2024-06-15/03"
+            "https://hl-mainnet-node-data.s3.amazonaws.com/node_fills_by_block/hourly/20240615/3.lz4"
         );
     }
 }
