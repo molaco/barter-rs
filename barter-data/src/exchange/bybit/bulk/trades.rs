@@ -32,10 +32,7 @@ impl TryFrom<BybitBulkTrade> for RestTrade {
     fn try_from(trade: BybitBulkTrade) -> Result<Self, Self::Error> {
         let millis = (trade.timestamp * 1000.0) as i64;
         let time = DateTime::from_timestamp_millis(millis).ok_or_else(|| {
-            DataError::Socket(format!(
-                "invalid Bybit bulk timestamp: {}",
-                trade.timestamp
-            ))
+            DataError::Socket(format!("invalid Bybit bulk timestamp: {}", trade.timestamp))
         })?;
 
         let side = match trade.side.as_str() {
@@ -44,7 +41,7 @@ impl TryFrom<BybitBulkTrade> for RestTrade {
             other => {
                 return Err(DataError::Socket(format!(
                     "unknown Bybit bulk side: {other}"
-                )))
+                )));
             }
         };
 
@@ -66,7 +63,74 @@ impl TryFrom<BybitBulkTrade> for RestTrade {
     }
 }
 
-/// Parse Bybit bulk CSV data (with headers) into a vector of [`RestTrade`].
+/// A single trade row from Bybit's spot bulk CSV archive.
+///
+/// CSV columns: `id, timestamp, price, volume, side, rpi`
+/// Timestamp is in milliseconds (integer). Side is lowercase ("buy"/"sell").
+#[derive(Debug, Deserialize)]
+pub struct BybitSpotBulkTrade {
+    pub id: u64,
+    pub timestamp: i64,
+    pub price: String,
+    pub volume: String,
+    pub side: String,
+    #[allow(dead_code)]
+    pub rpi: i32,
+}
+
+impl TryFrom<BybitSpotBulkTrade> for RestTrade {
+    type Error = DataError;
+
+    fn try_from(trade: BybitSpotBulkTrade) -> Result<Self, Self::Error> {
+        let time = DateTime::from_timestamp_millis(trade.timestamp).ok_or_else(|| {
+            DataError::Socket(format!("invalid Bybit spot timestamp: {}", trade.timestamp))
+        })?;
+
+        let side = match trade.side.as_str() {
+            "buy" | "Buy" => Side::Buy,
+            "sell" | "Sell" => Side::Sell,
+            other => {
+                return Err(DataError::Socket(format!(
+                    "unknown Bybit spot side: {other}"
+                )));
+            }
+        };
+
+        let price = trade.price.parse::<f64>().map_err(|e| {
+            DataError::Socket(format!("invalid Bybit spot price '{}': {e}", trade.price))
+        })?;
+
+        let amount = trade.volume.parse::<f64>().map_err(|e| {
+            DataError::Socket(format!("invalid Bybit spot volume '{}': {e}", trade.volume))
+        })?;
+
+        Ok(RestTrade {
+            id: trade.id.to_string(),
+            time,
+            price,
+            amount,
+            side,
+        })
+    }
+}
+
+/// Parse Bybit spot bulk CSV data into a vector of [`RestTrade`].
+pub fn parse_spot_trades(csv_data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(csv_data);
+
+    let mut trades = Vec::new();
+    for result in reader.deserialize::<BybitSpotBulkTrade>() {
+        let raw =
+            result.map_err(|e| DataError::Socket(format!("Bybit spot CSV parse error: {e}")))?;
+        trades.push(RestTrade::try_from(raw)?);
+    }
+
+    Ok(trades)
+}
+
+/// Parse Bybit perpetuals bulk CSV data (with headers) into a vector of [`RestTrade`].
 pub fn parse_trades(csv_data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
@@ -74,8 +138,8 @@ pub fn parse_trades(csv_data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
 
     let mut trades = Vec::new();
     for result in reader.deserialize::<BybitBulkTrade>() {
-        let raw = result
-            .map_err(|e| DataError::Socket(format!("Bybit bulk CSV parse error: {e}")))?;
+        let raw =
+            result.map_err(|e| DataError::Socket(format!("Bybit bulk CSV parse error: {e}")))?;
         trades.push(RestTrade::try_from(raw)?);
     }
 
@@ -112,10 +176,7 @@ timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotiona
     fn test_parse_trades_timestamp_conversion() {
         let trades = parse_trades(SAMPLE_CSV.as_bytes()).unwrap();
         // 1704067200.123 * 1000 = 1704067200123 ms
-        assert_eq!(
-            trades[0].time.timestamp_millis(),
-            1704067200123
-        );
+        assert_eq!(trades[0].time.timestamp_millis(), 1704067200123);
     }
 
     #[test]
@@ -126,7 +187,12 @@ timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotiona
 ";
         let result = parse_trades(csv.as_bytes());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unknown Bybit bulk side"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown Bybit bulk side")
+        );
     }
 
     #[test]
@@ -137,7 +203,12 @@ timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotiona
 ";
         let result = parse_trades(csv.as_bytes());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("invalid Bybit bulk price"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("invalid Bybit bulk price")
+        );
     }
 
     #[test]

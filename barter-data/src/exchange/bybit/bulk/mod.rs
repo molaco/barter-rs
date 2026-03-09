@@ -21,6 +21,8 @@ pub trait BybitBulkServer: Send + Sync + 'static {
     /// Spot uses `"_"` (e.g. `BTCUSDT_2025-12-09.csv.gz`),
     /// perpetuals use no separator (e.g. `BTCUSDT2025-12-09.csv.gz`).
     fn date_separator() -> &'static str;
+    /// Parse CSV data into trades. Spot and perpetuals have different CSV schemas.
+    fn parse_csv(data: &[u8]) -> Result<Vec<RestTrade>, DataError>;
 }
 
 impl BybitBulkServer for BybitServerSpot {
@@ -30,6 +32,9 @@ impl BybitBulkServer for BybitServerSpot {
     fn date_separator() -> &'static str {
         "_"
     }
+    fn parse_csv(data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
+        trades::parse_spot_trades(data)
+    }
 }
 
 impl BybitBulkServer for BybitServerPerpetualsUsd {
@@ -38,6 +43,9 @@ impl BybitBulkServer for BybitServerPerpetualsUsd {
     }
     fn date_separator() -> &'static str {
         ""
+    }
+    fn parse_csv(data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
+        trades::parse_trades(data)
     }
 }
 
@@ -142,7 +150,7 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
             .read_to_end(&mut csv_data)
             .map_err(|e| DataError::Socket(format!("Bybit bulk GZ decompress failed: {e}")))?;
 
-        let trades = trades::parse_trades(&csv_data)?;
+        let trades = Server::parse_csv(&csv_data)?;
         Ok(Some(trades))
     }
 }
