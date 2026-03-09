@@ -17,17 +17,27 @@ use super::{futures::BybitServerPerpetualsUsd, spot::BybitServerSpot};
 pub trait BybitBulkServer: Send + Sync + 'static {
     /// URL path prefix: `"spot"` or `"trading"`.
     fn path_prefix() -> &'static str;
+    /// Separator between market symbol and date in archive filenames.
+    /// Spot uses `"_"` (e.g. `BTCUSDT_2025-12-09.csv.gz`),
+    /// perpetuals use no separator (e.g. `BTCUSDT2025-12-09.csv.gz`).
+    fn date_separator() -> &'static str;
 }
 
 impl BybitBulkServer for BybitServerSpot {
     fn path_prefix() -> &'static str {
         "spot"
     }
+    fn date_separator() -> &'static str {
+        "_"
+    }
 }
 
 impl BybitBulkServer for BybitServerPerpetualsUsd {
     fn path_prefix() -> &'static str {
         "trading"
+    }
+    fn date_separator() -> &'static str {
+        ""
     }
 }
 
@@ -83,8 +93,9 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
         date: NaiveDate,
     ) -> Result<Option<Vec<RestTrade>>, DataError> {
         let prefix = Server::path_prefix();
+        let sep = Server::date_separator();
         let date_str = date.format("%Y-%m-%d");
-        let url = format!("https://public.bybit.com/{prefix}/{market}/{market}{date_str}.csv.gz");
+        let url = format!("https://public.bybit.com/{prefix}/{market}/{market}{sep}{date_str}.csv.gz");
 
         let client = self.client.clone();
         let url_clone = url.clone();
