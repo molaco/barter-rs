@@ -14,7 +14,7 @@ categories = ["accessibility", "simulation"]
 [features]
 default = []
 rest = ["dep:governor"]
-bulk = ["dep:zip", "dep:csv", "dep:flate2", "dep:lz4_flex", "dep:sha2"]
+bulk = ["dep:zip", "dep:csv", "dep:flate2", "dep:lz4_flex", "dep:sha2", "dep:hmac", "dep:hex"]
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
@@ -69,3 +69,5 @@ csv = { workspace = true, optional = true }
 flate2 = { workspace = true, optional = true }
 lz4_flex = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }

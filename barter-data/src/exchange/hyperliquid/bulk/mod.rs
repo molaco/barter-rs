@@ -1,3 +1,4 @@
+pub mod s3_signer;
 pub mod trades;
 
 use crate::{
@@ -8,38 +9,46 @@ use crate::{
 };
 use chrono::NaiveDate;
 use futures::Stream;
+use s3_signer::AwsCredentials;
 use trades::parse_fills;
 
 /// Base URL for Hyperliquid hourly node fill data (S3).
-const BASE_URL: &str =
-    "https://hl-mainnet-node-data.s3.amazonaws.com/node_fills_by_block/hourly";
+const BASE_URL: &str = "https://hl-mainnet-node-data.s3.amazonaws.com/node_fills_by_block/hourly";
+
+/// S3 bucket region for Hyperliquid node data.
+const S3_REGION: &str = "us-east-1";
 
 /// Bulk archive download client for Hyperliquid perpetuals.
 ///
 /// Downloads hourly LZ4-compressed JSON fill data from the public S3 bucket.
 /// Requires the `x-amz-request-payer: requester` header (requester-pays bucket).
+/// AWS credentials are loaded from environment variables for SigV4 signing.
 #[derive(Debug)]
 pub struct HyperliquidBulkClient {
     pub client: reqwest::Client,
     pub config: BulkConfig,
     pub retry: RetryPolicy,
+    credentials: Option<AwsCredentials>,
 }
 
 impl HyperliquidBulkClient {
     pub fn new() -> Self {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            "x-amz-request-payer",
-            reqwest::header::HeaderValue::from_static("requester"),
-        );
+        let credentials = AwsCredentials::from_env();
+        if credentials.is_none() {
+            tracing::warn!(
+                "AWS credentials not found (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). \
+                 Hyperliquid S3 downloads will fail with 403."
+            );
+        }
+
         let client = reqwest::Client::builder()
-            .default_headers(headers)
             .build()
             .expect("failed to build reqwest client");
         Self {
             client,
             config: BulkConfig::default(),
             retry: RetryPolicy::default(),
+            credentials,
         }
     }
 
@@ -60,14 +69,29 @@ impl HyperliquidBulkClient {
     ) -> Result<Option<Vec<RestTrade>>, DataError> {
         let url = format!("{BASE_URL}/{date}/{hour:02}");
         let market = market.to_owned();
+        let credentials = self.credentials.clone();
 
         let result = retry_with_backoff(&self.retry, is_retriable_data_error, || {
             let url = url.clone();
             let client = self.client.clone();
             let market = market.clone();
+            let credentials = credentials.clone();
             async move {
-                let response = client
-                    .get(&url)
+                let mut request = client.get(&url);
+
+                // Sign with SigV4 if AWS credentials are available
+                if let Some(ref creds) = credentials {
+                    let signed = s3_signer::sign_s3_get(&url, creds, S3_REGION);
+                    request = request
+                        .header("Authorization", &signed.authorization)
+                        .header("x-amz-date", &signed.x_amz_date)
+                        .header("x-amz-request-payer", "requester");
+                    if let Some(ref token) = signed.x_amz_security_token {
+                        request = request.header("x-amz-security-token", token);
+                    }
+                }
+
+                let response = request
                     .send()
                     .await
                     .map_err(|e| DataError::Socket(format!("HTTP request failed: {e}")))?;
@@ -77,9 +101,7 @@ impl HyperliquidBulkClient {
                     return Ok(None);
                 }
                 if !status.is_success() {
-                    return Err(DataError::Socket(format!(
-                        "HTTP {status} fetching {url}"
-                    )));
+                    return Err(DataError::Socket(format!("HTTP {status} fetching {url}")));
                 }
 
                 let compressed = response
@@ -89,9 +111,8 @@ impl HyperliquidBulkClient {
 
                 let mut decoder = lz4_flex::frame::FrameDecoder::new(compressed.as_ref());
                 let mut decompressed = Vec::new();
-                std::io::Read::read_to_end(&mut decoder, &mut decompressed).map_err(|e| {
-                    DataError::Socket(format!("LZ4 decompression failed: {e}"))
-                })?;
+                std::io::Read::read_to_end(&mut decoder, &mut decompressed)
+                    .map_err(|e| DataError::Socket(format!("LZ4 decompression failed: {e}")))?;
 
                 let trades = parse_fills(&decompressed, &market)?;
                 Ok(Some(trades))
@@ -146,16 +167,19 @@ impl BulkTradeFetcher for HyperliquidBulkClient {
         // Each date downloads its 24 hours sequentially; dates are buffered concurrently.
         let client = reqwest::Client::clone(&self.client);
         let retry = self.retry.clone();
+        let credentials = self.credentials.clone();
 
         futures::stream::iter(dates.into_iter().map(move |date| {
             let market = market.clone();
             let client = client.clone();
             let retry = retry.clone();
+            let credentials = credentials.clone();
             async move {
                 let bulk = HyperliquidBulkClient {
                     client,
                     config: BulkConfig::default(),
                     retry,
+                    credentials,
                 };
                 match bulk.download_and_parse_trades(&market, date).await {
                     Ok(Some(trades)) => Some(Ok(trades)),
