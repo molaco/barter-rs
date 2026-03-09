@@ -3,7 +3,7 @@ pub mod trades;
 use crate::{
     bulk::{BulkConfig, BulkTradeFetcher, BulkTradeRequest, date_range},
     error::DataError,
-    retry::{RetryPolicy, retry_with_backoff, is_retriable_data_error},
+    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     trade::RestTrade,
 };
 use chrono::NaiveDate;
@@ -11,8 +11,7 @@ use flate2::read::GzDecoder;
 use futures::{Stream, StreamExt, stream};
 use std::{io::Read, marker::PhantomData};
 
-use super::futures::BybitServerPerpetualsUsd;
-use super::spot::BybitServerSpot;
+use super::{futures::BybitServerPerpetualsUsd, spot::BybitServerSpot};
 
 /// Marker trait for Bybit server variants used in bulk downloads.
 pub trait BybitBulkServer: Send + Sync + 'static {
@@ -45,9 +44,16 @@ pub struct BybitBulkClient<Server> {
 }
 
 impl<Server> BybitBulkClient<Server> {
+    fn build_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .user_agent("Mozilla/5.0")
+            .build()
+            .expect("failed to build reqwest client")
+    }
+
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: Self::build_client(),
             config: BulkConfig::default(),
             retry: RetryPolicy::default(),
             _server: PhantomData,
@@ -56,7 +62,7 @@ impl<Server> BybitBulkClient<Server> {
 
     pub fn with_config(config: BulkConfig) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: Self::build_client(),
             config,
             retry: RetryPolicy::default(),
             _server: PhantomData,
@@ -78,25 +84,19 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
     ) -> Result<Option<Vec<RestTrade>>, DataError> {
         let prefix = Server::path_prefix();
         let date_str = date.format("%Y-%m-%d");
-        let url = format!(
-            "https://public.bybit.com/{prefix}/{market}/{market}{date_str}.csv.gz"
-        );
+        let url = format!("https://public.bybit.com/{prefix}/{market}/{market}{date_str}.csv.gz");
 
         let client = self.client.clone();
         let url_clone = url.clone();
 
-        let response = retry_with_backoff(
-            &self.retry,
-            is_retriable_data_error,
-            || {
+        let response =
+            retry_with_backoff(&self.retry, is_retriable_data_error, || {
                 let client = client.clone();
                 let url = url_clone.clone();
                 async move {
-                    let resp = client
-                        .get(&url)
-                        .send()
-                        .await
-                        .map_err(|e| DataError::Socket(format!("Bybit bulk request failed: {e}")))?;
+                    let resp = client.get(&url).send().await.map_err(|e| {
+                        DataError::Socket(format!("Bybit bulk request failed: {e}"))
+                    })?;
 
                     let status = resp.status();
 
@@ -110,16 +110,14 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
                         )));
                     }
 
-                    let bytes = resp
-                        .bytes()
-                        .await
-                        .map_err(|e| DataError::Socket(format!("Bybit bulk read body failed: {e}")))?;
+                    let bytes = resp.bytes().await.map_err(|e| {
+                        DataError::Socket(format!("Bybit bulk read body failed: {e}"))
+                    })?;
 
                     Ok(Some(bytes))
                 }
-            },
-        )
-        .await?;
+            })
+            .await?;
 
         let bytes = match response {
             Some(b) => b,
@@ -129,9 +127,9 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
         // Decompress GZ
         let mut decoder = GzDecoder::new(std::io::Cursor::new(&bytes));
         let mut csv_data = Vec::new();
-        decoder.read_to_end(&mut csv_data).map_err(|e| {
-            DataError::Socket(format!("Bybit bulk GZ decompress failed: {e}"))
-        })?;
+        decoder
+            .read_to_end(&mut csv_data)
+            .map_err(|e| DataError::Socket(format!("Bybit bulk GZ decompress failed: {e}")))?;
 
         let trades = trades::parse_trades(&csv_data)?;
         Ok(Some(trades))
