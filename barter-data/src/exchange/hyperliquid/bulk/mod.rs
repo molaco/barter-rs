@@ -16,7 +16,7 @@ use trades::parse_fills;
 const BASE_URL: &str = "https://hl-mainnet-node-data.s3.amazonaws.com/node_fills_by_block/hourly";
 
 /// S3 bucket region for Hyperliquid node data.
-const S3_REGION: &str = "us-east-1";
+const S3_REGION: &str = "ap-northeast-1";
 
 /// Bulk archive download client for Hyperliquid perpetuals.
 ///
