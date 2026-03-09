@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 
 type HmacSha256 = Hmac<Sha256>;
 
-const EMPTY_HASH: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+const UNSIGNED_PAYLOAD: &str = "UNSIGNED-PAYLOAD";
 
 /// AWS credentials loaded from environment.
 #[derive(Debug, Clone)]
@@ -39,6 +39,7 @@ impl AwsCredentials {
 pub struct SignedHeaders {
     pub authorization: String,
     pub x_amz_date: String,
+    pub x_amz_content_sha256: &'static str,
     pub x_amz_security_token: Option<String>,
 }
 
@@ -58,19 +59,24 @@ pub fn sign_s3_get(url: &str, creds: &AwsCredentials, region: &str) -> SignedHea
     let scope = format!("{date_stamp}/{region}/s3/aws4_request");
 
     // Canonical headers (must be sorted by name)
-    let mut canonical_headers = format!("host:{host}\nx-amz-date:{amz_date}\nx-amz-request-payer:requester\n");
-    let mut signed_headers = "host;x-amz-date;x-amz-request-payer".to_string();
+    let mut canonical_headers = format!(
+        "host:{host}\nx-amz-content-sha256:{UNSIGNED_PAYLOAD}\nx-amz-date:{amz_date}\nx-amz-request-payer:requester\n"
+    );
+    let mut signed_headers =
+        "host;x-amz-content-sha256;x-amz-date;x-amz-request-payer".to_string();
 
     if let Some(ref token) = creds.session_token {
         canonical_headers = format!(
-            "host:{host}\nx-amz-date:{amz_date}\nx-amz-request-payer:requester\nx-amz-security-token:{token}\n"
+            "host:{host}\nx-amz-content-sha256:{UNSIGNED_PAYLOAD}\nx-amz-date:{amz_date}\nx-amz-request-payer:requester\nx-amz-security-token:{token}\n"
         );
-        signed_headers = "host;x-amz-date;x-amz-request-payer;x-amz-security-token".to_string();
+        signed_headers =
+            "host;x-amz-content-sha256;x-amz-date;x-amz-request-payer;x-amz-security-token"
+                .to_string();
     }
 
     // Canonical request
     let canonical_request = format!(
-        "GET\n{path}\n\n{canonical_headers}\n{signed_headers}\n{EMPTY_HASH}"
+        "GET\n{path}\n\n{canonical_headers}\n{signed_headers}\n{UNSIGNED_PAYLOAD}"
     );
 
     let canonical_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
@@ -92,6 +98,7 @@ pub fn sign_s3_get(url: &str, creds: &AwsCredentials, region: &str) -> SignedHea
     SignedHeaders {
         authorization,
         x_amz_date: amz_date,
+        x_amz_content_sha256: UNSIGNED_PAYLOAD,
         x_amz_security_token: creds.session_token.clone(),
     }
 }
@@ -156,8 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_payload_hash() {
-        let hash = hex::encode(Sha256::digest(b""));
-        assert_eq!(hash, EMPTY_HASH);
+    fn test_unsigned_payload_constant() {
+        assert_eq!(UNSIGNED_PAYLOAD, "UNSIGNED-PAYLOAD");
     }
 }

@@ -85,6 +85,7 @@ impl HyperliquidBulkClient {
                     request = request
                         .header("Authorization", &signed.authorization)
                         .header("x-amz-date", &signed.x_amz_date)
+                        .header("x-amz-content-sha256", signed.x_amz_content_sha256)
                         .header("x-amz-request-payer", "requester");
                     if let Some(ref token) = signed.x_amz_security_token {
                         request = request.header("x-amz-security-token", token);
