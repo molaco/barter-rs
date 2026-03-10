@@ -24,9 +24,8 @@ impl TryFrom<HyperliquidFillEvent> for RestTrade {
     type Error = DataError;
 
     fn try_from(fill: HyperliquidFillEvent) -> Result<Self, Self::Error> {
-        let time = DateTime::from_timestamp_millis(fill.time as i64).ok_or_else(|| {
-            DataError::Socket(format!("invalid fill timestamp: {}", fill.time))
-        })?;
+        let time = DateTime::from_timestamp_millis(fill.time as i64)
+            .ok_or_else(|| DataError::Socket(format!("invalid fill timestamp: {}", fill.time)))?;
 
         let price: f64 = fill
             .px
@@ -42,9 +41,7 @@ impl TryFrom<HyperliquidFillEvent> for RestTrade {
             "B" => Side::Buy,
             "A" | "S" => Side::Sell,
             other => {
-                return Err(DataError::Socket(format!(
-                    "unknown fill side '{other}'"
-                )));
+                return Err(DataError::Socket(format!("unknown fill side '{other}'")));
             }
         };
 
@@ -77,34 +74,43 @@ pub fn parse_fills(json_data: &[u8], market: &str) -> Result<Vec<RestTrade>, Dat
             continue;
         }
 
-        let fills: Vec<HyperliquidFillEvent> =
-            if let Ok(array) = serde_json::from_str::<Vec<HyperliquidFillEvent>>(line) {
-                array
-            } else if let Ok(block) = serde_json::from_str::<BlockWrapper>(line) {
-                block.events
-            } else {
-                tracing::warn!(
-                    "skipping unparseable fill line: {}",
-                    &line[..line.len().min(120)]
-                );
-                continue;
-            };
-
-        for fill in fills {
-            if fill.coin == market {
-                trades.push(RestTrade::try_from(fill)?);
+        // Try block format first (most common in hourly archives):
+        // {"events": [["0xaddr", {...fill...}], ...]}
+        if let Ok(block) = serde_json::from_str::<BlockWrapper>(line) {
+            for (_addr, fill) in block.events {
+                if fill.coin == market {
+                    trades.push(RestTrade::try_from(fill)?);
+                }
             }
+            continue;
         }
+
+        // Fallback: flat array of fills
+        if let Ok(array) = serde_json::from_str::<Vec<HyperliquidFillEvent>>(line) {
+            for fill in array {
+                if fill.coin == market {
+                    trades.push(RestTrade::try_from(fill)?);
+                }
+            }
+            continue;
+        }
+
+        tracing::warn!(
+            "skipping unparseable fill line: {}",
+            &line[..line.len().min(120)]
+        );
     }
 
     Ok(trades)
 }
 
 /// Wrapper for the block-object JSON line format.
+///
+/// Each event is a tuple `[address, fill_data]` in the JSON.
 #[derive(Debug, Deserialize)]
 struct BlockWrapper {
     #[serde(default)]
-    events: Vec<HyperliquidFillEvent>,
+    events: Vec<(String, HyperliquidFillEvent)>,
 }
 
 #[cfg(test)]
@@ -113,7 +119,7 @@ mod tests {
 
     const SAMPLE_ARRAY_LINE: &str = r#"[{"coin":"BTC","side":"B","px":"42000.0","sz":"0.1","time":1704067200000,"hash":"0xabc","startPosition":{"type":"oneWay","szi":"1.0"},"dir":"Open Long","closedPnl":"0","oid":12345,"crossed":true,"fee":"0.42","tid":100,"feeToken":"USDC"},{"coin":"ETH","side":"A","px":"2200.0","sz":"1.5","time":1704067200001,"hash":"0xdef","startPosition":{"type":"oneWay","szi":"2.0"},"dir":"Open Short","closedPnl":"0","oid":12346,"crossed":false,"fee":"0.22","tid":101,"feeToken":"USDC"}]"#;
 
-    const SAMPLE_BLOCK_LINE: &str = r#"{"blockNumber":12345,"blockTime":"2024-01-01T00:00:00.000Z","events":[{"coin":"BTC","side":"B","px":"42000.0","sz":"0.1","time":1704067200000,"tid":200}]}"#;
+    const SAMPLE_BLOCK_LINE: &str = r#"{"block_number":12345,"block_time":"2024-01-01T00:00:00.000Z","events":[["0xabc123",{"coin":"BTC","side":"B","px":"42000.0","sz":"0.1","time":1704067200000,"tid":200}]]}"#;
 
     #[test]
     fn test_parse_array_format_filters_by_market() {
