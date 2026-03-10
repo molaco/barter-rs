@@ -147,7 +147,7 @@ impl KrakenRestClient {
 
         let request = klines::GetKrakenOhlc {
             params: klines::GetKrakenOhlcParams {
-                pair: market.to_string(),
+                pair: market.replace('/', ""),
                 interval: interval_minutes,
                 since,
             },
@@ -208,7 +208,7 @@ impl KrakenRestClient {
     ) -> Result<(Vec<RestTrade>, Option<String>), DataError> {
         let request = trades::GetKrakenTrades {
             params: trades::GetKrakenTradesParams {
-                pair: market.to_string(),
+                pair: market.replace('/', ""),
                 since,
                 count,
             },
