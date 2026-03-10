@@ -68,6 +68,7 @@ pub fn is_retriable_data_error(error: &DataError) -> bool {
                 || lower.contains("429")
                 || lower.contains("418")
                 || lower.contains("rate")
+                || lower.contains("too many requests")
                 || lower.contains("500")
                 || lower.contains("502")
                 || lower.contains("503")
