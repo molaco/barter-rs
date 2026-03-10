@@ -100,7 +100,7 @@ impl KrakenRestClient {
             KrakenHttpParser,
         );
 
-        let quota = Quota::per_minute(NonZeroU32::new(60).unwrap());
+        let quota = Quota::per_second(NonZeroU32::new(1).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
 
         Self {
@@ -115,7 +115,7 @@ impl KrakenRestClient {
     /// compile time.
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, KrakenHttpParser);
-        let quota = Quota::per_minute(NonZeroU32::new(60).unwrap());
+        let quota = Quota::per_second(NonZeroU32::new(1).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
         Self {
             client: Arc::new(client),
@@ -433,10 +433,7 @@ impl TradeFetcher for KrakenRestClient {
             let since = match request.start {
                 Some(dt) => {
                     let nanos = dt.timestamp_nanos_opt().ok_or_else(|| {
-                        DataError::Socket(format!(
-                            "timestamp out of nanosecond range: {}",
-                            dt
-                        ))
+                        DataError::Socket(format!("timestamp out of nanosecond range: {}", dt))
                     })?;
                     Some(nanos.to_string())
                 }
