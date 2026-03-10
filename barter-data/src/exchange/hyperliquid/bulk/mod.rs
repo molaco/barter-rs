@@ -10,7 +10,8 @@ use crate::{
 use chrono::NaiveDate;
 use futures::Stream;
 use s3_signer::AwsCredentials;
-use trades::parse_fills;
+use std::collections::HashMap;
+use trades::{parse_fills, parse_fills_multi};
 
 /// Base URL for Hyperliquid hourly node fill data (S3).
 const BASE_URL: &str = "https://hl-mainnet-node-data.s3.amazonaws.com/node_fills_by_block/hourly";
@@ -58,29 +59,23 @@ impl HyperliquidBulkClient {
         this
     }
 
-    /// Download and parse a single hour of fill data.
-    ///
-    /// Returns `Ok(None)` if the hour file does not exist (HTTP 404).
-    async fn download_and_parse_hour(
+    /// Download and LZ4-decompress a single hour file. Returns None if 404.
+    async fn download_and_decompress_hour(
         &self,
-        market: &str,
         date: NaiveDate,
         hour: u8,
-    ) -> Result<Option<Vec<RestTrade>>, DataError> {
+    ) -> Result<Option<Vec<u8>>, DataError> {
         let date_str = date.format("%Y%m%d");
         let url = format!("{BASE_URL}/{date_str}/{hour}.lz4");
-        let market = market.to_owned();
         let credentials = self.credentials.clone();
 
-        let result = retry_with_backoff(&self.retry, is_retriable_data_error, || {
+        retry_with_backoff(&self.retry, is_retriable_data_error, || {
             let url = url.clone();
             let client = self.client.clone();
-            let market = market.clone();
             let credentials = credentials.clone();
             async move {
                 let mut request = client.get(&url);
 
-                // Sign with SigV4 if AWS credentials are available
                 if let Some(ref creds) = credentials {
                     let signed = s3_signer::sign_s3_get(&url, creds, S3_REGION);
                     request = request
@@ -116,18 +111,26 @@ impl HyperliquidBulkClient {
                 std::io::Read::read_to_end(&mut decoder, &mut decompressed)
                     .map_err(|e| DataError::Socket(format!("LZ4 decompression failed: {e}")))?;
 
-                let trades = parse_fills(&decompressed, &market)?;
-                Ok(Some(trades))
+                Ok(Some(decompressed))
             }
         })
-        .await?;
+        .await
+    }
 
-        Ok(result)
+    /// Download and parse a single hour, filtering for one market.
+    async fn download_and_parse_hour(
+        &self,
+        market: &str,
+        date: NaiveDate,
+        hour: u8,
+    ) -> Result<Option<Vec<RestTrade>>, DataError> {
+        match self.download_and_decompress_hour(date, hour).await? {
+            Some(bytes) => Ok(Some(parse_fills(&bytes, market)?)),
+            None => Ok(None),
+        }
     }
 
     /// Download and parse all 24 hours of fill data for one day.
-    ///
-    /// Returns `Ok(None)` if every hour returned 404.
     async fn download_and_parse_trades(
         &self,
         market: &str,
@@ -148,6 +151,69 @@ impl HyperliquidBulkClient {
         } else {
             Ok(None)
         }
+    }
+
+    /// Download and parse all 24 hours, returning ALL coins' trades grouped by coin.
+    async fn download_and_parse_trades_multi(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Option<HashMap<String, Vec<RestTrade>>>, DataError> {
+        let mut merged: HashMap<String, Vec<RestTrade>> = HashMap::new();
+        let mut any_found = false;
+
+        for hour in 0..24u8 {
+            if let Some(bytes) = self.download_and_decompress_hour(date, hour).await? {
+                any_found = true;
+                for (coin, trades) in parse_fills_multi(&bytes)? {
+                    merged.entry(coin).or_default().extend(trades);
+                }
+            }
+        }
+
+        if any_found {
+            Ok(Some(merged))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl HyperliquidBulkClient {
+    /// Stream all coins' trades grouped by coin, one HashMap per date.
+    ///
+    /// Downloads each hourly S3 file once and fans out trades to all coins.
+    /// Dates with no data are silently skipped.
+    pub fn stream_bulk_trades_multi(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> impl Stream<Item = Result<HashMap<String, Vec<RestTrade>>, DataError>> + Send {
+        let dates = date_range(start, end);
+        let concurrency = self.config.concurrency;
+        let client = reqwest::Client::clone(&self.client);
+        let retry = self.retry.clone();
+        let credentials = self.credentials.clone();
+
+        futures::stream::iter(dates.into_iter().map(move |date| {
+            let client = client.clone();
+            let retry = retry.clone();
+            let credentials = credentials.clone();
+            async move {
+                let bulk = HyperliquidBulkClient {
+                    client,
+                    config: BulkConfig::default(),
+                    retry,
+                    credentials,
+                };
+                match bulk.download_and_parse_trades_multi(date).await {
+                    Ok(Some(map)) => Some(Ok(map)),
+                    Ok(None) => None,
+                    Err(e) => Some(Err(e)),
+                }
+            }
+        }))
+        .buffer_unordered(concurrency)
+        .filter_map(|opt| async { opt })
     }
 }
 
