@@ -24,13 +24,15 @@ impl Validator for HyperliquidSubResponse {
     where
         Self: Sized,
     {
-        if self.channel == "subscriptionResponse" {
-            Ok(self)
-        } else {
-            Err(SocketError::Subscribe(format!(
-                "received non-subscription response: {}",
-                self.channel
-            )))
+        match self.channel.as_str() {
+            // Explicit subscription confirmation
+            "subscriptionResponse" => Ok(self),
+            // Receiving data means subscription succeeded (Hyperliquid
+            // sometimes sends trade/candle data before the confirmation)
+            "trades" | "candle" => Ok(self),
+            other => Err(SocketError::Subscribe(format!(
+                "received non-subscription response: {other}",
+            ))),
         }
     }
 }
@@ -145,9 +147,16 @@ mod tests {
                 is_valid: true,
             },
             TestCase {
-                // TC1: input response is not a subscription response
+                // TC1: receiving trade data means subscription succeeded
                 input_response: HyperliquidSubResponse {
                     channel: "trades".to_string(),
+                },
+                is_valid: true,
+            },
+            TestCase {
+                // TC2: unknown channel is invalid
+                input_response: HyperliquidSubResponse {
+                    channel: "error".to_string(),
                 },
                 is_valid: false,
             },
