@@ -73,6 +73,10 @@ pub fn is_retriable_data_error(error: &DataError) -> bool {
                 || lower.contains("502")
                 || lower.contains("503")
                 || lower.contains("504")
+                || lower.contains("error sending request")
+                || lower.contains("connection")
+                || lower.contains("reset by peer")
+                || lower.contains("broken pipe")
         }
         _ => false,
     }
@@ -214,6 +218,24 @@ mod tests {
                 is_retriable_data_error(&err),
                 "Expected retriable for {}",
                 code
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_retriable_data_error_connection_errors() {
+        let cases = vec![
+            "HTTP error: error sending request for url (https://example.com)",
+            "connection reset by peer",
+            "broken pipe",
+            "connection refused",
+        ];
+        for msg in cases {
+            let err = DataError::Socket(msg.to_string());
+            assert!(
+                is_retriable_data_error(&err),
+                "Expected retriable for {:?}",
+                msg
             );
         }
     }
