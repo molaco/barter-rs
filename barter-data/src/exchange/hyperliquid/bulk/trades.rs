@@ -2,6 +2,7 @@ use crate::{error::DataError, trade::RestTrade};
 use barter_instrument::Side;
 use chrono::DateTime;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 /// A single fill event from the Hyperliquid hourly archive.
 ///
@@ -102,6 +103,55 @@ pub fn parse_fills(json_data: &[u8], market: &str) -> Result<Vec<RestTrade>, Dat
     }
 
     Ok(trades)
+}
+
+/// Parse LZ4-decompressed JSON fill data, returning trades grouped by coin.
+///
+/// Collects fills for all coins into a HashMap. This avoids downloading
+/// the same hourly file multiple times for different coins.
+pub fn parse_fills_multi(
+    json_data: &[u8],
+) -> Result<HashMap<String, Vec<RestTrade>>, DataError> {
+    let text = std::str::from_utf8(json_data)
+        .map_err(|e| DataError::Socket(format!("invalid UTF-8 in fill data: {e}")))?;
+
+    let mut result: HashMap<String, Vec<RestTrade>> = HashMap::new();
+
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Ok(block) = serde_json::from_str::<BlockWrapper>(line) {
+            for (_addr, fill) in block.events {
+                let coin = fill.coin.clone();
+                result
+                    .entry(coin)
+                    .or_default()
+                    .push(RestTrade::try_from(fill)?);
+            }
+            continue;
+        }
+
+        if let Ok(array) = serde_json::from_str::<Vec<HyperliquidFillEvent>>(line) {
+            for fill in array {
+                let coin = fill.coin.clone();
+                result
+                    .entry(coin)
+                    .or_default()
+                    .push(RestTrade::try_from(fill)?);
+            }
+            continue;
+        }
+
+        tracing::warn!(
+            "skipping unparseable fill line: {}",
+            &line[..line.len().min(120)]
+        );
+    }
+
+    Ok(result)
 }
 
 /// Wrapper for the block-object JSON line format.
