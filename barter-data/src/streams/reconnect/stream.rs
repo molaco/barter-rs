@@ -31,7 +31,18 @@ where
                 move |state, (attempt, result)| match result {
                     Ok(stream) => {
                         info!(attempt, ?stream_key, "successfully initialised Stream");
-                        state.reset_backoff();
+                        // Only reset backoff if previous connection was stable long enough
+                        if let Some(connected_at) = state.connected_at {
+                            let stable_after =
+                                std::time::Duration::from_millis(state.policy.stable_after_ms);
+                            if connected_at.elapsed() >= stable_after {
+                                state.reset_backoff();
+                            }
+                        } else {
+                            // First connection -- reset backoff
+                            state.reset_backoff();
+                        }
+                        state.connected_at = Some(std::time::Instant::now());
                         futures::future::Either::Left(future::ready(Some(Ok(stream))))
                     }
                     Err(error) => {
@@ -41,6 +52,7 @@ where
                             ?error,
                             "failed to re-initialise Stream"
                         );
+                        state.connected_at = None;
                         let sleep_fut = state.generate_sleep_future();
                         state.multiply_backoff();
                         futures::future::Either::Right(Box::pin(async move {
@@ -171,12 +183,24 @@ pub struct ReconnectionBackoffPolicy {
 
     /// Maximum possible backoff duration between reconnection attempts.
     pub backoff_ms_max: u64,
+
+    /// Duration a connection must remain stable before the backoff is reset.
+    ///
+    /// Prevents resetting backoff on brief connections that immediately drop.
+    /// Defaults to 60 seconds.
+    #[serde(default = "default_stable_after_ms")]
+    pub stable_after_ms: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+fn default_stable_after_ms() -> u64 {
+    60_000
+}
+
+#[derive(Debug, Clone)]
 struct ReconnectionState {
     policy: ReconnectionBackoffPolicy,
     backoff_ms_current: u64,
+    connected_at: Option<std::time::Instant>,
 }
 
 impl From<ReconnectionBackoffPolicy> for ReconnectionState {
@@ -184,6 +208,7 @@ impl From<ReconnectionBackoffPolicy> for ReconnectionState {
         Self {
             backoff_ms_current: policy.backoff_ms_initial,
             policy,
+            connected_at: None,
         }
     }
 }

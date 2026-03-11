@@ -1,5 +1,6 @@
 use crate::{
-    Identifier, SnapshotFetcher, distribute_messages_to_exchange,
+    Identifier, SnapshotFetcher, WsSendRateLimiter, build_send_rate_limiter,
+    distribute_messages_to_exchange,
     error::DataError,
     event::MarketEvent,
     exchange::{Connector, subscription::ExchangeSub},
@@ -23,6 +24,7 @@ use barter_integration::{
 };
 use fnv::FnvHashMap;
 use futures::StreamExt;
+use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{info, warn};
 
@@ -133,6 +135,7 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
     let mut init_result_tx = Some(init_result_tx);
     let mut backoff_ms = policy.backoff_ms_initial;
     let mut active_subs = ActiveSubs::new();
+    let stable_after = std::time::Duration::from_millis(policy.stable_after_ms);
 
     loop {
         // === Connect phase ===
@@ -144,9 +147,6 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
 
         let (mut ws_stream, mut transformer, ws_sink_tx, buffer) = match connect_result {
             Ok(result) => {
-                // Reset backoff on successful connection
-                backoff_ms = policy.backoff_ms_initial;
-
                 // Signal first connection success
                 if let Some(tx) = init_result_tx.take() {
                     let _ = tx.send(Ok(()));
@@ -170,6 +170,9 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
                 continue;
             }
         };
+
+        // Track connection start time for stable backoff reset
+        let connected_at = std::time::Instant::now();
 
         // === Forward buffered events ===
         for event in buffer {
@@ -205,7 +208,15 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
             }
         }
 
-        // === Inner select! loop ===
+        // === Inner select! loop with staleness detection ===
+        let mut unanswered_pings: u32 = 0;
+        let mut last_data_received = std::time::Instant::now();
+        let staleness_check_interval = std::time::Duration::from_secs(15);
+        let data_staleness_timeout = std::time::Duration::from_secs(60);
+        let mut staleness_timer = tokio::time::interval(staleness_check_interval);
+        // Skip the immediate first tick
+        staleness_timer.tick().await;
+
         'inner: loop {
             tokio::select! {
                 cmd = command_rx.recv() => {
@@ -250,8 +261,18 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
                 frame = ws_stream.next() => {
                     match frame {
                         Some(Ok(msg)) => {
+                            // Detect protocol-level pong: reset unanswered pings
+                            if msg.is_pong() {
+                                unanswered_pings = 0;
+                                continue;
+                            }
+
                             match Parser::parse(Ok(msg)) {
                                 Some(Ok(input)) => {
+                                    // Any successfully parsed data resets staleness counters
+                                    last_data_received = std::time::Instant::now();
+                                    unanswered_pings = 0;
+
                                     for event in transformer.transform(input) {
                                         if event_tx.send(reconnect::Event::Item(event)).is_err() {
                                             return; // event_rx dropped
@@ -266,7 +287,7 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
                                         return;
                                     }
                                 }
-                                None => continue, // skip pings/pongs/control frames
+                                None => continue, // skip pings/other control frames
                             }
                         }
                         Some(Err(_ws_err)) => {
@@ -277,7 +298,40 @@ pub(crate) async fn connection_task<Exchange, Instrument, Kind, TransformerT, Pa
                         }
                     }
                 }
+                _ = staleness_timer.tick() => {
+                    // Check for data staleness
+                    if last_data_received.elapsed() >= data_staleness_timeout {
+                        warn!(
+                            %exchange,
+                            elapsed_secs = last_data_received.elapsed().as_secs(),
+                            "no data received for 60s, triggering reconnect"
+                        );
+                        break 'inner;
+                    }
+
+                    // Check unanswered pings threshold
+                    if unanswered_pings >= 3 {
+                        warn!(
+                            %exchange,
+                            unanswered_pings,
+                            "3 pings unanswered, connection appears stale, triggering reconnect"
+                        );
+                        break 'inner;
+                    }
+
+                    // Send a protocol-level ping to probe liveness
+                    unanswered_pings += 1;
+                    if ws_sink_tx.send(WsMessage::Ping(Vec::new().into())).is_err() {
+                        break 'inner;
+                    }
+                }
             }
+        }
+
+        // Only reset backoff if the connection was stable long enough
+        if connected_at.elapsed() >= stable_after {
+            backoff_ms = policy.backoff_ms_initial;
+            info!(%exchange, "connection was stable, resetting backoff");
         }
 
         // Inner loop exited due to WebSocket disconnect -- reconnect
@@ -330,10 +384,15 @@ where
     // Split WebSocket into WsStream & WsSink
     let (ws_sink, ws_stream) = websocket.split();
 
-    // Spawn task to distribute messages to exchange via WsSink
+    // Spawn task to distribute messages to exchange via WsSink (with optional rate limiting)
     let (ws_sink_tx, ws_sink_rx) = mpsc::unbounded_channel();
+    let rate_limiter: Option<Arc<WsSendRateLimiter>> =
+        build_send_rate_limiter(Exchange::send_rate_limit());
     tokio::spawn(distribute_messages_to_exchange(
-        exchange, ws_sink, ws_sink_rx,
+        exchange,
+        ws_sink,
+        ws_sink_rx,
+        rate_limiter,
     ));
 
     // Spawn optional custom application-level pings

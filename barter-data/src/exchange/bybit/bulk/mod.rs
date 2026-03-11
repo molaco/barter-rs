@@ -6,10 +6,12 @@ use crate::{
     retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     trade::RestTrade,
 };
+use async_compression::tokio::bufread::GzipDecoder;
 use chrono::NaiveDate;
-use flate2::read::GzDecoder;
-use futures::{Stream, StreamExt, stream};
-use std::{io::Read, marker::PhantomData};
+use futures::{Stream, StreamExt, TryStreamExt, stream};
+use std::marker::PhantomData;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio_util::io::StreamReader;
 
 use super::{futures::BybitServerPerpetualsUsd, spot::BybitServerSpot};
 
@@ -53,6 +55,9 @@ impl BybitBulkServer for BybitServerPerpetualsUsd {
 ///
 /// Downloads daily GZ-compressed CSV trade archives from
 /// `https://public.bybit.com/{prefix}/{SYMBOL}/{SYMBOL}{YYYY-MM-DD}.csv.gz`.
+///
+/// Uses streaming gzip decompression via `async_compression` to avoid loading
+/// the entire compressed file into memory before decompressing.
 #[derive(Debug)]
 pub struct BybitBulkClient<Server> {
     pub client: reqwest::Client,
@@ -95,6 +100,10 @@ impl<Server> Default for BybitBulkClient<Server> {
 }
 
 impl<Server: BybitBulkServer> BybitBulkClient<Server> {
+    /// Download and parse trades using streaming gzip decompression.
+    ///
+    /// The HTTP response body is streamed through `GzipDecoder` line by line,
+    /// avoiding buffering the entire compressed payload in memory.
     async fn download_and_parse_trades(
         &self,
         market: &str,
@@ -103,54 +112,71 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
         let prefix = Server::path_prefix();
         let sep = Server::date_separator();
         let date_str = date.format("%Y-%m-%d");
-        let url = format!("https://public.bybit.com/{prefix}/{market}/{market}{sep}{date_str}.csv.gz");
+        let url =
+            format!("https://public.bybit.com/{prefix}/{market}/{market}{sep}{date_str}.csv.gz");
 
         let client = self.client.clone();
         let url_clone = url.clone();
 
-        let response =
-            retry_with_backoff(&self.retry, is_retriable_data_error, || {
-                let client = client.clone();
-                let url = url_clone.clone();
-                async move {
-                    let resp = client.get(&url).send().await.map_err(|e| {
+        let response = retry_with_backoff(&self.retry, is_retriable_data_error, || {
+            let client = client.clone();
+            let url = url_clone.clone();
+            async move {
+                let resp =
+                    client.get(&url).send().await.map_err(|e| {
                         DataError::Socket(format!("Bybit bulk request failed: {e}"))
                     })?;
 
-                    let status = resp.status();
+                let status = resp.status();
 
-                    if status == reqwest::StatusCode::NOT_FOUND {
-                        return Ok(None);
-                    }
-
-                    if !status.is_success() {
-                        return Err(DataError::Socket(format!(
-                            "Bybit bulk HTTP {status} for {url}"
-                        )));
-                    }
-
-                    let bytes = resp.bytes().await.map_err(|e| {
-                        DataError::Socket(format!("Bybit bulk read body failed: {e}"))
-                    })?;
-
-                    Ok(Some(bytes))
+                if status == reqwest::StatusCode::NOT_FOUND {
+                    return Ok(None);
                 }
-            })
-            .await?;
 
-        let bytes = match response {
-            Some(b) => b,
+                if !status.is_success() {
+                    return Err(DataError::Socket(format!(
+                        "Bybit bulk HTTP {status} for {url}"
+                    )));
+                }
+
+                Ok(Some(resp))
+            }
+        })
+        .await?;
+
+        let response = match response {
+            Some(r) => r,
             None => return Ok(None),
         };
 
-        // Decompress GZ
-        let mut decoder = GzDecoder::new(std::io::Cursor::new(&bytes));
-        let mut csv_data = Vec::new();
-        decoder
-            .read_to_end(&mut csv_data)
-            .map_err(|e| DataError::Socket(format!("Bybit bulk GZ decompress failed: {e}")))?;
+        // Stream the response body through async gzip decoder.
+        // This avoids loading the entire compressed file into memory before
+        // decompressing -- the HTTP chunks flow through the gzip decoder as
+        // they arrive over the network.
+        let byte_stream = response
+            .bytes_stream()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+        let stream_reader = StreamReader::new(byte_stream);
+        let gzip_reader = GzipDecoder::new(BufReader::new(stream_reader));
+        let buf_reader = BufReader::new(gzip_reader);
+        let mut lines = buf_reader.lines();
 
-        let trades = Server::parse_csv(&csv_data)?;
+        // Collect all decompressed lines into a buffer for CSV parsing.
+        // We accumulate into a Vec<u8> so that the existing CSV parser
+        // (which expects &[u8]) can be reused unchanged.
+        let mut csv_buf = Vec::new();
+        while let Some(line) = lines.next_line().await.map_err(|e: std::io::Error| {
+            DataError::Socket(format!("Bybit bulk streaming decompress failed: {e}"))
+        })? {
+            csv_buf.extend_from_slice(line.as_bytes());
+            csv_buf.push(b'\n');
+        }
+
+        if csv_buf.is_empty() {
+            return Ok(Some(Vec::new()));
+        }
+
+        let trades = Server::parse_csv(&csv_buf)?;
         Ok(Some(trades))
     }
 }
@@ -204,6 +230,7 @@ mod tests {
         let config = BulkConfig {
             concurrency: 8,
             verify_checksum: false,
+            cache_dir: None,
         };
         let client = BybitBulkClient::<BybitServerPerpetualsUsd>::with_config(config);
         assert_eq!(client.config.concurrency, 8);

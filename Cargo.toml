@@ -41,7 +41,7 @@ serde_urlencoded = { version = "0.7.1" }
 
 # Protocol
 url = { version = "2.5.4" }
-reqwest = { version = "0.12.9",default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12.9",default-features = false, features = ["rustls-tls", "json", "stream"] }
 tokio-tungstenite = { version = "0.26.0", features = ["url","rustls-tls-webpki-roots"] }
 
 # Data Structures
@@ -79,3 +79,6 @@ csv = { version = "1.3" }
 flate2 = { version = "1.1" }
 lz4_flex = { version = "0.11" }
 tempfile = { version = "3" }
+async-compression = { version = "0.4", features = ["tokio", "gzip"] }
+tokio-util = { version = "0.7", features = ["io"] }
+quick-xml = { version = "0.36", features = ["serialize"] }

@@ -109,9 +109,7 @@ pub fn parse_fills(json_data: &[u8], market: &str) -> Result<Vec<RestTrade>, Dat
 ///
 /// Collects fills for all coins into a HashMap. This avoids downloading
 /// the same hourly file multiple times for different coins.
-pub fn parse_fills_multi(
-    json_data: &[u8],
-) -> Result<HashMap<String, Vec<RestTrade>>, DataError> {
+pub fn parse_fills_multi(json_data: &[u8]) -> Result<HashMap<String, Vec<RestTrade>>, DataError> {
     let text = std::str::from_utf8(json_data)
         .map_err(|e| DataError::Socket(format!("invalid UTF-8 in fill data: {e}")))?;
 

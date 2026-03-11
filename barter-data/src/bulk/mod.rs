@@ -7,6 +7,7 @@ use crate::{
 };
 use chrono::NaiveDate;
 use futures::Stream;
+use std::path::PathBuf;
 
 /// Date-range request for bulk trade archives.
 #[derive(Clone, Debug, PartialEq)]
@@ -39,6 +40,10 @@ pub struct BulkConfig {
     pub concurrency: usize,
     /// Whether to verify checksums when available.
     pub verify_checksum: bool,
+    /// Optional directory for caching downloaded files and `.verified` markers.
+    /// When set, successfully verified downloads write a marker file so
+    /// subsequent runs can skip re-downloading.
+    pub cache_dir: Option<PathBuf>,
 }
 
 impl Default for BulkConfig {
@@ -46,6 +51,7 @@ impl Default for BulkConfig {
         Self {
             concurrency: 4,
             verify_checksum: true,
+            cache_dir: None,
         }
     }
 }

@@ -62,8 +62,7 @@ pub fn sign_s3_get(url: &str, creds: &AwsCredentials, region: &str) -> SignedHea
     let mut canonical_headers = format!(
         "host:{host}\nx-amz-content-sha256:{UNSIGNED_PAYLOAD}\nx-amz-date:{amz_date}\nx-amz-request-payer:requester\n"
     );
-    let mut signed_headers =
-        "host;x-amz-content-sha256;x-amz-date;x-amz-request-payer".to_string();
+    let mut signed_headers = "host;x-amz-content-sha256;x-amz-date;x-amz-request-payer".to_string();
 
     if let Some(ref token) = creds.session_token {
         canonical_headers = format!(
@@ -75,9 +74,8 @@ pub fn sign_s3_get(url: &str, creds: &AwsCredentials, region: &str) -> SignedHea
     }
 
     // Canonical request
-    let canonical_request = format!(
-        "GET\n{path}\n\n{canonical_headers}\n{signed_headers}\n{UNSIGNED_PAYLOAD}"
-    );
+    let canonical_request =
+        format!("GET\n{path}\n\n{canonical_headers}\n{signed_headers}\n{UNSIGNED_PAYLOAD}");
 
     let canonical_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
 
@@ -140,7 +138,11 @@ mod tests {
             &creds,
             "us-east-1",
         );
-        assert!(signed.authorization.starts_with("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/"));
+        assert!(
+            signed
+                .authorization
+                .starts_with("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/")
+        );
         assert!(signed.authorization.contains("/us-east-1/s3/aws4_request"));
         assert!(!signed.x_amz_date.is_empty());
         assert!(signed.x_amz_security_token.is_none());

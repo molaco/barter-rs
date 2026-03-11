@@ -80,13 +80,34 @@ impl Subscriber for WebSocketSubscriber {
             ws_subscriptions,
         } = Self::SubMapper::map::<Exchange, Instrument, Kind>(subscriptions);
 
-        // Send Subscriptions over WebSocket
-        for subscription in ws_subscriptions {
+        // Build optional rate limiter from exchange configuration
+        let rate_limiter = Exchange::send_rate_limit().map(|(max_requests, per_duration)| {
+            let quota = governor::Quota::with_period(per_duration / max_requests)
+                .expect("send_rate_limit quota period must be > 0")
+                .allow_burst(
+                    std::num::NonZeroU32::new(max_requests).expect("max_requests must be > 0"),
+                );
+            governor::RateLimiter::direct(quota)
+        });
+
+        // Send Subscriptions over WebSocket with inter-batch delay and rate limiting
+        let batch_count = ws_subscriptions.len();
+        for (i, subscription) in ws_subscriptions.into_iter().enumerate() {
+            // Apply rate limiting if configured
+            if let Some(ref limiter) = rate_limiter {
+                limiter.until_ready().await;
+            }
+
             debug!(%exchange, payload = ?subscription, "sending exchange subscription");
             websocket
                 .send(subscription)
                 .await
                 .map_err(|error| SocketError::WebSocket(Box::new(error)))?;
+
+            // Sleep between batches to respect frame-rate limits
+            if batch_count > 1 && i + 1 < batch_count {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
         }
 
         // Validate Subscription responses

@@ -59,7 +59,14 @@ impl HyperliquidBulkClient {
         this
     }
 
-    /// Download and LZ4-decompress a single hour file. Returns None if 404.
+    /// Minimum file size (1 MB) below which range resume is not attempted.
+    const RANGE_RESUME_THRESHOLD: usize = 1_048_576;
+
+    /// Download and LZ4-decompress a single hour file with HTTP Range resume.
+    ///
+    /// On retry after a partial download (>= 1 MB received), sends a
+    /// `Range: bytes=N-` header to resume. S3 natively supports Range requests.
+    /// Returns `None` if 404.
     async fn download_and_decompress_hour(
         &self,
         date: NaiveDate,
@@ -69,12 +76,28 @@ impl HyperliquidBulkClient {
         let url = format!("{BASE_URL}/{date_str}/{hour}.lz4");
         let credentials = self.credentials.clone();
 
+        // Partial byte accumulator shared across retry attempts.
+        let partial = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+
         retry_with_backoff(&self.retry, is_retriable_data_error, || {
             let url = url.clone();
             let client = self.client.clone();
             let credentials = credentials.clone();
+            let partial = partial.clone();
             async move {
+                let existing_len = partial.lock().unwrap().len();
+
                 let mut request = client.get(&url);
+
+                // Add Range header for resume when enough data has been accumulated.
+                if existing_len >= Self::RANGE_RESUME_THRESHOLD {
+                    request = request.header("Range", format!("bytes={existing_len}-"));
+                    tracing::debug!(
+                        url = %url,
+                        resume_from = existing_len,
+                        "resuming S3 download with Range header"
+                    );
+                }
 
                 if let Some(ref creds) = credentials {
                     let signed = s3_signer::sign_s3_get(&url, creds, S3_REGION);
@@ -97,16 +120,39 @@ impl HyperliquidBulkClient {
                 if status == reqwest::StatusCode::NOT_FOUND {
                     return Ok(None);
                 }
-                if !status.is_success() {
+
+                // 416 Range Not Satisfiable: restart from scratch.
+                if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                    tracing::debug!(url = %url, "got 416, restarting download from scratch");
+                    partial.lock().unwrap().clear();
+                    return Err(DataError::Socket(format!("HTTP 416 for {url}, restarting")));
+                }
+
+                if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
                     return Err(DataError::Socket(format!("HTTP {status} fetching {url}")));
                 }
 
-                let compressed = response
-                    .bytes()
-                    .await
-                    .map_err(|e| DataError::Socket(format!("failed to read response: {e}")))?;
+                // If server returned 200 instead of 206, discard partial and accept full body.
+                if status == reqwest::StatusCode::OK && existing_len > 0 {
+                    tracing::debug!(
+                        url = %url,
+                        "server returned 200 (no range support), restarting"
+                    );
+                    partial.lock().unwrap().clear();
+                }
 
-                let mut decoder = lz4_flex::frame::FrameDecoder::new(compressed.as_ref());
+                // Stream the response body into the partial buffer.
+                use futures::StreamExt;
+                let mut byte_stream = response.bytes_stream();
+                while let Some(chunk_result) = byte_stream.next().await {
+                    let chunk = chunk_result
+                        .map_err(|e| DataError::Socket(format!("failed to read response: {e}")))?;
+                    partial.lock().unwrap().extend_from_slice(&chunk);
+                }
+
+                let compressed = std::mem::take(&mut *partial.lock().unwrap());
+
+                let mut decoder = lz4_flex::frame::FrameDecoder::new(compressed.as_slice());
                 let mut decompressed = Vec::new();
                 std::io::Read::read_to_end(&mut decoder, &mut decompressed)
                     .map_err(|e| DataError::Socket(format!("LZ4 decompression failed: {e}")))?;
@@ -280,6 +326,7 @@ mod tests {
         let config = BulkConfig {
             concurrency: 8,
             verify_checksum: false,
+            cache_dir: None,
         };
         let client = HyperliquidBulkClient::with_config(config);
         assert_eq!(client.config.concurrency, 8);

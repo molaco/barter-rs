@@ -13,8 +13,8 @@ categories = ["accessibility", "simulation"]
 
 [features]
 default = []
-rest = ["dep:governor"]
-bulk = ["dep:zip", "dep:csv", "dep:flate2", "dep:lz4_flex", "dep:sha2", "dep:hmac", "dep:hex"]
+rest = []
+bulk = ["dep:zip", "dep:csv", "dep:lz4_flex", "dep:sha2", "dep:hmac", "dep:hex", "dep:async-compression", "dep:tokio-util", "dep:quick-xml"]
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
@@ -43,7 +43,7 @@ async-trait = { workspace = true }
 
 # Protocol
 url = { workspace = true }
-reqwest = { workspace = true}
+reqwest = { workspace = true }
 
 # Error
 thiserror = { workspace = true }
@@ -63,11 +63,17 @@ derive_more = { workspace = true }
 itertools = { workspace = true }
 vecmap-rs = { workspace = true }
 fnv = { workspace = true }
-governor = { workspace = true, optional = true }
+
+# Rate limiting
+governor = { workspace = true }
+
+# Optional (feature-gated)
 zip = { workspace = true, optional = true }
 csv = { workspace = true, optional = true }
-flate2 = { workspace = true, optional = true }
 lz4_flex = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
+async-compression = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
+quick-xml = { workspace = true, optional = true }

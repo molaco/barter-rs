@@ -162,6 +162,49 @@ where
 
     /// Resolve a [`MarketInput`] and [`SubKind`] into the exchange-specific [`Self::Market`].
     fn resolve_market(input: MarketInput<'_>, sub_kind: &SubKind) -> Self::Market;
+
+    /// Optional WebSocket send rate limit as `(max_requests, per_duration)`.
+    ///
+    /// When `Some`, the subscriber will throttle `ws.send()` calls to stay
+    /// within the exchange's documented limits and avoid being banned.
+    ///
+    /// Default: `None` (no rate limit).
+    fn send_rate_limit() -> Option<(u32, Duration)> {
+        None
+    }
+}
+
+/// Split subscription requests into chunks that fit within `max_frame_bytes`.
+///
+/// Each item is serialized to JSON to estimate its wire size. Items are accumulated into
+/// the current chunk until adding the next item would exceed the limit, at which point a
+/// new chunk is started. Items that individually exceed the limit are placed in their own
+/// single-element chunk.
+pub fn chunk_requests_by_frame_size<T: serde::Serialize>(
+    requests: Vec<T>,
+    max_frame_bytes: usize,
+) -> Vec<Vec<T>> {
+    let mut chunks: Vec<Vec<T>> = Vec::new();
+    let mut current_chunk: Vec<T> = Vec::new();
+    let mut current_size: usize = 0;
+
+    for item in requests {
+        let item_size = serde_json::to_string(&item).map(|s| s.len()).unwrap_or(0);
+
+        if !current_chunk.is_empty() && current_size + item_size > max_frame_bytes {
+            chunks.push(std::mem::take(&mut current_chunk));
+            current_size = 0;
+        }
+
+        current_size += item_size;
+        current_chunk.push(item);
+    }
+
+    if !current_chunk.is_empty() {
+        chunks.push(current_chunk);
+    }
+
+    chunks
 }
 
 /// Used when an exchange has servers different

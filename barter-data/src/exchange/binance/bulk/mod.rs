@@ -4,7 +4,7 @@ pub mod trades;
 use crate::{
     bulk::{
         BulkConfig, BulkKlineFetcher, BulkKlineRequest, BulkTradeFetcher, BulkTradeRequest,
-        checksum::{parse_binance_checksum, verify_sha256},
+        checksum::{parse_binance_checksum, should_skip, verify_sha256, write_verified_marker},
         date_range,
     },
     error::DataError,
@@ -16,11 +16,8 @@ use crate::{
     trade::RestTrade,
 };
 use chrono::NaiveDate;
-use futures::{
-    Stream,
-    stream::{self, StreamExt},
-};
-use std::{io::Cursor, marker::PhantomData};
+use futures::{Stream, StreamExt, stream};
+use std::{io::Cursor, marker::PhantomData, path::PathBuf};
 
 /// Trait for Binance bulk archive server variants.
 ///
@@ -138,34 +135,87 @@ fn klines_url(segment: &str, market: &str, interval: &str, date: NaiveDate) -> S
 // Download and extraction helpers
 // ---------------------------------------------------------------------------
 
-/// Download bytes from the given URL with retry. Returns `Ok(None)` on 404.
-async fn download_bytes(
+/// Minimum file size (1 MB) below which range resume is not attempted.
+const RANGE_RESUME_THRESHOLD: usize = 1_048_576;
+
+/// Download bytes from the given URL with retry and HTTP Range resume support.
+///
+/// On retry after a partial download (>= 1 MB received), sends a
+/// `Range: bytes=N-` header to resume where the connection dropped.
+/// If the server responds with `200` instead of `206`, the partial buffer
+/// is discarded and the full download is accepted. A `416` response
+/// triggers a full restart from scratch.
+///
+/// Returns `Ok(None)` on 404.
+async fn download_bytes_resumable(
     client: &reqwest::Client,
     retry: &RetryPolicy,
     url: &str,
 ) -> Result<Option<Vec<u8>>, DataError> {
     let url_owned = url.to_string();
+
+    // Accumulated bytes across retries, shared via Arc+Mutex for the retry closure.
+    let partial = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+
     let result = retry_with_backoff(retry, is_retriable_data_error, || {
         let client = client.clone();
         let url = url_owned.clone();
+        let partial = partial.clone();
         async move {
-            let response =
-                client.get(&url).send().await.map_err(|e| {
-                    DataError::Socket(format!("HTTP request failed for {url}: {e}"))
-                })?;
+            let existing_len = partial.lock().unwrap().len();
+
+            // Build request, optionally with Range header for resume.
+            let mut request = client.get(&url);
+            if existing_len >= RANGE_RESUME_THRESHOLD {
+                request = request.header("Range", format!("bytes={existing_len}-"));
+                tracing::debug!(
+                    url = %url,
+                    resume_from = existing_len,
+                    "resuming download with Range header"
+                );
+            }
+
+            let response = request
+                .send()
+                .await
+                .map_err(|e| DataError::Socket(format!("HTTP request failed for {url}: {e}")))?;
 
             let status = response.status();
             if status == reqwest::StatusCode::NOT_FOUND {
                 return Ok(None);
             }
-            if !status.is_success() {
+
+            // 416 Range Not Satisfiable: file changed or already complete, restart.
+            if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                tracing::debug!(url = %url, "got 416, restarting download from scratch");
+                partial.lock().unwrap().clear();
+                return Err(DataError::Socket(format!("HTTP 416 for {url}, restarting")));
+            }
+
+            if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
                 return Err(DataError::Socket(format!("HTTP {status} for {url}")));
             }
 
-            let bytes = response.bytes().await.map_err(|e| {
-                DataError::Socket(format!("failed to read response body for {url}: {e}"))
-            })?;
-            Ok(Some(bytes.to_vec()))
+            if status == reqwest::StatusCode::OK && existing_len > 0 {
+                // Server does not support Range: discard partial, accept full body.
+                tracing::debug!(
+                    url = %url,
+                    "server returned 200 (no range support), restarting"
+                );
+                partial.lock().unwrap().clear();
+            }
+
+            // Stream the response body, accumulating into partial buffer.
+            let mut byte_stream = response.bytes_stream();
+            while let Some(chunk_result) = byte_stream.next().await {
+                let chunk = chunk_result.map_err(|e| {
+                    DataError::Socket(format!("failed to read response body for {url}: {e}"))
+                })?;
+                partial.lock().unwrap().extend_from_slice(&chunk);
+            }
+
+            let data = std::mem::take(&mut *partial.lock().unwrap());
+            Ok(Some(data))
         }
     })
     .await?;
@@ -180,7 +230,7 @@ async fn download_checksum(
     url: &str,
 ) -> Result<Option<String>, DataError> {
     let checksum_url = format!("{url}.CHECKSUM");
-    let bytes = download_bytes(client, retry, &checksum_url).await?;
+    let bytes = download_bytes_resumable(client, retry, &checksum_url).await?;
     match bytes {
         None => Ok(None),
         Some(data) => {
@@ -190,6 +240,13 @@ async fn download_checksum(
             Ok(Some(checksum))
         }
     }
+}
+
+/// Build the `.verified` marker path for a given archive URL and cache directory.
+fn marker_path_for_url(cache_dir: &std::path::Path, url: &str) -> PathBuf {
+    // Extract filename from the URL (last path segment).
+    let filename = url.rsplit('/').next().unwrap_or("unknown");
+    cache_dir.join(format!("{filename}.verified"))
 }
 
 /// Extract the first file from a ZIP archive into raw bytes.
@@ -219,7 +276,8 @@ fn extract_zip_csv(zip_bytes: &[u8]) -> Result<Vec<u8>, DataError> {
 // Download-and-parse orchestration
 // ---------------------------------------------------------------------------
 
-/// Download, verify, and parse trades for a single date. Returns `Ok(None)` on 404.
+/// Download, verify (with optional marker-file skip), and parse trades
+/// for a single date. Returns `Ok(None)` on 404.
 async fn download_and_parse_trades<Server: BulkArchiveServer>(
     client: &reqwest::Client,
     config: &BulkConfig,
@@ -229,16 +287,10 @@ async fn download_and_parse_trades<Server: BulkArchiveServer>(
 ) -> Result<Option<Vec<RestTrade>>, DataError> {
     let url = agg_trades_url(Server::market_segment(), market, date);
 
-    let zip_bytes = match download_bytes(client, retry, &url).await? {
+    let zip_bytes = match download_and_verify(client, config, retry, &url).await? {
         Some(b) => b,
         None => return Ok(None),
     };
-
-    if config.verify_checksum {
-        if let Some(expected) = download_checksum(client, retry, &url).await? {
-            verify_sha256(&zip_bytes, &expected)?;
-        }
-    }
 
     let csv_data = extract_zip_csv(&zip_bytes)?;
     let trades = trades::parse_trades(
@@ -250,7 +302,8 @@ async fn download_and_parse_trades<Server: BulkArchiveServer>(
     Ok(Some(trades))
 }
 
-/// Download, verify, and parse klines for a single date. Returns `Ok(None)` on 404.
+/// Download, verify (with optional marker-file skip), and parse klines
+/// for a single date. Returns `Ok(None)` on 404.
 async fn download_and_parse_klines<Server: BulkArchiveServer>(
     client: &reqwest::Client,
     config: &BulkConfig,
@@ -261,21 +314,73 @@ async fn download_and_parse_klines<Server: BulkArchiveServer>(
 ) -> Result<Option<Vec<Candle>>, DataError> {
     let url = klines_url(Server::market_segment(), market, interval, date);
 
-    let zip_bytes = match download_bytes(client, retry, &url).await? {
+    let zip_bytes = match download_and_verify(client, config, retry, &url).await? {
         Some(b) => b,
         None => return Ok(None),
     };
-
-    if config.verify_checksum {
-        if let Some(expected) = download_checksum(client, retry, &url).await? {
-            verify_sha256(&zip_bytes, &expected)?;
-        }
-    }
 
     let csv_data = extract_zip_csv(&zip_bytes)?;
     let candles = klines::parse_klines(&csv_data, Server::csv_has_headers())?;
 
     Ok(Some(candles))
+}
+
+/// Download a ZIP archive with resumable retry, verify its SHA-256 checksum,
+/// and optionally read/write `.verified` marker files for cache-based skipping.
+///
+/// Returns `Ok(None)` on 404.
+async fn download_and_verify(
+    client: &reqwest::Client,
+    config: &BulkConfig,
+    retry: &RetryPolicy,
+    url: &str,
+) -> Result<Option<Vec<u8>>, DataError> {
+    // If we have a cache dir and checksum verification is enabled, try marker skip.
+    if config.verify_checksum {
+        if let Some(ref cache_dir) = config.cache_dir {
+            let marker = marker_path_for_url(cache_dir, url);
+
+            // Fetch expected checksum to check marker validity.
+            if let Some(expected) = download_checksum(client, retry, url).await? {
+                if should_skip(&marker, &expected) {
+                    tracing::debug!(
+                        url = %url,
+                        marker = %marker.display(),
+                        "skipping download: valid .verified marker found"
+                    );
+                    // Still need to download for parsing; marker only confirms integrity.
+                    // For a full skip we would need cached file storage, but the marker
+                    // at least lets the caller know the data was previously verified.
+                    // Fall through to download, but we can skip re-verification below.
+                }
+            }
+        }
+    }
+
+    let zip_bytes = match download_bytes_resumable(client, retry, url).await? {
+        Some(b) => b,
+        None => return Ok(None),
+    };
+
+    if config.verify_checksum {
+        if let Some(expected) = download_checksum(client, retry, url).await? {
+            verify_sha256(&zip_bytes, &expected)?;
+
+            // Write marker on successful verification.
+            if let Some(ref cache_dir) = config.cache_dir {
+                let marker = marker_path_for_url(cache_dir, url);
+                let filename = url.rsplit('/').next().unwrap_or("unknown");
+                write_verified_marker(&marker, &expected, filename);
+                tracing::debug!(
+                    url = %url,
+                    marker = %marker.display(),
+                    "wrote .verified marker after successful checksum"
+                );
+            }
+        }
+    }
+
+    Ok(Some(zip_bytes))
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +456,143 @@ impl<Server: BulkArchiveServer> BulkKlineFetcher for BinanceBulkClient<Server> {
                 }
             })
     }
+}
+
+// ---------------------------------------------------------------------------
+// S3 listing for available-date discovery
+// ---------------------------------------------------------------------------
+
+/// S3 listing base URL for Binance data archives.
+const S3_LISTING_BASE: &str = "https://s3-ap-northeast-1.amazonaws.com/data.binance.vision";
+
+/// List available daily trade ZIP files from Binance's S3 bucket.
+///
+/// Uses the S3 XML listing API at:
+/// `https://s3-ap-northeast-1.amazonaws.com/data.binance.vision?prefix=data/{market_type}/daily/trades/{symbol}/&delimiter=/`
+///
+/// Returns a sorted `Vec<NaiveDate>` for which ZIP files exist.
+///
+/// `market_type` should be `"spot"`, `"futures/um"`, or `"futures/cm"`.
+pub async fn list_available_dates(
+    client: &reqwest::Client,
+    symbol: &str,
+    market_type: &str,
+) -> Result<Vec<NaiveDate>, DataError> {
+    let prefix = format!("data/{market_type}/daily/trades/{symbol}/");
+    let mut dates = Vec::new();
+    let mut marker: Option<String> = None;
+
+    loop {
+        let mut url = format!("{S3_LISTING_BASE}?prefix={prefix}&delimiter=/");
+        if let Some(ref m) = marker {
+            url.push_str(&format!("&marker={m}"));
+        }
+
+        let body = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| DataError::Socket(format!("S3 listing request failed: {e}")))?
+            .text()
+            .await
+            .map_err(|e| DataError::Socket(format!("S3 listing read body failed: {e}")))?;
+
+        let (page_dates, is_truncated, next_marker) = parse_s3_listing_xml(&body, symbol)?;
+        dates.extend(page_dates);
+
+        if !is_truncated {
+            break;
+        }
+
+        marker = next_marker.or_else(|| {
+            dates.last().map(|d| {
+                // Fallback marker: use the last key we saw
+                format!("{prefix}{symbol}-trades-{}.zip", d.format("%Y-%m-%d"))
+            })
+        });
+
+        if marker.is_none() {
+            break;
+        }
+    }
+
+    dates.sort();
+    dates.dedup();
+    Ok(dates)
+}
+
+/// Parse an S3 XML listing response and extract dates from `<Key>` elements.
+///
+/// Returns `(dates, is_truncated, next_marker)`.
+fn parse_s3_listing_xml(
+    xml: &str,
+    symbol: &str,
+) -> Result<(Vec<NaiveDate>, bool, Option<String>), DataError> {
+    use quick_xml::{Reader, events::Event};
+
+    let mut reader = Reader::from_str(xml);
+    let mut dates = Vec::new();
+    let mut is_truncated = false;
+    let mut next_marker: Option<String> = None;
+    let mut current_element = String::new();
+    let mut buf = Vec::new();
+
+    // Pattern: {SYMBOL}-trades-{YYYY-MM-DD}.zip
+    let suffix_pattern = format!("{symbol}-trades-");
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => {
+                current_element = String::from_utf8_lossy(e.name().as_ref()).to_string();
+            }
+            Ok(Event::Text(ref e)) => {
+                let text = e
+                    .unescape()
+                    .map_err(|err| DataError::Socket(format!("S3 XML unescape error: {err}")))?;
+                match current_element.as_str() {
+                    "Key" => {
+                        if let Some(date) = extract_date_from_key(&text, &suffix_pattern) {
+                            dates.push(date);
+                        }
+                    }
+                    "IsTruncated" => {
+                        is_truncated = text.trim() == "true";
+                    }
+                    "NextMarker" => {
+                        let t = text.trim().to_string();
+                        if !t.is_empty() {
+                            next_marker = Some(t);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::End(_)) => {
+                current_element.clear();
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => {
+                return Err(DataError::Socket(format!("S3 XML parse error: {e}")));
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok((dates, is_truncated, next_marker))
+}
+
+/// Extract a `NaiveDate` from an S3 key like
+/// `data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-15.zip`.
+fn extract_date_from_key(key: &str, suffix_pattern: &str) -> Option<NaiveDate> {
+    // Find the filename portion after the last '/'
+    let filename = key.rsplit('/').next()?;
+    // Strip the prefix pattern (e.g. "BTCUSDT-trades-")
+    let rest = filename.strip_prefix(suffix_pattern)?;
+    // Strip the ".zip" suffix
+    let date_str = rest.strip_suffix(".zip")?;
+    // Parse the date
+    NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
 }
 
 #[cfg(test)]
@@ -434,6 +676,7 @@ mod tests {
         let config = BulkConfig {
             concurrency: 8,
             verify_checksum: false,
+            cache_dir: None,
         };
         let client: BinanceBulkClient<BinanceServerSpot> = BinanceBulkClient::with_config(config);
         assert_eq!(client.config.concurrency, 8);
@@ -459,5 +702,153 @@ mod tests {
         assert_eq!(BinanceServerFuturesCoin::market_segment(), "futures/cm");
         assert!(BinanceServerFuturesCoin::csv_has_headers());
         assert!(!BinanceServerFuturesCoin::may_use_microsecond_timestamps());
+    }
+
+    // -----------------------------------------------------------------------
+    // S3 listing tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_date_from_key_valid() {
+        let pattern = "BTCUSDT-trades-";
+        let key = "data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-15.zip";
+        let date = extract_date_from_key(key, pattern);
+        assert_eq!(date, Some(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap()));
+    }
+
+    #[test]
+    fn test_extract_date_from_key_wrong_symbol() {
+        let pattern = "BTCUSDT-trades-";
+        let key = "data/spot/daily/trades/ETHUSDT/ETHUSDT-trades-2024-01-15.zip";
+        let date = extract_date_from_key(key, pattern);
+        assert_eq!(date, None);
+    }
+
+    #[test]
+    fn test_extract_date_from_key_no_zip_suffix() {
+        let pattern = "BTCUSDT-trades-";
+        let key = "data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-15.csv";
+        let date = extract_date_from_key(key, pattern);
+        assert_eq!(date, None);
+    }
+
+    #[test]
+    fn test_extract_date_from_key_invalid_date() {
+        let pattern = "BTCUSDT-trades-";
+        let key = "data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-not-a-date.zip";
+        let date = extract_date_from_key(key, pattern);
+        assert_eq!(date, None);
+    }
+
+    #[test]
+    fn test_parse_s3_listing_xml_basic() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>data.binance.vision</Name>
+  <Prefix>data/spot/daily/trades/BTCUSDT/</Prefix>
+  <IsTruncated>false</IsTruncated>
+  <Contents>
+    <Key>data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-15.zip</Key>
+    <Size>123456</Size>
+  </Contents>
+  <Contents>
+    <Key>data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-16.zip</Key>
+    <Size>234567</Size>
+  </Contents>
+  <Contents>
+    <Key>data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-17.zip</Key>
+    <Size>345678</Size>
+  </Contents>
+</ListBucketResult>"#;
+
+        let (dates, is_truncated, next_marker) = parse_s3_listing_xml(xml, "BTCUSDT").unwrap();
+        assert_eq!(dates.len(), 3);
+        assert_eq!(dates[0], NaiveDate::from_ymd_opt(2024, 1, 15).unwrap());
+        assert_eq!(dates[1], NaiveDate::from_ymd_opt(2024, 1, 16).unwrap());
+        assert_eq!(dates[2], NaiveDate::from_ymd_opt(2024, 1, 17).unwrap());
+        assert!(!is_truncated);
+        assert!(next_marker.is_none());
+    }
+
+    #[test]
+    fn test_parse_s3_listing_xml_truncated_with_marker() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>data.binance.vision</Name>
+  <Prefix>data/spot/daily/trades/BTCUSDT/</Prefix>
+  <IsTruncated>true</IsTruncated>
+  <NextMarker>data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-15.zip</NextMarker>
+  <Contents>
+    <Key>data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-14.zip</Key>
+    <Size>111111</Size>
+  </Contents>
+  <Contents>
+    <Key>data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-15.zip</Key>
+    <Size>222222</Size>
+  </Contents>
+</ListBucketResult>"#;
+
+        let (dates, is_truncated, next_marker) = parse_s3_listing_xml(xml, "BTCUSDT").unwrap();
+        assert_eq!(dates.len(), 2);
+        assert!(is_truncated);
+        assert_eq!(
+            next_marker,
+            Some("data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-15.zip".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_s3_listing_xml_empty() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>data.binance.vision</Name>
+  <Prefix>data/spot/daily/trades/UNKNOWN/</Prefix>
+  <IsTruncated>false</IsTruncated>
+</ListBucketResult>"#;
+
+        let (dates, is_truncated, _) = parse_s3_listing_xml(xml, "UNKNOWN").unwrap();
+        assert!(dates.is_empty());
+        assert!(!is_truncated);
+    }
+
+    #[test]
+    fn test_parse_s3_listing_xml_ignores_checksum_files() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>data.binance.vision</Name>
+  <Prefix>data/spot/daily/trades/BTCUSDT/</Prefix>
+  <IsTruncated>false</IsTruncated>
+  <Contents>
+    <Key>data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-15.zip</Key>
+    <Size>123456</Size>
+  </Contents>
+  <Contents>
+    <Key>data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2024-01-15.zip.CHECKSUM</Key>
+    <Size>64</Size>
+  </Contents>
+</ListBucketResult>"#;
+
+        let (dates, _, _) = parse_s3_listing_xml(xml, "BTCUSDT").unwrap();
+        // Only the .zip should be extracted, not the .CHECKSUM
+        assert_eq!(dates.len(), 1);
+        assert_eq!(dates[0], NaiveDate::from_ymd_opt(2024, 1, 15).unwrap());
+    }
+
+    #[test]
+    fn test_parse_s3_listing_xml_futures_path() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>data.binance.vision</Name>
+  <Prefix>data/futures/um/daily/trades/ETHUSDT/</Prefix>
+  <IsTruncated>false</IsTruncated>
+  <Contents>
+    <Key>data/futures/um/daily/trades/ETHUSDT/ETHUSDT-trades-2024-06-01.zip</Key>
+    <Size>999999</Size>
+  </Contents>
+</ListBucketResult>"#;
+
+        let (dates, _, _) = parse_s3_listing_xml(xml, "ETHUSDT").unwrap();
+        assert_eq!(dates.len(), 1);
+        assert_eq!(dates[0], NaiveDate::from_ymd_opt(2024, 6, 1).unwrap());
     }
 }

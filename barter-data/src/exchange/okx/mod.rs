@@ -124,13 +124,25 @@ impl Connector for Okx {
     }
 
     fn requests(exchange_subs: &[ExchangeSub<Self::Channel, Self::Market>]) -> Vec<WsMessage> {
-        vec![WsMessage::text(
-            json!({
-                "op": "subscribe",
-                "args": exchange_subs,
+        use crate::exchange::chunk_requests_by_frame_size;
+
+        /// OKX WebSocket frame size limit in bytes.
+        const OKX_MAX_FRAME_BYTES: usize = 4096;
+
+        let chunks = chunk_requests_by_frame_size(exchange_subs.to_vec(), OKX_MAX_FRAME_BYTES);
+
+        chunks
+            .into_iter()
+            .map(|chunk| {
+                WsMessage::text(
+                    json!({
+                        "op": "subscribe",
+                        "args": chunk,
+                    })
+                    .to_string(),
+                )
             })
-            .to_string(),
-        )]
+            .collect()
     }
 
     fn unsubscribe_requests(
@@ -154,6 +166,11 @@ impl Connector for Okx {
             } => okx_market(base, quote, instrument_kind),
             MarketInput::ExchangeName(name) => OkxMarket(name.name().clone()),
         }
+    }
+
+    fn send_rate_limit() -> Option<(u32, std::time::Duration)> {
+        // OKX: 2 messages per second
+        Some((2, std::time::Duration::from_secs(1)))
     }
 }
 

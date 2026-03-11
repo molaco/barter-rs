@@ -108,9 +108,32 @@ use barter_integration::{
 };
 use futures::SinkExt;
 
-use std::{collections::VecDeque, future::Future};
+use std::{collections::VecDeque, future::Future, sync::Arc};
 use tokio::sync::mpsc;
 use tracing::{debug, error, warn};
+
+/// Type alias for a direct (not keyed) rate limiter used for WebSocket send throttling.
+pub type WsSendRateLimiter = governor::RateLimiter<
+    governor::state::NotKeyed,
+    governor::state::InMemoryState,
+    governor::clock::DefaultClock,
+    governor::middleware::NoOpMiddleware,
+>;
+
+/// Create an optional [`WsSendRateLimiter`] from the `(max_requests, per_duration)` tuple
+/// returned by [`Connector::send_rate_limit`](exchange::Connector::send_rate_limit).
+pub fn build_send_rate_limiter(
+    config: Option<(u32, std::time::Duration)>,
+) -> Option<Arc<WsSendRateLimiter>> {
+    config.map(|(max_requests, per_duration)| {
+        let quota = governor::Quota::with_period(per_duration / max_requests)
+            .expect("send_rate_limit quota period must be > 0")
+            .allow_burst(
+                std::num::NonZeroU32::new(max_requests).expect("max_requests must be > 0"),
+            );
+        Arc::new(governor::RateLimiter::direct(quota))
+    })
+}
 
 /// All [`Error`](std::error::Error)s generated in Barter-Data.
 pub mod error;
@@ -248,8 +271,14 @@ pub async fn distribute_messages_to_exchange(
     exchange: ExchangeId,
     mut ws_sink: WsSink,
     mut ws_sink_rx: mpsc::UnboundedReceiver<WsMessage>,
+    rate_limiter: Option<Arc<WsSendRateLimiter>>,
 ) {
     while let Some(message) = ws_sink_rx.recv().await {
+        // Apply rate limiting before sending if configured
+        if let Some(ref limiter) = rate_limiter {
+            limiter.until_ready().await;
+        }
+
         if let Err(error) = ws_sink.send(message).await {
             if barter_integration::protocol::websocket::is_websocket_disconnected(&error) {
                 break;

@@ -185,6 +185,11 @@ where
             MarketInput::ExchangeName(name) => BybitMarket(name.name().clone()),
         }
     }
+
+    fn send_rate_limit() -> Option<(u32, Duration)> {
+        // Bybit: 15 messages per second
+        Some((15, Duration::from_secs(1)))
+    }
 }
 
 impl<Instrument, Server> StreamSelector<Instrument, PublicTrades> for Bybit<Server>

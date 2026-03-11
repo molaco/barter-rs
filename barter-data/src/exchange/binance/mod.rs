@@ -169,6 +169,11 @@ where
             MarketInput::ExchangeName(name) => BinanceMarket(name.name().clone()),
         }
     }
+
+    fn send_rate_limit() -> Option<(u32, std::time::Duration)> {
+        // Binance: 4 messages per second
+        Some((4, std::time::Duration::from_secs(1)))
+    }
 }
 
 impl<Instrument, Server> StreamSelector<Instrument, PublicTrades> for Binance<Server>
