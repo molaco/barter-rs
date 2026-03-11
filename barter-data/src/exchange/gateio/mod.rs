@@ -1,4 +1,8 @@
-use self::{channel::GateioChannel, market::{GateioMarket, gateio_market}, subscription::GateioSubResponse};
+use self::{
+    channel::GateioChannel,
+    market::{GateioMarket, gateio_market},
+    subscription::GateioSubResponse,
+};
 use crate::{
     exchange::{Connector, ExchangeServer, subscription::ExchangeSub},
     instrument::MarketInput,

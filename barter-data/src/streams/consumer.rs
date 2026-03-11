@@ -4,9 +4,7 @@ use crate::{
     event::MarketEvent,
     exchange::StreamSelector,
     instrument::InstrumentData,
-    streams::{
-        handle::TypedHandle, reconnect, reconnect::stream::ReconnectionBackoffPolicy,
-    },
+    streams::{handle::TypedHandle, reconnect, reconnect::stream::ReconnectionBackoffPolicy},
     subscription::{Subscription, SubscriptionKind, display_subscriptions_without_exchange},
 };
 use barter_instrument::exchange::ExchangeId;

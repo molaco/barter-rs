@@ -15,7 +15,10 @@ impl AsRef<str> for BybitMarket {
     }
 }
 
-pub(in crate::exchange::bybit) fn bybit_market(base: &AssetNameInternal, quote: &AssetNameInternal) -> BybitMarket {
+pub(in crate::exchange::bybit) fn bybit_market(
+    base: &AssetNameInternal,
+    quote: &AssetNameInternal,
+) -> BybitMarket {
     // Notes:
     // - Must be uppercase since Bybit sends message with uppercase MARKET (eg/ BTCUSDT).
     BybitMarket(format_smolstr!("{base}{quote}").to_uppercase_smolstr())

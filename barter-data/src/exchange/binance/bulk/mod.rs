@@ -8,14 +8,18 @@ use crate::{
         date_range,
     },
     error::DataError,
-    exchange::binance::{binance_interval, futures::BinanceServerFuturesUsd, spot::BinanceServerSpot},
+    exchange::binance::{
+        binance_interval, futures::BinanceServerFuturesUsd, spot::BinanceServerSpot,
+    },
     retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::Candle,
     trade::RestTrade,
 };
 use chrono::NaiveDate;
-use futures::stream::{self, StreamExt};
-use futures::Stream;
+use futures::{
+    Stream,
+    stream::{self, StreamExt},
+};
 use std::{io::Cursor, marker::PhantomData};
 
 /// Trait for Binance bulk archive server variants.
@@ -145,26 +149,22 @@ async fn download_bytes(
         let client = client.clone();
         let url = url_owned.clone();
         async move {
-            let response = client
-                .get(&url)
-                .send()
-                .await
-                .map_err(|e| DataError::Socket(format!("HTTP request failed for {url}: {e}")))?;
+            let response =
+                client.get(&url).send().await.map_err(|e| {
+                    DataError::Socket(format!("HTTP request failed for {url}: {e}"))
+                })?;
 
             let status = response.status();
             if status == reqwest::StatusCode::NOT_FOUND {
                 return Ok(None);
             }
             if !status.is_success() {
-                return Err(DataError::Socket(format!(
-                    "HTTP {status} for {url}"
-                )));
+                return Err(DataError::Socket(format!("HTTP {status} for {url}")));
             }
 
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|e| DataError::Socket(format!("failed to read response body for {url}: {e}")))?;
+            let bytes = response.bytes().await.map_err(|e| {
+                DataError::Socket(format!("failed to read response body for {url}: {e}"))
+            })?;
             Ok(Some(bytes.to_vec()))
         }
     })

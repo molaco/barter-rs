@@ -249,7 +249,11 @@ mod tests {
         ];
         for variant in variants {
             let parsed: ExchangeId = variant.as_str().parse().unwrap_or_else(|e: String| {
-                panic!("failed to parse {:?} from {:?}: {e}", variant, variant.as_str())
+                panic!(
+                    "failed to parse {:?} from {:?}: {e}",
+                    variant,
+                    variant.as_str()
+                )
             });
             assert_eq!(parsed, variant, "roundtrip failed for {:?}", variant);
         }
@@ -283,10 +287,7 @@ mod tests {
             ExchangeId::BybitPerpetualsUsd
         );
         // huobi alias
-        assert_eq!(
-            "huobi".parse::<ExchangeId>().unwrap(),
-            ExchangeId::Htx
-        );
+        assert_eq!("huobi".parse::<ExchangeId>().unwrap(), ExchangeId::Htx);
     }
 
     #[test]

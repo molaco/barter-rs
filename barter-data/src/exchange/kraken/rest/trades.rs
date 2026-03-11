@@ -226,8 +226,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_kraken_trade_raw() {
-        let json =
-            r#"["26260.98000", "0.00342500", 1679907065.2091, "b", "m", "", 391120170]"#;
+        let json = r#"["26260.98000", "0.00342500", 1679907065.2091, "b", "m", "", 391120170]"#;
 
         let raw: KrakenTradeRaw = serde_json::from_str(json).unwrap();
         assert_eq!(raw.price, "26260.98000");

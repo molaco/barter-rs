@@ -52,14 +52,13 @@ impl KrakenArchiveParser {
                 ))
             })?;
 
-        let mut csv_file = archive.by_index(csv_index).map_err(|e| {
-            DataError::Socket(format!("failed to read ZIP entry: {e}"))
-        })?;
+        let mut csv_file = archive
+            .by_index(csv_index)
+            .map_err(|e| DataError::Socket(format!("failed to read ZIP entry: {e}")))?;
 
         let mut csv_data = Vec::new();
-        std::io::Read::read_to_end(&mut csv_file, &mut csv_data).map_err(|e| {
-            DataError::Socket(format!("failed to read CSV data from ZIP: {e}"))
-        })?;
+        std::io::Read::read_to_end(&mut csv_file, &mut csv_data)
+            .map_err(|e| DataError::Socket(format!("failed to read CSV data from ZIP: {e}")))?;
 
         parse_trades(&csv_data)
     }
@@ -91,9 +90,11 @@ impl KrakenArchiveParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::{
+        io::Write,
+        path::PathBuf,
+        sync::atomic::{AtomicU32, Ordering},
+    };
 
     static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 

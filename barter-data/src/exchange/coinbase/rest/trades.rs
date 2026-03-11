@@ -272,9 +272,7 @@ mod tests {
 
         assert_eq!(
             request.path(),
-            Cow::<str>::Owned(
-                "/api/v3/brokerage/market/products/BTC-USD/ticker".to_string()
-            )
+            Cow::<str>::Owned("/api/v3/brokerage/market/products/BTC-USD/ticker".to_string())
         );
         assert_eq!(GetCoinbaseTrades::method(), reqwest::Method::GET);
         assert!(request.query_params().is_some());

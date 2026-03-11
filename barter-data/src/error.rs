@@ -43,7 +43,9 @@ pub enum DataError {
         sub_kind: SubKind,
     },
 
-    #[error("subscription batch mismatch: expected ({expected_exchange}, {expected_sub_kind}), got ({actual_exchange}, {actual_sub_kind})")]
+    #[error(
+        "subscription batch mismatch: expected ({expected_exchange}, {expected_sub_kind}), got ({actual_exchange}, {actual_sub_kind})"
+    )]
     SubscriptionMismatch {
         expected_exchange: ExchangeId,
         expected_sub_kind: SubKind,

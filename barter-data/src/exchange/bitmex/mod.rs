@@ -3,9 +3,11 @@ use crate::{
     exchange::{
         Connector, StreamSelector,
         bitmex::{
-            candle::BitmexKline, channel::BitmexChannel,
+            candle::BitmexKline,
+            channel::BitmexChannel,
             market::{BitmexMarket, bitmex_market},
-            subscription::BitmexSubResponse, trade::BitmexTrade,
+            subscription::BitmexSubResponse,
+            trade::BitmexTrade,
         },
         subscription::ExchangeSub,
     },

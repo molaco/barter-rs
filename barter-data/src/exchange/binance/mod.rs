@@ -1,6 +1,10 @@
 use self::{
-    book::l1::BinanceOrderBookL1, candle::BinanceKline, channel::BinanceChannel,
-    market::{BinanceMarket, binance_market}, subscription::BinanceSubResponse, trade::BinanceTrade,
+    book::l1::BinanceOrderBookL1,
+    candle::BinanceKline,
+    channel::BinanceChannel,
+    market::{BinanceMarket, binance_market},
+    subscription::BinanceSubResponse,
+    trade::BinanceTrade,
 };
 use crate::{
     NoInitialSnapshots,

@@ -534,10 +534,13 @@ impl TradeFetcher for OkxRestClient {
                     MAX_TRADE_PAGES,
                 );
                 state.done = true;
-                return Some((Err(DataError::Socket(format!(
-                    "OKX trades pagination exceeded max page limit ({}) for {}",
-                    MAX_TRADE_PAGES, state.market,
-                ))), state));
+                return Some((
+                    Err(DataError::Socket(format!(
+                        "OKX trades pagination exceeded max page limit ({}) for {}",
+                        MAX_TRADE_PAGES, state.market,
+                    ))),
+                    state,
+                ));
             }
 
             info!(

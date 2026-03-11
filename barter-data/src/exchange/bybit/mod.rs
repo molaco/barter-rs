@@ -2,7 +2,11 @@ use crate::{
     NoInitialSnapshots,
     exchange::{
         Connector, ExchangeServer, PingInterval, StreamSelector,
-        bybit::{channel::BybitChannel, market::{BybitMarket, bybit_market}, subscription::BybitResponse},
+        bybit::{
+            channel::BybitChannel,
+            market::{BybitMarket, bybit_market},
+            subscription::BybitResponse,
+        },
         subscription::ExchangeSub,
     },
     instrument::{InstrumentData, MarketInput},

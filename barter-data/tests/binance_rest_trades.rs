@@ -2,9 +2,7 @@
 
 use barter_data::{
     exchange::binance::{
-        futures::BinanceServerFuturesUsd,
-        rest::BinanceRestClient,
-        spot::BinanceServerSpot,
+        futures::BinanceServerFuturesUsd, rest::BinanceRestClient, spot::BinanceServerSpot,
     },
     rest::{TradeFetcher, TradeRequest},
 };

@@ -1,6 +1,5 @@
 use barter_instrument::{
-    asset::name::AssetNameInternal,
-    instrument::market_data::kind::MarketDataInstrumentKind,
+    asset::name::AssetNameInternal, instrument::market_data::kind::MarketDataInstrumentKind,
 };
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, StrExt, format_smolstr};
@@ -44,7 +43,9 @@ pub(in crate::exchange::hyperliquid) fn hyperliquid_market(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use barter_instrument::instrument::market_data::{MarketDataInstrument, kind::MarketDataInstrumentKind};
+    use barter_instrument::instrument::market_data::{
+        MarketDataInstrument, kind::MarketDataInstrumentKind,
+    };
 
     #[test]
     fn test_hyperliquid_market_perpetual() {

@@ -1,7 +1,11 @@
 use self::{
-    book::l1::KrakenOrderBookL1, candle::KrakenKline, channel::KrakenChannel,
+    book::l1::KrakenOrderBookL1,
+    candle::KrakenKline,
+    channel::KrakenChannel,
     market::{KrakenMarket, kraken_market},
-    message::KrakenMessage, subscription::KrakenSubResponse, trade::KrakenTrades,
+    message::KrakenMessage,
+    subscription::KrakenSubResponse,
+    trade::KrakenTrades,
 };
 use crate::{
     NoInitialSnapshots,

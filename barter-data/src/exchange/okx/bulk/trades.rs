@@ -28,19 +28,13 @@ impl TryFrom<OkxBulkTrade> for RestTrade {
         })?;
 
         let time = DateTime::from_timestamp_millis(millis).ok_or_else(|| {
-            DataError::Socket(format!(
-                "invalid OKX bulk timestamp millis: {millis}"
-            ))
+            DataError::Socket(format!("invalid OKX bulk timestamp millis: {millis}"))
         })?;
 
         let side = match trade.side.to_lowercase().as_str() {
             "buy" => Side::Buy,
             "sell" => Side::Sell,
-            other => {
-                return Err(DataError::Socket(format!(
-                    "unknown OKX bulk side: {other}"
-                )))
-            }
+            other => return Err(DataError::Socket(format!("unknown OKX bulk side: {other}"))),
         };
 
         let price = trade.price.parse::<f64>().map_err(|e| {
@@ -69,8 +63,8 @@ pub fn parse_trades(csv_data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
 
     let mut trades = Vec::new();
     for result in reader.deserialize::<OkxBulkTrade>() {
-        let raw = result
-            .map_err(|e| DataError::Socket(format!("OKX bulk CSV parse error: {e}")))?;
+        let raw =
+            result.map_err(|e| DataError::Socket(format!("OKX bulk CSV parse error: {e}")))?;
         trades.push(RestTrade::try_from(raw)?);
     }
 
@@ -130,7 +124,12 @@ BTC-USDT,1,unknown,42000.0,0.001,1704067200000
 ";
         let result = parse_trades(csv.as_bytes());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unknown OKX bulk side"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown OKX bulk side")
+        );
     }
 
     #[test]
@@ -141,7 +140,12 @@ BTC-USDT,1,buy,42000.0,0.001,not_a_number
 ";
         let result = parse_trades(csv.as_bytes());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("invalid OKX bulk timestamp"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("invalid OKX bulk timestamp")
+        );
     }
 
     #[test]

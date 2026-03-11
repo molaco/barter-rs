@@ -38,18 +38,14 @@ pub fn convert_trade(
     record: BinanceBulkAggTrade,
     may_use_microsecond_timestamps: bool,
 ) -> Result<RestTrade, DataError> {
-    let ts_ms = if may_use_microsecond_timestamps && record.transact_time > 1_000_000_000_000_000
-    {
+    let ts_ms = if may_use_microsecond_timestamps && record.transact_time > 1_000_000_000_000_000 {
         record.transact_time / 1000
     } else {
         record.transact_time
     };
 
     let time = DateTime::from_timestamp_millis(ts_ms as i64).ok_or_else(|| {
-        DataError::Socket(format!(
-            "invalid trade timestamp: {}",
-            record.transact_time
-        ))
+        DataError::Socket(format!("invalid trade timestamp: {}", record.transact_time))
     })?;
 
     let price: f64 = record
@@ -58,10 +54,7 @@ pub fn convert_trade(
         .map_err(|e| DataError::Socket(format!("invalid trade price '{}': {e}", record.price)))?;
 
     let amount: f64 = record.quantity.parse().map_err(|e| {
-        DataError::Socket(format!(
-            "invalid trade quantity '{}': {e}",
-            record.quantity
-        ))
+        DataError::Socket(format!("invalid trade quantity '{}': {e}", record.quantity))
     })?;
 
     let side = if record.is_buyer_maker {

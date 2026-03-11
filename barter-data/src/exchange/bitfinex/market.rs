@@ -15,7 +15,10 @@ impl AsRef<str> for BitfinexMarket {
     }
 }
 
-pub(in crate::exchange::bitfinex) fn bitfinex_market(base: &AssetNameInternal, quote: &AssetNameInternal) -> BitfinexMarket {
+pub(in crate::exchange::bitfinex) fn bitfinex_market(
+    base: &AssetNameInternal,
+    quote: &AssetNameInternal,
+) -> BitfinexMarket {
     BitfinexMarket(format_smolstr!(
         "t{}{}",
         base.to_string().to_uppercase(),

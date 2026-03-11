@@ -3,7 +3,9 @@ use crate::{
     event::MarketEvent,
     subscription::{Map, SubscriptionKind},
 };
-use barter_integration::{Transformer, protocol::websocket::WsMessage, subscription::SubscriptionId};
+use barter_integration::{
+    Transformer, protocol::websocket::WsMessage, subscription::SubscriptionId,
+};
 use tokio::sync::mpsc;
 
 /// Generic stateless [`ExchangeTransformer`] often used for transforming

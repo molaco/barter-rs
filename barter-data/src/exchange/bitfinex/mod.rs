@@ -20,9 +20,11 @@
 //! - Therefore, tag="tu" trades are filtered out and considered only as additional Heartbeats.
 
 use self::{
-    candle::BitfinexCandleMessage, channel::BitfinexChannel,
+    candle::BitfinexCandleMessage,
+    channel::BitfinexChannel,
     market::{BitfinexMarket, bitfinex_market},
-    message::BitfinexMessage, subscription::BitfinexPlatformEvent,
+    message::BitfinexMessage,
+    subscription::BitfinexPlatformEvent,
     validator::BitfinexWebSocketSubValidator,
 };
 use crate::{

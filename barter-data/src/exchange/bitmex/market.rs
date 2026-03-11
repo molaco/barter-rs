@@ -15,7 +15,10 @@ impl AsRef<str> for BitmexMarket {
     }
 }
 
-pub(in crate::exchange::bitmex) fn bitmex_market(base: &AssetNameInternal, quote: &AssetNameInternal) -> BitmexMarket {
+pub(in crate::exchange::bitmex) fn bitmex_market(
+    base: &AssetNameInternal,
+    quote: &AssetNameInternal,
+) -> BitmexMarket {
     // Notes:
     // - Must be uppercase since Bitmex sends message with uppercase MARKET (eg/ XBTUSD).
     BitmexMarket(format_smolstr!("{base}{quote}").to_uppercase_smolstr())

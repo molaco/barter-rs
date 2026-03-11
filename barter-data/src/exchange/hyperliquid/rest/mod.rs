@@ -191,10 +191,7 @@ impl KlineFetcher for HyperliquidRestClient {
 
             // Compute default time boundaries if not provided.
             // Hyperliquid requires both startTime and endTime.
-            let start_ms = request
-                .start
-                .map(|dt| dt.timestamp_millis())
-                .unwrap_or(0);
+            let start_ms = request.start.map(|dt| dt.timestamp_millis()).unwrap_or(0);
             let end_ms = request
                 .end
                 .map(|dt| dt.timestamp_millis())

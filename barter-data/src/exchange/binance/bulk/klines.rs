@@ -30,17 +30,11 @@ pub struct BinanceBulkKline {
 /// Convert a bulk kline record to a [`Candle`].
 pub fn convert_kline(record: BinanceBulkKline) -> Result<Candle, DataError> {
     let open_time = DateTime::from_timestamp_millis(record.open_time).ok_or_else(|| {
-        DataError::Socket(format!(
-            "invalid kline open_time: {}",
-            record.open_time
-        ))
+        DataError::Socket(format!("invalid kline open_time: {}", record.open_time))
     })?;
 
     let close_time = DateTime::from_timestamp_millis(record.close_time).ok_or_else(|| {
-        DataError::Socket(format!(
-            "invalid kline close_time: {}",
-            record.close_time
-        ))
+        DataError::Socket(format!("invalid kline close_time: {}", record.close_time))
     })?;
 
     let open: f64 = record
@@ -63,12 +57,10 @@ pub fn convert_kline(record: BinanceBulkKline) -> Result<Candle, DataError> {
         .parse()
         .map_err(|e| DataError::Socket(format!("invalid kline close '{}': {e}", record.close)))?;
 
-    let volume: f64 = record.volume.parse().map_err(|e| {
-        DataError::Socket(format!(
-            "invalid kline volume '{}': {e}",
-            record.volume
-        ))
-    })?;
+    let volume: f64 = record
+        .volume
+        .parse()
+        .map_err(|e| DataError::Socket(format!("invalid kline volume '{}': {e}", record.volume)))?;
 
     let quote_volume: f64 = record.quote_volume.parse().map_err(|e| {
         DataError::Socket(format!(
@@ -100,8 +92,8 @@ pub fn parse_klines(csv_data: &[u8], has_headers: bool) -> Result<Vec<Candle>, D
 
     let mut candles = Vec::new();
     for result in reader.deserialize::<BinanceBulkKline>() {
-        let record = result
-            .map_err(|e| DataError::Socket(format!("failed to parse kline CSV row: {e}")))?;
+        let record =
+            result.map_err(|e| DataError::Socket(format!("failed to parse kline CSV row: {e}")))?;
         candles.push(convert_kline(record)?);
     }
 

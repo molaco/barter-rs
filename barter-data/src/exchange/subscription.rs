@@ -1,7 +1,9 @@
-use crate::{Identifier, subscription::Subscription};
-use crate::exchange::Connector;
-use crate::instrument::InstrumentData;
-use crate::subscription::SubscriptionKind;
+use crate::{
+    Identifier,
+    exchange::Connector,
+    instrument::InstrumentData,
+    subscription::{Subscription, SubscriptionKind},
+};
 use barter_integration::subscription::SubscriptionId;
 use serde::Deserialize;
 

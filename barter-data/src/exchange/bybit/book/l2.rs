@@ -14,7 +14,9 @@ use crate::{
     },
     transformer::ExchangeTransformer,
 };
-use barter_integration::{Transformer, protocol::websocket::WsMessage, subscription::SubscriptionId};
+use barter_integration::{
+    Transformer, protocol::websocket::WsMessage, subscription::SubscriptionId,
+};
 use derive_more::Constructor;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;

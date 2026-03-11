@@ -146,10 +146,7 @@ async fn test_fetch_trades_empty_response() {
 
     Mock::given(method("GET"))
         .and(path("/api/v3/brokerage/market/products/BTC-USD/ticker"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(coinbase_trades_response(json!([]))),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(coinbase_trades_response(json!([]))))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -278,10 +275,7 @@ async fn test_stream_trades_pagination() {
     Mock::given(method("GET"))
         .and(path("/api/v3/brokerage/market/products/BTC-USD/ticker"))
         .and(query_param("start", "1609459500"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(coinbase_trades_response(json!([]))),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(coinbase_trades_response(json!([]))))
         .expect(1)
         .mount(&mock_server)
         .await;

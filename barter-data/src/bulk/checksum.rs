@@ -57,7 +57,12 @@ mod tests {
         let expected = "0000000000000000000000000000000000000000000000000000000000000000";
         let result = verify_sha256(data, expected);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("checksum mismatch"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("checksum mismatch")
+        );
     }
 
     #[test]
@@ -69,8 +74,7 @@ mod tests {
 
     #[test]
     fn test_parse_binance_checksum() {
-        let content =
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9  BTCUSDT-aggTrades-2024-01-01.zip\n";
+        let content = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9  BTCUSDT-aggTrades-2024-01-01.zip\n";
         let checksum = parse_binance_checksum(content).unwrap();
         assert_eq!(
             checksum,
@@ -89,6 +93,11 @@ mod tests {
         let content = "abc123  file.zip\n";
         let result = parse_binance_checksum(content);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("invalid checksum length"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("invalid checksum length")
+        );
     }
 }

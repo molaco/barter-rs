@@ -1,6 +1,9 @@
 use self::{
-    candle::OkxKline, channel::OkxChannel, market::{OkxMarket, okx_market},
-    subscription::OkxSubResponse, trade::OkxTrades,
+    candle::OkxKline,
+    channel::OkxChannel,
+    market::{OkxMarket, okx_market},
+    subscription::OkxSubResponse,
+    trade::OkxTrades,
 };
 use crate::{
     NoInitialSnapshots,

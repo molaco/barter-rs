@@ -89,7 +89,11 @@ where
                 let exchange_sub = ExchangeSub::new(sub);
                 let sub_id = exchange_sub.id();
                 let instrument_key = sub.instrument.key().clone();
-                SubEntry { id: sub_id, exchange_sub, instrument_key }
+                SubEntry {
+                    id: sub_id,
+                    exchange_sub,
+                    instrument_key,
+                }
             })
             .collect();
 
@@ -103,10 +107,7 @@ where
     }
 
     /// Unsubscribe from instruments by their `SubscriptionId`s (returned from `subscribe`).
-    pub fn unsubscribe(
-        &self,
-        subscription_ids: Vec<SubscriptionId>,
-    ) -> Result<(), DataError> {
+    pub fn unsubscribe(&self, subscription_ids: Vec<SubscriptionId>) -> Result<(), DataError> {
         self.command_tx
             .send(Command::Unsubscribe { subscription_ids })
             .map_err(|_| DataError::CommandChannelClosed)
@@ -127,10 +128,7 @@ where
     }
 
     /// Unsubscribe from a single instrument. Convenience wrapper around `unsubscribe`.
-    pub fn unsubscribe_one(
-        &self,
-        subscription_id: SubscriptionId,
-    ) -> Result<(), DataError> {
+    pub fn unsubscribe_one(&self, subscription_id: SubscriptionId) -> Result<(), DataError> {
         self.unsubscribe(vec![subscription_id])
     }
 }
@@ -145,10 +143,7 @@ pub trait DynHandle<Instrument>: Send + Sync {
         subscriptions: Vec<Subscription<ExchangeId, Instrument, SubKind>>,
     ) -> Result<Vec<SubscriptionId>, DataError>;
 
-    fn unsubscribe_erased(
-        &self,
-        subscription_ids: Vec<SubscriptionId>,
-    ) -> Result<(), DataError>;
+    fn unsubscribe_erased(&self, subscription_ids: Vec<SubscriptionId>) -> Result<(), DataError>;
 }
 
 impl<Instrument> std::fmt::Debug for dyn DynHandle<Instrument> {
@@ -180,10 +175,7 @@ where
         self.subscribe(typed_subs)
     }
 
-    fn unsubscribe_erased(
-        &self,
-        subscription_ids: Vec<SubscriptionId>,
-    ) -> Result<(), DataError> {
+    fn unsubscribe_erased(&self, subscription_ids: Vec<SubscriptionId>) -> Result<(), DataError> {
         self.unsubscribe(subscription_ids)
     }
 }
@@ -196,8 +188,10 @@ mod tests {
         use super::*;
         use crate::{
             Identifier,
-            exchange::Connector,
-            exchange::binance::{channel::BinanceChannel, market::BinanceMarket, spot::BinanceSpot},
+            exchange::{
+                Connector,
+                binance::{channel::BinanceChannel, market::BinanceMarket, spot::BinanceSpot},
+            },
             instrument::InstrumentData,
             subscription::{SubscriptionKind, trade::PublicTrades},
         };
@@ -209,9 +203,7 @@ mod tests {
         /// and its corresponding command receiver.
         fn typed_handle() -> (
             TypedHandle<BinanceSpot, MarketDataInstrument, PublicTrades>,
-            mpsc::UnboundedReceiver<
-                Command<BinanceChannel, BinanceMarket, MarketDataInstrument>,
-            >,
+            mpsc::UnboundedReceiver<Command<BinanceChannel, BinanceMarket, MarketDataInstrument>>,
         ) {
             let (command_tx, command_rx) = mpsc::unbounded_channel();
             (TypedHandle::new(command_tx), command_rx)
@@ -234,10 +226,8 @@ mod tests {
             // Derive expected ExchangeSub and SubscriptionId from the subscription
             // to compare against what TypedHandle produces internally.
             let expected_channel: BinanceChannel = sub.id();
-            let expected_market: BinanceMarket = BinanceSpot::resolve_market(
-                sub.instrument.market_input(),
-                &sub.kind.as_sub_kind(),
-            );
+            let expected_market: BinanceMarket =
+                BinanceSpot::resolve_market(sub.instrument.market_input(), &sub.kind.as_sub_kind());
 
             handle.subscribe(vec![sub]).unwrap();
 
@@ -263,11 +253,7 @@ mod tests {
                     // Verify the instrument key is the MarketDataInstrument itself
                     assert_eq!(
                         entry.instrument_key,
-                        MarketDataInstrument::from((
-                            "btc",
-                            "usdt",
-                            MarketDataInstrumentKind::Spot
-                        ))
+                        MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot))
                     );
                 }
                 _ => panic!("expected Command::Subscribe, got Command::Unsubscribe"),
@@ -304,8 +290,7 @@ mod tests {
 
             // Derive the expected SubscriptionId using the same path as TypedHandle:
             // ExchangeSub::new(&sub) -> exchange_sub.id()
-            let exchange_sub: ExchangeSub<BinanceChannel, BinanceMarket> =
-                ExchangeSub::new(&sub);
+            let exchange_sub: ExchangeSub<BinanceChannel, BinanceMarket> = ExchangeSub::new(&sub);
             let expected_id: SubscriptionId = exchange_sub.id();
 
             let ids = handle.subscribe(vec![sub]).unwrap();
@@ -325,10 +310,8 @@ mod tests {
                 PublicTrades,
             );
 
-            let expected_btc_id =
-                ExchangeSub::<BinanceChannel, BinanceMarket>::new(&sub_btc).id();
-            let expected_eth_id =
-                ExchangeSub::<BinanceChannel, BinanceMarket>::new(&sub_eth).id();
+            let expected_btc_id = ExchangeSub::<BinanceChannel, BinanceMarket>::new(&sub_btc).id();
+            let expected_eth_id = ExchangeSub::<BinanceChannel, BinanceMarket>::new(&sub_eth).id();
 
             let ids = handle.subscribe(vec![sub_btc, sub_eth]).unwrap();
 
@@ -359,8 +342,7 @@ mod tests {
             let (handle, rx) = typed_handle();
             drop(rx);
 
-            let result =
-                handle.unsubscribe(vec![SubscriptionId::from("@trade|BTCUSDT")]);
+            let result = handle.unsubscribe(vec![SubscriptionId::from("@trade|BTCUSDT")]);
 
             assert!(
                 result.is_err(),
@@ -373,7 +355,9 @@ mod tests {
         use super::*;
         use crate::{
             Identifier,
-            exchange::binance::{channel::BinanceChannel, market::BinanceMarket, spot::BinanceSpot},
+            exchange::binance::{
+                channel::BinanceChannel, market::BinanceMarket, spot::BinanceSpot,
+            },
             subscription::{SubKind, trade::PublicTrades},
         };
         use barter_instrument::{
@@ -385,9 +369,7 @@ mod tests {
         /// and its corresponding command receiver.
         fn typed_handle() -> (
             TypedHandle<BinanceSpot, MarketDataInstrument, PublicTrades>,
-            mpsc::UnboundedReceiver<
-                Command<BinanceChannel, BinanceMarket, MarketDataInstrument>,
-            >,
+            mpsc::UnboundedReceiver<Command<BinanceChannel, BinanceMarket, MarketDataInstrument>>,
         ) {
             let (command_tx, command_rx) = mpsc::unbounded_channel();
             (TypedHandle::new(command_tx), command_rx)
@@ -421,11 +403,7 @@ mod tests {
                     let entry = &entries[0];
                     assert_eq!(
                         entry.instrument_key,
-                        MarketDataInstrument::from((
-                            "btc",
-                            "usdt",
-                            MarketDataInstrumentKind::Spot
-                        ))
+                        MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot))
                     );
 
                     // The id on the entry should match the returned id
@@ -490,8 +468,7 @@ mod tests {
                     MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
                     PublicTrades,
                 );
-            let expected_id =
-                ExchangeSub::<BinanceChannel, BinanceMarket>::new(&typed_sub).id();
+            let expected_id = ExchangeSub::<BinanceChannel, BinanceMarket>::new(&typed_sub).id();
 
             // Now subscribe via the erased path.
             let erased_sub = btc_usdt_erased_sub();

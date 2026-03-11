@@ -15,6 +15,9 @@ impl AsRef<str> for CoinbaseMarket {
     }
 }
 
-pub(in crate::exchange::coinbase) fn coinbase_market(base: &AssetNameInternal, quote: &AssetNameInternal) -> CoinbaseMarket {
+pub(in crate::exchange::coinbase) fn coinbase_market(
+    base: &AssetNameInternal,
+    quote: &AssetNameInternal,
+) -> CoinbaseMarket {
     CoinbaseMarket(format_smolstr!("{base}-{quote}").to_uppercase_smolstr())
 }

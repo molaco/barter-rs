@@ -32,6 +32,7 @@ use crate::{
         trade::{PublicTrade, PublicTrades},
     },
 };
+use async_trait::async_trait;
 use barter_instrument::exchange::ExchangeId;
 use barter_integration::{
     Validator,
@@ -44,11 +45,10 @@ use futures_util::{StreamExt, future::try_join_all};
 use itertools::Itertools;
 use std::{
     fmt::{Debug, Display},
+    marker::PhantomData,
     sync::Arc,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use async_trait::async_trait;
-use std::marker::PhantomData;
 use vecmap::VecMap;
 
 pub mod indexed;
@@ -124,9 +124,11 @@ where
 
         let variant = SubKindVariant::from(sub_kind);
 
-        if let Some(bad) = subscriptions.iter().skip(1).find(|s| {
-            s.exchange != exchange || SubKindVariant::from(s.kind) != variant
-        }) {
+        if let Some(bad) = subscriptions
+            .iter()
+            .skip(1)
+            .find(|s| s.exchange != exchange || SubKindVariant::from(s.kind) != variant)
+        {
             return Err(DataError::SubscriptionMismatch {
                 expected_exchange: exchange,
                 expected_sub_kind: sub_kind,
@@ -142,10 +144,7 @@ where
         let handle = self
             .handles
             .get(&key)
-            .ok_or(DataError::NoConnection {
-                exchange,
-                sub_kind,
-            })?;
+            .ok_or(DataError::NoConnection { exchange, sub_kind })?;
         handle.subscribe_erased(subscriptions)
     }
 
@@ -163,10 +162,7 @@ where
         let handle = self
             .handles
             .get(&key)
-            .ok_or(DataError::NoConnection {
-                exchange,
-                sub_kind,
-            })?;
+            .ok_or(DataError::NoConnection { exchange, sub_kind })?;
         handle.unsubscribe_erased(subscription_ids)
     }
 }
@@ -253,27 +249,24 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
 
         let futures = batches.into_iter().map(|mut batch| {
             batch.sort_unstable_by_key(|sub| (sub.exchange, SubKindVariant::from(sub.kind)));
-            let by_exchange_by_sub_kind =
-                batch.into_iter().chunk_by(|sub| (sub.exchange, SubKindVariant::from(sub.kind)));
+            let by_exchange_by_sub_kind = batch
+                .into_iter()
+                .chunk_by(|sub| (sub.exchange, SubKindVariant::from(sub.kind)));
 
             let batch_futures =
                 by_exchange_by_sub_kind
                     .into_iter()
                     .map(|((exchange, sub_kind_variant), subs)| {
                         let subs = subs.into_iter().collect::<Vec<_>>();
-                        let factory = registry
-                            .get(exchange, sub_kind_variant)
-                            .ok_or_else(|| DataError::Unsupported {
+                        let factory = registry.get(exchange, sub_kind_variant).ok_or_else(|| {
+                            DataError::Unsupported {
                                 exchange,
                                 sub_kind: subs[0].kind,
-                            });
+                            }
+                        });
                         async move {
                             factory?
-                                .init_and_forward(
-                                    subs,
-                                    STREAM_RECONNECTION_POLICY,
-                                    txs_ref,
-                                )
+                                .init_and_forward(subs, STREAM_RECONNECTION_POLICY, txs_ref)
                                 .await
                         }
                     });
@@ -730,7 +723,13 @@ where
     E: crate::exchange::StreamSelector<Instrument, K> + Send + Sync + 'static,
     Instrument: InstrumentData<Key = IK> + Display + Send + Sync + 'static,
     IK: Debug + Clone + PartialEq + Send + Sync + 'static,
-    K: SubscriptionKind + OutputSelector<IK> + TryFrom<SubKind, Error = DataError> + Display + Send + Sync + 'static,
+    K: SubscriptionKind
+        + OutputSelector<IK>
+        + TryFrom<SubKind, Error = DataError>
+        + Display
+        + Send
+        + Sync
+        + 'static,
     K::Event: Clone + Debug + Send + 'static,
     Subscription<E, Instrument, K>: Identifier<E::Channel> + 'static,
     E::Channel: 'static,
@@ -762,13 +761,14 @@ where
         let tx = K::sender(txs, exchange)
             .ok_or(DataError::NoConnection { exchange, sub_kind })?
             .clone();
-        tokio::spawn(
-            UnboundedReceiverStream::new(event_rx).forward_to(tx),
-        );
+        tokio::spawn(UnboundedReceiverStream::new(event_rx).forward_to(tx));
 
         // Return the handle pair for collection by the caller
         Ok((
-            HandleKey { exchange, sub_kind: SubKindVariant::from(sub_kind) },
+            HandleKey {
+                exchange,
+                sub_kind: SubKindVariant::from(sub_kind),
+            },
             Box::new(handle) as Box<dyn DynHandle<Instrument>>,
         ))
     }
@@ -809,4 +809,3 @@ where
         self.0.get(&(exchange, sub_kind)).map(|f| f.as_ref())
     }
 }
-

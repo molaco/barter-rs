@@ -458,8 +458,10 @@ where
             // Subsequent requests: use fromId + endTime (no startTime needed).
             let (start_time, from_id, request_end) = if let Some(from_id) = state.next_from_id {
                 // ID-based pagination: fromId is set, no startTime needed.
-                // Still pass endTime so the API stops at the right boundary.
-                (None, Some(from_id), state.end)
+                // Don't send endTime with fromId — Binance Spot rejects this
+                // combination (-1128). The client-side timestamp check below
+                // handles stopping at the right boundary.
+                (None, Some(from_id), None)
             } else {
                 // First request: use time-based range with sub-window clamping.
                 let request_end = match (state.end, Server::max_trades_time_window()) {
@@ -510,8 +512,7 @@ where
                     if state.next_from_id.is_none() {
                         if let Some(max_window) = Server::max_trades_time_window() {
                             let window_end = state.cursor + max_window;
-                            if state.end.is_none()
-                                || state.end.is_some_and(|end| window_end < end)
+                            if state.end.is_none() || state.end.is_some_and(|end| window_end < end)
                             {
                                 state.cursor = window_end + TimeDelta::milliseconds(1);
                                 debug!(cursor = %state.cursor, "empty sub-window, advancing cursor");

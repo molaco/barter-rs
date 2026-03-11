@@ -1,7 +1,9 @@
 use self::{
-    candle::HyperliquidKline, channel::HyperliquidChannel,
+    candle::HyperliquidKline,
+    channel::HyperliquidChannel,
     market::{HyperliquidMarket, hyperliquid_market},
-    subscription::HyperliquidSubResponse, trade::HyperliquidTrades,
+    subscription::HyperliquidSubResponse,
+    trade::HyperliquidTrades,
 };
 use crate::{
     NoInitialSnapshots,

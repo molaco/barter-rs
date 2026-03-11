@@ -3,7 +3,7 @@ pub mod trades;
 use crate::{
     bulk::{BulkConfig, BulkTradeFetcher, BulkTradeRequest, date_range},
     error::DataError,
-    retry::{RetryPolicy, retry_with_backoff, is_retriable_data_error},
+    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     trade::RestTrade,
 };
 use chrono::NaiveDate;
@@ -52,18 +52,15 @@ impl OkxBulkClient {
         let client = self.client.clone();
         let url_clone = url.clone();
 
-        let response = retry_with_backoff(
-            &self.retry,
-            is_retriable_data_error,
-            || {
+        let response =
+            retry_with_backoff(&self.retry, is_retriable_data_error, || {
                 let client = client.clone();
                 let url = url_clone.clone();
                 async move {
-                    let resp = client
-                        .get(&url)
-                        .send()
-                        .await
-                        .map_err(|e| DataError::Socket(format!("OKX bulk request failed: {e}")))?;
+                    let resp =
+                        client.get(&url).send().await.map_err(|e| {
+                            DataError::Socket(format!("OKX bulk request failed: {e}"))
+                        })?;
 
                     let status = resp.status();
 
@@ -77,16 +74,14 @@ impl OkxBulkClient {
                         )));
                     }
 
-                    let bytes = resp
-                        .bytes()
-                        .await
-                        .map_err(|e| DataError::Socket(format!("OKX bulk read body failed: {e}")))?;
+                    let bytes = resp.bytes().await.map_err(|e| {
+                        DataError::Socket(format!("OKX bulk read body failed: {e}"))
+                    })?;
 
                     Ok(Some(bytes))
                 }
-            },
-        )
-        .await?;
+            })
+            .await?;
 
         let bytes = match response {
             Some(b) => b,
@@ -95,9 +90,8 @@ impl OkxBulkClient {
 
         // Extract ZIP and read first file
         let cursor = std::io::Cursor::new(&bytes);
-        let mut archive = zip::ZipArchive::new(cursor).map_err(|e| {
-            DataError::Socket(format!("OKX bulk ZIP open failed: {e}"))
-        })?;
+        let mut archive = zip::ZipArchive::new(cursor)
+            .map_err(|e| DataError::Socket(format!("OKX bulk ZIP open failed: {e}")))?;
 
         if archive.len() == 0 {
             tracing::warn!("OKX bulk ZIP archive is empty for {market} on {date}");

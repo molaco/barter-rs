@@ -1,7 +1,9 @@
 use self::{
-    candle::CoinbaseKline, channel::CoinbaseChannel,
+    candle::CoinbaseKline,
+    channel::CoinbaseChannel,
     market::{CoinbaseMarket, coinbase_market},
-    subscription::CoinbaseSubResponse, trade::CoinbaseTrade,
+    subscription::CoinbaseSubResponse,
+    trade::CoinbaseTrade,
 };
 use crate::{
     NoInitialSnapshots,
