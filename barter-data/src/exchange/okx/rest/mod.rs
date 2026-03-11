@@ -14,7 +14,7 @@ use futures::stream::{self, Stream};
 use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use std::{fmt, num::NonZeroU32, sync::Arc};
+use std::{fmt, future::Future, num::NonZeroU32, pin::Pin, sync::Arc};
 use tracing::{Instrument, debug, info, warn};
 
 /// OKX kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
@@ -445,14 +445,14 @@ impl TradeFetcher for OkxRestClient {
     fn fetch_trades(
         &self,
         request: TradeRequest,
-    ) -> impl std::future::Future<Output = Result<Vec<RestTrade>, DataError>> + Send {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
         let this = self.clone();
         let span = tracing::info_span!(
             "fetch_trades",
             exchange = "okx",
             market = %request.market,
         );
-        async move {
+        Box::pin(async move {
             debug!("building trades request");
 
             // Capture start/end before moving request fields
@@ -485,7 +485,7 @@ impl TradeFetcher for OkxRestClient {
 
             Ok(filtered)
         }
-        .instrument(span)
+        .instrument(span))
     }
 
     /// Stream paginated batches of trades using ID-based backward pagination.
@@ -508,8 +508,8 @@ impl TradeFetcher for OkxRestClient {
     fn stream_trades(
         &self,
         request: TradeRequest,
-    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
-        let state = TradePaginationState {
+    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
+        Box::pin({let state = TradePaginationState {
             client: self.clone(),
             market: request.market,
             start: request.start,
@@ -639,6 +639,6 @@ impl TradeFetcher for OkxRestClient {
             }
 
             Some((Ok(filtered), state))
-        })
+        })})
     }
 }

@@ -14,7 +14,7 @@ use futures::stream::{self, Stream};
 use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use std::{fmt, num::NonZeroU32, sync::Arc};
+use std::{fmt, future::Future, num::NonZeroU32, pin::Pin, sync::Arc};
 use tracing::{Instrument, debug, info, warn};
 
 /// Coinbase kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
@@ -333,7 +333,7 @@ impl TradeFetcher for CoinbaseRestClient {
     fn fetch_trades(
         &self,
         request: TradeRequest,
-    ) -> impl std::future::Future<Output = Result<Vec<RestTrade>, DataError>> + Send {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
         let this = self.clone();
         let start = request.start;
         let end = request.end;
@@ -342,7 +342,7 @@ impl TradeFetcher for CoinbaseRestClient {
             exchange = "coinbase",
             market = %request.market,
         );
-        async move {
+        Box::pin(async move {
             debug!("building trades request");
 
             let path = format!(
@@ -414,7 +414,7 @@ impl TradeFetcher for CoinbaseRestClient {
 
             Ok(trades)
         }
-        .instrument(span)
+        .instrument(span))
     }
 
     /// Stream paginated batches of trades using time-cursor based pagination.
@@ -428,8 +428,8 @@ impl TradeFetcher for CoinbaseRestClient {
     fn stream_trades(
         &self,
         request: TradeRequest,
-    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
-        let state = TradePaginationState {
+    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
+        Box::pin({let state = TradePaginationState {
             client: self.clone(),
             market: request.market,
             cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
@@ -488,6 +488,6 @@ impl TradeFetcher for CoinbaseRestClient {
                     Some((Ok(batch), state))
                 }
             }
-        })
+        })})
     }
 }

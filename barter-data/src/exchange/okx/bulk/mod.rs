@@ -8,7 +8,7 @@ use crate::{
 };
 use chrono::{Datelike, NaiveDate};
 use futures::{Stream, StreamExt, stream};
-use std::io::Read;
+use std::{io::Read, pin::Pin};
 
 /// Bulk archive download client for OKX.
 ///
@@ -263,14 +263,14 @@ impl BulkTradeFetcher for OkxBulkClient {
     fn stream_bulk_trades(
         &self,
         request: BulkTradeRequest,
-    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
+    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
         let dates = date_range(request.start, request.end);
         let concurrency = self.config.concurrency;
         let client = self.client.clone();
         let config = self.config.clone();
         let retry = self.retry.clone();
 
-        stream::iter(dates)
+        Box::pin(stream::iter(dates)
             .map(move |date| {
                 let bulk_client = OkxBulkClient {
                     client: client.clone(),
@@ -287,7 +287,7 @@ impl BulkTradeFetcher for OkxBulkClient {
                     Ok(None) => None,
                     Err(e) => Some(Err(e)),
                 }
-            })
+            }))
     }
 }
 

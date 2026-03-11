@@ -9,7 +9,7 @@ use crate::{
 use async_compression::tokio::bufread::GzipDecoder;
 use chrono::NaiveDate;
 use futures::{Stream, StreamExt, TryStreamExt, stream};
-use std::marker::PhantomData;
+use std::{marker::PhantomData, pin::Pin};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::io::StreamReader;
 
@@ -185,14 +185,14 @@ impl<Server: BybitBulkServer> BulkTradeFetcher for BybitBulkClient<Server> {
     fn stream_bulk_trades(
         &self,
         request: BulkTradeRequest,
-    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
+    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
         let dates = date_range(request.start, request.end);
         let concurrency = self.config.concurrency;
         let client = self.client.clone();
         let config = self.config.clone();
         let retry = self.retry.clone();
 
-        stream::iter(dates)
+        Box::pin(stream::iter(dates)
             .map(move |date| {
                 let client = BybitBulkClient::<Server> {
                     client: client.clone(),
@@ -210,7 +210,7 @@ impl<Server: BybitBulkServer> BulkTradeFetcher for BybitBulkClient<Server> {
                     Ok(None) => None,
                     Err(e) => Some(Err(e)),
                 }
-            })
+            }))
     }
 }
 

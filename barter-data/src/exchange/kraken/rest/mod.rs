@@ -14,7 +14,7 @@ use futures::stream::{self, Stream};
 use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use std::{fmt, num::NonZeroU32, sync::Arc};
+use std::{fmt, future::Future, num::NonZeroU32, pin::Pin, sync::Arc};
 use tracing::{Instrument, debug, info, warn};
 
 /// Kraken kline/OHLC REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
@@ -420,14 +420,14 @@ impl TradeFetcher for KrakenRestClient {
     fn fetch_trades(
         &self,
         request: TradeRequest,
-    ) -> impl std::future::Future<Output = Result<Vec<RestTrade>, DataError>> + Send {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
         let this = self.clone();
         let span = tracing::info_span!(
             "fetch_trades",
             exchange = "kraken",
             market = %request.market,
         );
-        async move {
+        Box::pin(async move {
             debug!("building Kraken trades request");
 
             let since = match request.start {
@@ -464,7 +464,7 @@ impl TradeFetcher for KrakenRestClient {
 
             Ok(filtered)
         }
-        .instrument(span)
+        .instrument(span))
     }
 
     /// Stream paginated batches of trades using nonce-based forward pagination.
@@ -481,8 +481,8 @@ impl TradeFetcher for KrakenRestClient {
     fn stream_trades(
         &self,
         request: TradeRequest,
-    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
-        let since = request.start.map(|dt| {
+    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
+        Box::pin({let since = request.start.map(|dt| {
             dt.timestamp_nanos_opt()
                 .ok_or_else(|| {
                     DataError::Socket(format!("timestamp out of nanosecond range: {}", dt))
@@ -585,6 +585,6 @@ impl TradeFetcher for KrakenRestClient {
                     Some((Ok(filtered), (state, None)))
                 }
             }
-        })
+        })})
     }
 }

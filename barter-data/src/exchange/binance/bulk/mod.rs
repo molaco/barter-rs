@@ -17,7 +17,7 @@ use crate::{
 };
 use chrono::NaiveDate;
 use futures::{Stream, StreamExt, stream};
-use std::{io::Cursor, marker::PhantomData, path::PathBuf};
+use std::{io::Cursor, marker::PhantomData, path::PathBuf, pin::Pin};
 
 /// Trait for Binance bulk archive server variants.
 ///
@@ -391,7 +391,7 @@ impl<Server: BulkArchiveServer> BulkTradeFetcher for BinanceBulkClient<Server> {
     fn stream_bulk_trades(
         &self,
         request: BulkTradeRequest,
-    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
+    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
         let dates = date_range(request.start, request.end);
         let client = self.client.clone();
         let config = self.config.clone();
@@ -399,7 +399,7 @@ impl<Server: BulkArchiveServer> BulkTradeFetcher for BinanceBulkClient<Server> {
         let retry = self.retry.clone();
         let market = request.market;
 
-        stream::iter(dates)
+        Box::pin(stream::iter(dates)
             .map(move |date| {
                 let client = client.clone();
                 let config = config.clone();
@@ -417,7 +417,7 @@ impl<Server: BulkArchiveServer> BulkTradeFetcher for BinanceBulkClient<Server> {
                     Ok(Some(trades)) => Some(Ok(trades)),
                     Err(e) => Some(Err(e)),
                 }
-            })
+            }))
     }
 }
 

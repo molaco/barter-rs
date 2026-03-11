@@ -1,5 +1,6 @@
 pub mod checksum;
 
+use barter_instrument::exchange::ExchangeId;
 use crate::{
     error::DataError,
     subscription::candle::{Candle, Interval},
@@ -8,6 +9,7 @@ use crate::{
 use chrono::NaiveDate;
 use futures::Stream;
 use std::path::PathBuf;
+use std::pin::Pin;
 
 /// Date-range request for bulk trade archives.
 #[derive(Clone, Debug, PartialEq)]
@@ -60,11 +62,11 @@ impl Default for BulkConfig {
 ///
 /// Each `Ok(Vec<RestTrade>)` represents one day's trades in chronological order.
 /// HTTP 404 dates are silently skipped. 5xx/429 errors are retried.
-pub trait BulkTradeFetcher {
+pub trait BulkTradeFetcher: Send + Sync {
     fn stream_bulk_trades(
         &self,
         request: BulkTradeRequest,
-    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send;
+    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>>;
 }
 
 /// Stream daily batches of klines from archive files.
@@ -90,6 +92,33 @@ pub fn date_range(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
         }
     }
     dates
+}
+
+/// Create a boxed bulk trade client for the given exchange.
+///
+/// Returns `None` if the exchange does not support bulk archive downloading.
+#[cfg(feature = "bulk")]
+pub fn bulk_client(exchange_id: ExchangeId, config: BulkConfig) -> Option<Box<dyn BulkTradeFetcher>> {
+    use crate::exchange::{
+        binance::{
+            bulk::{BinanceBulkClient, BinanceServerFuturesCoin},
+            futures::BinanceServerFuturesUsd,
+            spot::BinanceServerSpot,
+        },
+        bybit::{bulk::BybitBulkClient, futures::BybitServerPerpetualsUsd, spot::BybitServerSpot},
+        hyperliquid::bulk::HyperliquidBulkClient,
+        okx::bulk::OkxBulkClient,
+    };
+    match exchange_id {
+        ExchangeId::BinanceSpot => Some(Box::new(BinanceBulkClient::<BinanceServerSpot>::with_config(config))),
+        ExchangeId::BinanceFuturesUsd => Some(Box::new(BinanceBulkClient::<BinanceServerFuturesUsd>::with_config(config))),
+        ExchangeId::BinanceFuturesCoin => Some(Box::new(BinanceBulkClient::<BinanceServerFuturesCoin>::with_config(config))),
+        ExchangeId::BybitSpot => Some(Box::new(BybitBulkClient::<BybitServerSpot>::with_config(config))),
+        ExchangeId::BybitPerpetualsUsd => Some(Box::new(BybitBulkClient::<BybitServerPerpetualsUsd>::with_config(config))),
+        ExchangeId::Okx => Some(Box::new(OkxBulkClient::with_config(config))),
+        ExchangeId::Hyperliquid => Some(Box::new(HyperliquidBulkClient::with_config(config))),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

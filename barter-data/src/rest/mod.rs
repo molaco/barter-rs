@@ -1,5 +1,6 @@
 pub mod retry;
 
+use barter_instrument::exchange::ExchangeId;
 use crate::{
     error::DataError,
     subscription::candle::{Candle, Interval},
@@ -7,6 +8,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use std::future::Future;
+use std::pin::Pin;
 
 /// Request parameters for fetching historical kline/candlestick data.
 #[derive(Clone, Debug, PartialEq)]
@@ -79,7 +81,7 @@ pub struct TradeRequest {
 /// - **Coinbase**: Time filtering with client-side validation.
 /// - **Kraken**: Full pagination via trade ID cursor.
 /// - **OKX**: Full pagination with 10K page safety limit.
-pub trait TradeFetcher {
+pub trait TradeFetcher: Send + Sync {
     /// Fetch a single batch of trades for the given request parameters.
     ///
     /// Returns a `Vec<RestTrade>` representing one page of historical trades.
@@ -93,7 +95,7 @@ pub trait TradeFetcher {
     fn fetch_trades(
         &self,
         request: TradeRequest,
-    ) -> impl Future<Output = Result<Vec<RestTrade>, DataError>> + Send;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>>;
 
     /// Stream paginated batches of trades in chronological order (oldest-first).
     ///
@@ -107,5 +109,26 @@ pub trait TradeFetcher {
     fn stream_trades(
         &self,
         request: TradeRequest,
-    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send;
+    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>>;
+}
+
+/// Create a boxed REST trade client for the given exchange.
+///
+/// Returns `None` if the exchange does not support REST trade fetching.
+#[cfg(feature = "rest")]
+pub fn rest_client(exchange_id: ExchangeId) -> Option<Box<dyn TradeFetcher>> {
+    use crate::exchange::{
+        binance::{futures::BinanceServerFuturesUsd, rest::BinanceRestClient, spot::BinanceServerSpot},
+        coinbase::rest::CoinbaseRestClient,
+        kraken::rest::KrakenRestClient,
+        okx::rest::OkxRestClient,
+    };
+    match exchange_id {
+        ExchangeId::BinanceSpot => Some(Box::new(BinanceRestClient::<BinanceServerSpot>::new())),
+        ExchangeId::BinanceFuturesUsd => Some(Box::new(BinanceRestClient::<BinanceServerFuturesUsd>::new())),
+        ExchangeId::Okx => Some(Box::new(OkxRestClient::new())),
+        ExchangeId::Coinbase => Some(Box::new(CoinbaseRestClient::new())),
+        ExchangeId::Kraken => Some(Box::new(KrakenRestClient::new())),
+        _ => None,
+    }
 }

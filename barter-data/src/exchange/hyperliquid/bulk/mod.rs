@@ -10,7 +10,7 @@ use crate::{
 use chrono::NaiveDate;
 use futures::Stream;
 use s3_signer::AwsCredentials;
-use std::collections::HashMap;
+use std::{collections::HashMap, pin::Pin};
 use trades::{parse_fills, parse_fills_multi};
 
 /// Base URL for Hyperliquid hourly node fill data (S3).
@@ -273,7 +273,7 @@ impl BulkTradeFetcher for HyperliquidBulkClient {
     fn stream_bulk_trades(
         &self,
         request: BulkTradeRequest,
-    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
+    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
         let dates = date_range(request.start, request.end);
         let concurrency = self.config.concurrency;
         let market = request.market;
@@ -283,7 +283,7 @@ impl BulkTradeFetcher for HyperliquidBulkClient {
         let retry = self.retry.clone();
         let credentials = self.credentials.clone();
 
-        futures::stream::iter(dates.into_iter().map(move |date| {
+        Box::pin(futures::stream::iter(dates.into_iter().map(move |date| {
             let market = market.clone();
             let client = client.clone();
             let retry = retry.clone();
@@ -303,7 +303,7 @@ impl BulkTradeFetcher for HyperliquidBulkClient {
             }
         }))
         .buffer_unordered(concurrency)
-        .filter_map(|opt| async { opt })
+        .filter_map(|opt| async { opt }))
     }
 }
 

@@ -15,7 +15,7 @@ use futures::stream::{self, Stream};
 use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use std::{fmt, marker::PhantomData, num::NonZeroU32, sync::Arc};
+use std::{fmt, future::Future, marker::PhantomData, num::NonZeroU32, pin::Pin, sync::Arc};
 use tracing::{Instrument, debug, info, warn};
 
 /// Bybit kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
@@ -367,14 +367,14 @@ where
     fn fetch_trades(
         &self,
         request: TradeRequest,
-    ) -> impl std::future::Future<Output = Result<Vec<RestTrade>, DataError>> + Send {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
         let this = self.clone();
         let span = tracing::info_span!(
             "fetch_trades",
             exchange = "bybit",
             market = %request.market,
         );
-        async move {
+        Box::pin(async move {
             debug!("building trades request");
 
             if request.start.is_some() || request.end.is_some() {
@@ -440,7 +440,7 @@ where
 
             Ok(rest_trades)
         }
-        .instrument(span)
+        .instrument(span))
     }
 
     /// Stream a single batch of recent trades from the Bybit REST API.
@@ -450,8 +450,8 @@ where
     fn stream_trades(
         &self,
         request: TradeRequest,
-    ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
+    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
         let this = self.clone();
-        stream::once(async move { this.fetch_trades(request).await })
+        Box::pin(stream::once(async move { this.fetch_trades(request).await }))
     }
 }
