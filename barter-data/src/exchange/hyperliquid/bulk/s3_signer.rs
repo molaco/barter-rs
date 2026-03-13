@@ -20,15 +20,63 @@ pub struct AwsCredentials {
 }
 
 impl AwsCredentials {
-    /// Load from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (+ optional `AWS_SESSION_TOKEN`).
-    /// Returns `None` if the required env vars are missing.
+    /// Load credentials using the standard AWS resolution order:
+    /// 1. Environment variables (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`)
+    /// 2. Shared credentials file (`~/.aws/credentials`, `[default]` profile)
     pub fn from_env() -> Option<Self> {
+        Self::from_env_vars().or_else(Self::from_credentials_file)
+    }
+
+    fn from_env_vars() -> Option<Self> {
         let access_key = std::env::var("AWS_ACCESS_KEY_ID").ok()?;
         let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").ok()?;
         let session_token = std::env::var("AWS_SESSION_TOKEN").ok();
         Some(Self {
             access_key,
             secret_key,
+            session_token,
+        })
+    }
+
+    fn from_credentials_file() -> Option<Self> {
+        let path = std::env::var("AWS_SHARED_CREDENTIALS_FILE")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var("HOME")
+                    .ok()
+                    .map(|h| std::path::PathBuf::from(h).join(".aws").join("credentials"))
+            })?;
+
+        let contents = std::fs::read_to_string(&path).ok()?;
+
+        let mut in_default = false;
+        let mut access_key = None;
+        let mut secret_key = None;
+        let mut session_token = None;
+
+        for line in contents.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('[') {
+                in_default = trimmed == "[default]";
+                continue;
+            }
+            if !in_default {
+                continue;
+            }
+            if let Some((key, value)) = trimmed.split_once('=') {
+                match key.trim() {
+                    "aws_access_key_id" => access_key = Some(value.trim().to_string()),
+                    "aws_secret_access_key" => secret_key = Some(value.trim().to_string()),
+                    "aws_session_token" => session_token = Some(value.trim().to_string()),
+                    _ => {}
+                }
+            }
+        }
+
+        Some(Self {
+            access_key: access_key?,
+            secret_key: secret_key?,
             session_token,
         })
     }
@@ -134,7 +182,7 @@ mod tests {
             session_token: None,
         };
         let signed = sign_s3_get(
-            "https://hl-mainnet-node-data.s3.amazonaws.com/node_fills_by_block/hourly/2024-06-15/03",
+            "https://hl-mainnet-node-data.s3.ap-northeast-1.amazonaws.com/node_fills_by_block/hourly/2024-06-15/03",
             &creds,
             "us-east-1",
         );
@@ -156,7 +204,7 @@ mod tests {
             session_token: Some("TOKEN123".to_string()),
         };
         let signed = sign_s3_get(
-            "https://hl-mainnet-node-data.s3.amazonaws.com/node_fills_by_block/hourly/2024-06-15/03",
+            "https://hl-mainnet-node-data.s3.ap-northeast-1.amazonaws.com/node_fills_by_block/hourly/2024-06-15/03",
             &creds,
             "us-east-1",
         );

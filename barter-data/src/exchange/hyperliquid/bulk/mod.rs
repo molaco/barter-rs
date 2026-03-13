@@ -14,7 +14,7 @@ use std::{collections::HashMap, pin::Pin};
 use trades::{parse_fills, parse_fills_multi};
 
 /// Base URL for Hyperliquid hourly node fill data (S3).
-const BASE_URL: &str = "https://hl-mainnet-node-data.s3.amazonaws.com/node_fills_by_block/hourly";
+const BASE_URL: &str = "https://hl-mainnet-node-data.s3.ap-northeast-1.amazonaws.com/node_fills_by_block/hourly";
 
 /// S3 bucket region for Hyperliquid node data.
 const S3_REGION: &str = "ap-northeast-1";
@@ -182,11 +182,16 @@ impl HyperliquidBulkClient {
         market: &str,
         date: NaiveDate,
     ) -> Result<Option<Vec<RestTrade>>, DataError> {
+        // Download all 24 hours concurrently for maximum throughput.
+        let futures: Vec<_> = (0..24u8)
+            .map(|hour| self.download_and_parse_hour(market, date, hour))
+            .collect();
+        let results = futures::future::try_join_all(futures).await?;
+
         let mut all_trades = Vec::new();
         let mut any_found = false;
-
-        for hour in 0..24u8 {
-            if let Some(trades) = self.download_and_parse_hour(market, date, hour).await? {
+        for maybe_trades in results {
+            if let Some(trades) = maybe_trades {
                 any_found = true;
                 all_trades.extend(trades);
             }
@@ -204,11 +209,16 @@ impl HyperliquidBulkClient {
         &self,
         date: NaiveDate,
     ) -> Result<Option<HashMap<String, Vec<RestTrade>>>, DataError> {
+        // Download all 24 hours concurrently for maximum throughput.
+        let futures: Vec<_> = (0..24u8)
+            .map(|hour| self.download_and_decompress_hour(date, hour))
+            .collect();
+        let results = futures::future::try_join_all(futures).await?;
+
         let mut merged: HashMap<String, Vec<RestTrade>> = HashMap::new();
         let mut any_found = false;
-
-        for hour in 0..24u8 {
-            if let Some(bytes) = self.download_and_decompress_hour(date, hour).await? {
+        for maybe_bytes in results {
+            if let Some(bytes) = maybe_bytes {
                 any_found = true;
                 for (coin, trades) in parse_fills_multi(&bytes)? {
                     merged.entry(coin).or_default().extend(trades);
@@ -340,7 +350,7 @@ mod tests {
         let url = format!("{BASE_URL}/{date_str}/{}.lz4", 3u8);
         assert_eq!(
             url,
-            "https://hl-mainnet-node-data.s3.amazonaws.com/node_fills_by_block/hourly/20240615/3.lz4"
+            "https://hl-mainnet-node-data.s3.ap-northeast-1.amazonaws.com/node_fills_by_block/hourly/20240615/3.lz4"
         );
     }
 }
