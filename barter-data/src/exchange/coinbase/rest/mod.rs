@@ -10,7 +10,7 @@ use barter_integration::protocol::http::{
     HttpParser, public::PublicNoHeaders, rest::client::RestClient,
 };
 use chrono::{DateTime, TimeDelta, Utc};
-use futures::stream::{self, Stream};
+use futures::stream::{self, Stream, StreamExt};
 use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -308,21 +308,6 @@ impl KlineFetcher for CoinbaseRestClient {
     }
 }
 
-/// Internal pagination state used by [`TradeFetcher::stream_trades`] to
-/// track the time-cursor position when fetching consecutive batches of trades.
-///
-/// Mirrors the kline [`PaginationState`] pattern: each batch advances the
-/// `cursor` past the last trade's timestamp so the next request picks up
-/// where the previous one left off.
-struct TradePaginationState {
-    client: CoinbaseRestClient,
-    market: String,
-    cursor: DateTime<Utc>,
-    end: Option<DateTime<Utc>>,
-    limit: Option<u32>,
-    done: bool,
-}
-
 impl TradeFetcher for CoinbaseRestClient {
     /// Fetch a single batch of trades from the Coinbase REST API.
     ///
@@ -417,77 +402,99 @@ impl TradeFetcher for CoinbaseRestClient {
         .instrument(span))
     }
 
-    /// Stream paginated batches of trades using time-cursor based pagination.
+    /// Stream paginated batches of trades in oldest-first order.
     ///
-    /// Uses [`futures::stream::unfold`] to repeatedly call [`fetch_trades`](Self::fetch_trades),
-    /// advancing the `start` cursor past the last trade's timestamp in each batch.
-    /// The stream terminates when an empty batch is returned, when the cursor passes the
-    /// requested end time, or on the first error (which is yielded before stopping).
+    /// Coinbase's REST API returns the **newest** trades in a `[start, end]`
+    /// window, so this method paginates **backward** from `end` toward
+    /// `start`. Each batch moves the `end` cursor earlier using the oldest
+    /// trade's timestamp minus one millisecond. Once all batches have been
+    /// collected they are reversed so the final stream yields trades in
+    /// chronological (oldest-first) order.
     ///
-    /// The cursor is advanced by one millisecond past the last trade's time.
+    /// The stream terminates when an empty batch is returned, when the cursor
+    /// passes the requested start time, or on the first error (which is
+    /// yielded before stopping).
     fn stream_trades(
         &self,
         request: TradeRequest,
     ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        Box::pin({let state = TradePaginationState {
-            client: self.clone(),
-            market: request.market,
-            cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
-            end: request.end,
-            limit: request.limit,
-            done: false,
+        let client = self.clone();
+        let market = request.market;
+        let start = request.start;
+        let end = request.end;
+        let limit = request.limit;
+
+        // Collect all batches by paginating backward, then yield them in
+        // chronological order via `stream::iter`.
+        let future = async move {
+            let mut cursor = end.unwrap_or_else(Utc::now);
+            let mut all_batches: Vec<Result<Vec<RestTrade>, DataError>> = Vec::new();
+
+            loop {
+                // If cursor is at or before the start bound we are done.
+                if let Some(s) = start {
+                    if cursor <= s {
+                        debug!("trades backward pagination complete (cursor <= start)");
+                        break;
+                    }
+                }
+
+                info!(
+                    market = %market,
+                    cursor = %cursor,
+                    "fetching trades batch (backward pagination)"
+                );
+
+                let req = TradeRequest {
+                    market: market.clone(),
+                    start,
+                    end: Some(cursor),
+                    limit,
+                };
+
+                match client.fetch_trades(req).await {
+                    Err(err) => {
+                        all_batches.push(Err(err));
+                        break;
+                    }
+                    Ok(batch) if batch.is_empty() => {
+                        debug!("trades backward pagination complete (empty batch)");
+                        break;
+                    }
+                    Ok(batch) => {
+                        // `batch` is already oldest-first (fetch_trades reverses).
+                        // Move cursor to just before the oldest trade in this batch.
+                        if let Some(first) = batch.first() {
+                            let new_cursor = first.time - TimeDelta::milliseconds(1);
+
+                            debug!(
+                                batch_size = batch.len(),
+                                cursor = %new_cursor,
+                                "advancing trades backward pagination"
+                            );
+
+                            // If cursor did not move we would loop forever.
+                            if new_cursor >= cursor {
+                                all_batches.push(Ok(batch));
+                                debug!(
+                                    "trades backward pagination complete (cursor stalled)"
+                                );
+                                break;
+                            }
+                            cursor = new_cursor;
+                        }
+
+                        all_batches.push(Ok(batch));
+                    }
+                }
+            }
+
+            // Batches were collected newest-window-first; reverse so we yield
+            // oldest-first overall.
+            all_batches.reverse();
+            stream::iter(all_batches)
         };
 
-        stream::unfold(state, |mut state| async move {
-            if state.done {
-                return None;
-            }
-
-            info!(
-                market = %state.market,
-                cursor = %state.cursor,
-                "starting trades pagination"
-            );
-
-            let request = TradeRequest {
-                market: state.market.clone(),
-                start: Some(state.cursor),
-                end: state.end,
-                limit: state.limit,
-            };
-
-            match state.client.fetch_trades(request).await {
-                Err(err) => {
-                    state.done = true;
-                    Some((Err(err), state))
-                }
-                Ok(batch) if batch.is_empty() => {
-                    debug!("trades pagination complete");
-                    None
-                }
-                Ok(batch) => {
-                    // Advance cursor past the time of the last trade
-                    if let Some(last) = batch.last() {
-                        state.cursor = last.time + TimeDelta::milliseconds(1);
-
-                        // If cursor has passed the requested end, mark done
-                        if let Some(end) = state.end
-                            && state.cursor >= end
-                        {
-                            state.done = true;
-                            debug!("trades pagination complete");
-                        }
-                    }
-
-                    debug!(
-                        batch_size = batch.len(),
-                        cursor = %state.cursor,
-                        "advancing trades pagination"
-                    );
-
-                    Some((Ok(batch), state))
-                }
-            }
-        })})
+        Box::pin(stream::once(future).flatten())
     }
 }
