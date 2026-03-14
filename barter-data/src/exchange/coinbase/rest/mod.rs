@@ -69,7 +69,7 @@ const COINBASE_REST_BASE_URL: &str = "https://api.coinbase.com";
 /// Unlike the Binance client this is not generic over a server variant
 /// because Coinbase uses a single REST API endpoint for all markets.
 ///
-/// Includes a rate limiter configured for 10 requests per second.
+/// Includes a rate limiter configured for 60 requests per second.
 #[derive(Clone)]
 pub struct CoinbaseRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, CoinbaseHttpParser>>,
@@ -95,7 +95,7 @@ impl CoinbaseRestClient {
     /// Construct a new [`CoinbaseRestClient`] using the default Coinbase
     /// REST API base URL.
     ///
-    /// Initialises a rate limiter with a quota of 10 requests per second.
+    /// Initialises a rate limiter with a quota of 60 requests per second.
     pub fn new() -> Self {
         Self::with_base_url(COINBASE_REST_BASE_URL.to_owned())
     }
@@ -422,7 +422,7 @@ impl TradeFetcher for CoinbaseRestClient {
         let market = request.market;
         let start = request.start;
         let end = request.end;
-        let _limit = request.limit;
+        let _ = request.limit;
 
         // Collect all batches by paginating backward, then yield them in
         // chronological order via `stream::iter`.
@@ -439,7 +439,7 @@ impl TradeFetcher for CoinbaseRestClient {
                     }
                 }
 
-                info!(
+                debug!(
                     market = %market,
                     cursor = %cursor,
                     "fetching trades batch (backward pagination)"
@@ -449,7 +449,7 @@ impl TradeFetcher for CoinbaseRestClient {
                     market: market.clone(),
                     start,
                     end: Some(cursor),
-                    limit: Some(1000),
+                    limit: None,
                 };
 
                 match client.fetch_trades(req).await {
