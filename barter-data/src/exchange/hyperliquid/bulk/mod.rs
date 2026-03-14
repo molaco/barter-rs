@@ -152,10 +152,18 @@ impl HyperliquidBulkClient {
 
                 let compressed = std::mem::take(&mut *partial.lock().unwrap());
 
-                let mut decoder = lz4_flex::frame::FrameDecoder::new(compressed.as_slice());
-                let mut decompressed = Vec::new();
-                std::io::Read::read_to_end(&mut decoder, &mut decompressed)
-                    .map_err(|e| DataError::Socket(format!("LZ4 decompression failed: {e}")))?;
+                // Decompress on the blocking thread pool to avoid stalling
+                // the async executor with synchronous LZ4 I/O.
+                let decompressed = tokio::task::spawn_blocking(move || {
+                    let mut decoder =
+                        lz4_flex::frame::FrameDecoder::new(compressed.as_slice());
+                    let mut buf = Vec::new();
+                    std::io::Read::read_to_end(&mut decoder, &mut buf)
+                        .map_err(|e| DataError::Socket(format!("LZ4 decompression failed: {e}")))?;
+                    Ok::<_, DataError>(buf)
+                })
+                .await
+                .map_err(|e| DataError::Socket(format!("LZ4 task panicked: {e}")))??;
 
                 Ok(Some(decompressed))
             }
@@ -205,24 +213,23 @@ impl HyperliquidBulkClient {
     }
 
     /// Download and parse all 24 hours, returning ALL coins' trades grouped by coin.
+    ///
+    /// Hours are processed sequentially to avoid holding all 24 decompressed
+    /// buffers (~100 MB each) in memory simultaneously.
     async fn download_and_parse_trades_multi(
         &self,
         date: NaiveDate,
     ) -> Result<Option<HashMap<String, Vec<RestTrade>>>, DataError> {
-        // Download all 24 hours concurrently for maximum throughput.
-        let futures: Vec<_> = (0..24u8)
-            .map(|hour| self.download_and_decompress_hour(date, hour))
-            .collect();
-        let results = futures::future::try_join_all(futures).await?;
-
         let mut merged: HashMap<String, Vec<RestTrade>> = HashMap::new();
         let mut any_found = false;
-        for maybe_bytes in results {
-            if let Some(bytes) = maybe_bytes {
+
+        for hour in 0..24u8 {
+            if let Some(bytes) = self.download_and_decompress_hour(date, hour).await? {
                 any_found = true;
                 for (coin, trades) in parse_fills_multi(&bytes)? {
                     merged.entry(coin).or_default().extend(trades);
                 }
+                // `bytes` dropped here — only one hour's decompressed data at a time
             }
         }
 
