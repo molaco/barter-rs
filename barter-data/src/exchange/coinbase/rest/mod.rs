@@ -422,7 +422,7 @@ impl TradeFetcher for CoinbaseRestClient {
         let market = request.market;
         let start = request.start;
         let end = request.end;
-        let limit = request.limit;
+        let _limit = request.limit;
 
         // Collect all batches by paginating backward, then yield them in
         // chronological order via `stream::iter`.
@@ -449,7 +449,7 @@ impl TradeFetcher for CoinbaseRestClient {
                     market: market.clone(),
                     start,
                     end: Some(cursor),
-                    limit,
+                    limit: Some(1000),
                 };
 
                 match client.fetch_trades(req).await {
