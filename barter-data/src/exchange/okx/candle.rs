@@ -159,7 +159,7 @@ mod tests {
             datetime_utc_from_epoch_duration(Duration::from_millis(1672502400000));
 
         let market_iter: MarketIter<&str, Candle> =
-            MarketIter::from((ExchangeId::Okx, "instrument_key", kline));
+            MarketIter::from((ExchangeId::OkxSpot, "instrument_key", kline));
 
         let events: Vec<_> = market_iter.0.into_iter().collect();
         assert_eq!(events.len(), 1);
@@ -191,7 +191,7 @@ mod tests {
 
         // Incomplete candles (confirm="0") are still produced
         let market_iter: MarketIter<&str, Candle> =
-            MarketIter::from((ExchangeId::Okx, "instrument_key", kline));
+            MarketIter::from((ExchangeId::OkxSpot, "instrument_key", kline));
 
         let events: Vec<_> = market_iter.0.into_iter().collect();
         assert_eq!(events.len(), 1);
@@ -249,7 +249,7 @@ mod tests {
 
         // Converting empty data should produce empty MarketIter
         let market_iter: MarketIter<&str, Candle> =
-            MarketIter::from((ExchangeId::Okx, "instrument_key", kline));
+            MarketIter::from((ExchangeId::OkxSpot, "instrument_key", kline));
         assert!(market_iter.0.is_empty());
     }
 
@@ -269,7 +269,7 @@ mod tests {
         };
 
         let market_iter: MarketIter<&str, Candle> =
-            MarketIter::from((ExchangeId::Okx, "instrument_key", kline));
+            MarketIter::from((ExchangeId::OkxSpot, "instrument_key", kline));
         assert!(market_iter.0.is_empty());
     }
 
@@ -297,7 +297,7 @@ mod tests {
             datetime_utc_from_epoch_duration(Duration::from_millis(1672502400000));
 
         let market_iter: MarketIter<&str, Candle> =
-            MarketIter::from((ExchangeId::Okx, "instrument_key", kline));
+            MarketIter::from((ExchangeId::OkxSpot, "instrument_key", kline));
 
         let events: Vec<_> = market_iter.0.into_iter().collect();
         assert_eq!(events.len(), 1);
@@ -330,7 +330,7 @@ mod tests {
         };
 
         let market_iter: MarketIter<&str, Candle> =
-            MarketIter::from((ExchangeId::Okx, "instrument_key", kline));
+            MarketIter::from((ExchangeId::OkxSpot, "instrument_key", kline));
         assert!(market_iter.0.is_empty());
     }
 }

@@ -309,21 +309,21 @@ pub fn exchange_supports_instrument_kind(
         (_, Spot) => true,
 
         // Future
-        (GateioFuturesUsd | GateioFuturesBtc | Okx | OkxSpot | OkxPerpetualsUsd, Future { .. }) => {
+        (GateioFuturesUsd | GateioFuturesBtc | OkxSpot | OkxPerpetualsUsd, Future { .. }) => {
             true
         }
         (_, Future { .. }) => false,
 
         // Perpetual
         (
-            BinanceFuturesUsd | Bitmex | Okx | OkxSpot | OkxPerpetualsUsd | BybitPerpetualsUsd
+            BinanceFuturesUsd | Bitmex | OkxSpot | OkxPerpetualsUsd | BybitPerpetualsUsd
             | GateioPerpetualsUsd | GateioPerpetualsBtc | Hyperliquid,
             Perpetual,
         ) => true,
         (_, Perpetual) => false,
 
         // Option
-        (GateioOptions | Okx | OkxSpot | OkxPerpetualsUsd, Option { .. }) => true,
+        (GateioOptions | OkxSpot | OkxPerpetualsUsd, Option { .. }) => true,
         (_, Option { .. }) => false,
     }
 }
@@ -383,7 +383,7 @@ pub fn exchange_supports_instrument_kind_sub_kind(
         (GateioPerpetualsBtc, Perpetual, PublicTrades) => true,
         (GateioOptions, Option { .. }, PublicTrades) => true,
         (Kraken, Spot, PublicTrades | OrderBooksL1) => true,
-        (Okx | OkxSpot, Spot | Future { .. } | Perpetual | Option { .. }, PublicTrades) => true,
+        (OkxSpot, Spot | Future { .. } | Perpetual | Option { .. }, PublicTrades) => true,
         (OkxPerpetualsUsd, Perpetual | Future { .. } | Option { .. }, PublicTrades) => true,
 
         // Candles (WebSocket)
@@ -402,7 +402,7 @@ pub fn exchange_supports_instrument_kind_sub_kind(
         (GateioPerpetualsBtc, Perpetual, Candles(_)) => true,
         (GateioOptions, Option { .. }, Candles(_)) => true,
         (Kraken, Spot, Candles(_)) => true,
-        (Okx | OkxSpot, Spot | Future { .. } | Perpetual | Option { .. }, Candles(_)) => true,
+        (OkxSpot, Spot | Future { .. } | Perpetual | Option { .. }, Candles(_)) => true,
         (OkxPerpetualsUsd, Perpetual | Future { .. } | Option { .. }, Candles(_)) => true,
 
         (_, _, _) => false,
