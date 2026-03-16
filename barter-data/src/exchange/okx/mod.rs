@@ -7,7 +7,7 @@ use self::{
 };
 use crate::{
     NoInitialSnapshots,
-    exchange::{Connector, ExchangeSub, PingInterval, StreamSelector},
+    exchange::{Connector, ExchangeServer, ExchangeSub, PingInterval, StreamSelector},
     instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
     subscription::{SubKind, candle::Candles, trade::PublicTrades},
@@ -18,10 +18,9 @@ use barter_integration::{
     error::SocketError,
     protocol::websocket::{WebSocketSerdeParser, WsMessage},
 };
-use barter_macro::{DeExchange, SerExchange};
-use derive_more::Display;
+use serde::de::{Error, Unexpected};
 use serde_json::json;
-use std::time::Duration;
+use std::{fmt::Debug, marker::PhantomData, time::Duration};
 use url::Url;
 
 /// WebSocket candle/kline types for [`Okx`].
@@ -34,6 +33,14 @@ pub mod channel;
 /// Defines the type that translates a Barter [`Subscription`](crate::subscription::Subscription)
 /// into an exchange [`Connector`] specific market used for generating [`Connector::requests`].
 pub mod market;
+
+/// [`ExchangeServer`] and [`StreamSelector`] implementations for
+/// [`OkxPerpetualsUsd`](perpetual::OkxPerpetualsUsd).
+pub mod perpetual;
+
+/// [`ExchangeServer`] and [`StreamSelector`] implementations for
+/// [`OkxSpot`](spot::OkxSpot).
+pub mod spot;
 
 /// [`Subscription`](crate::subscription::Subscription) response type and response
 /// [`Validator`](barter_integration::Validator) for [`Okx`].
@@ -85,27 +92,21 @@ pub const BASE_URL_OKX: &str = "wss://ws.okx.com:8443/ws/v5/public";
 /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-connect>
 pub const PING_INTERVAL_OKX: Duration = Duration::from_secs(29);
 
-/// [`Okx`] exchange.
+/// Generic [`Okx<Server>`](Okx) exchange.
 ///
-/// See docs: <https://www.okx.com/docs-v5/en/#websocket-api>
-#[derive(
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Debug,
-    Default,
-    Display,
-    DeExchange,
-    SerExchange,
-)]
-pub struct Okx;
+/// ### Notes
+/// A `Server` [`ExchangeServer`] implementation exists for
+/// [`OkxSpot`](spot::OkxSpot) and [`OkxPerpetualsUsd`](perpetual::OkxPerpetualsUsd).
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+pub struct Okx<Server> {
+    server: PhantomData<Server>,
+}
 
-impl Connector for Okx {
-    const ID: ExchangeId = ExchangeId::Okx;
+impl<Server> Connector for Okx<Server>
+where
+    Server: ExchangeServer,
+{
+    const ID: ExchangeId = Server::ID;
     type Channel = OkxChannel;
     type Market = OkxMarket;
     type Subscriber = WebSocketSubscriber;
@@ -113,7 +114,7 @@ impl Connector for Okx {
     type SubResponse = OkxSubResponse;
 
     fn url() -> Result<Url, SocketError> {
-        Url::parse(BASE_URL_OKX).map_err(SocketError::UrlParse)
+        Url::parse(Server::websocket_url()).map_err(SocketError::UrlParse)
     }
 
     fn ping_interval() -> Option<PingInterval> {
@@ -174,22 +175,57 @@ impl Connector for Okx {
     }
 }
 
-impl<Instrument> StreamSelector<Instrument, PublicTrades> for Okx
+impl<Instrument, Server> StreamSelector<Instrument, PublicTrades> for Okx<Server>
 where
     Instrument: InstrumentData,
+    Server: ExchangeServer + Debug + Send + Sync,
 {
     type SnapFetcher = NoInitialSnapshots;
     type Transformer = StatelessTransformer<Self, Instrument::Key, PublicTrades, OkxTrades>;
     type Parser = WebSocketSerdeParser;
 }
 
-impl<Instrument> StreamSelector<Instrument, Candles> for Okx
+impl<Instrument, Server> StreamSelector<Instrument, Candles> for Okx<Server>
 where
     Instrument: InstrumentData,
+    Server: ExchangeServer + Debug + Send + Sync,
 {
     type SnapFetcher = NoInitialSnapshots;
     type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, OkxKline>;
     type Parser = WebSocketSerdeParser;
+}
+
+impl<'de, Server> serde::Deserialize<'de> for Okx<Server>
+where
+    Server: ExchangeServer,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let input = <&str as serde::Deserialize>::deserialize(deserializer)?;
+
+        if input == Self::ID.as_str() {
+            Ok(Self::default())
+        } else {
+            Err(Error::invalid_value(
+                Unexpected::Str(input),
+                &Self::ID.as_str(),
+            ))
+        }
+    }
+}
+
+impl<Server> serde::Serialize for Okx<Server>
+where
+    Server: ExchangeServer,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_str(Self::ID.as_str())
+    }
 }
 
 #[cfg(test)]
@@ -218,6 +254,8 @@ mod tests {
 
     #[test]
     fn test_unsubscribe_requests() {
+        use spot::OkxSpot;
+
         let exchange_subs = vec![
             ExchangeSub {
                 channel: OkxChannel(SmolStr::new_static("trades")),
@@ -229,7 +267,7 @@ mod tests {
             },
         ];
 
-        let messages = Okx::unsubscribe_requests(&exchange_subs);
+        let messages = OkxSpot::unsubscribe_requests(&exchange_subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();

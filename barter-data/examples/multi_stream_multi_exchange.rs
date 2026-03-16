@@ -2,7 +2,7 @@ use barter_data::{
     event::DataKind,
     exchange::{
         binance::{futures::BinanceFuturesUsd, spot::BinanceSpot},
-        okx::Okx,
+        okx::{perpetual::OkxPerpetualsUsd, spot::OkxSpot},
     },
     streams::{Streams, consumer::MarketStreamResult, reconnect::stream::ReconnectingStream},
     subscription::{
@@ -39,8 +39,10 @@ async fn main() {
                 (BinanceFuturesUsd::default(), "btc", "usdt", MarketDataInstrumentKind::Perpetual, PublicTrades),
             ])
             .subscribe([
-                (Okx, "btc", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
-                (Okx, "btc", "usdt", MarketDataInstrumentKind::Perpetual, PublicTrades),
+                (OkxSpot::default(), "btc", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
+            ])
+            .subscribe([
+                (OkxPerpetualsUsd::default(), "btc", "usdt", MarketDataInstrumentKind::Perpetual, PublicTrades),
             ])
         )
 

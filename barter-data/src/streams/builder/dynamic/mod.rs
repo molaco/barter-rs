@@ -16,7 +16,7 @@ use crate::{
         },
         hyperliquid::Hyperliquid,
         kraken::Kraken,
-        okx::Okx,
+        okx::{perpetual::OkxPerpetualsUsd, spot::OkxSpot},
     },
     instrument::InstrumentData,
     streams::{
@@ -241,7 +241,8 @@ impl<InstrumentKey> DynamicStreams<InstrumentKey> {
             GateioOptions     => [PublicTrades, Candles],
             Hyperliquid       => [PublicTrades, Candles],
             Kraken            => [PublicTrades, OrderBooksL1, Candles],
-            Okx               => [PublicTrades, Candles],
+            OkxSpot           => [PublicTrades, Candles],
+            OkxPerpetualsUsd  => [PublicTrades, Candles],
         };
 
         // Group subs by (ExchangeId, SubKind) and launch all connections concurrently

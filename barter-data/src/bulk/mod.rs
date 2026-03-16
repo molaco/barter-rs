@@ -115,7 +115,7 @@ pub fn bulk_client(exchange_id: ExchangeId, config: BulkConfig) -> Option<Box<dy
         ExchangeId::BinanceFuturesCoin => Some(Box::new(BinanceBulkClient::<BinanceServerFuturesCoin>::with_config(config))),
         ExchangeId::BybitSpot => Some(Box::new(BybitBulkClient::<BybitServerSpot>::with_config(config))),
         ExchangeId::BybitPerpetualsUsd => Some(Box::new(BybitBulkClient::<BybitServerPerpetualsUsd>::with_config(config))),
-        ExchangeId::Okx => Some(Box::new(OkxBulkClient::with_config(config))),
+        ExchangeId::Okx | ExchangeId::OkxSpot | ExchangeId::OkxPerpetualsUsd => Some(Box::new(OkxBulkClient::with_config(config))),
         ExchangeId::Hyperliquid => Some(Box::new(HyperliquidBulkClient::with_config(config))),
         _ => None,
     }

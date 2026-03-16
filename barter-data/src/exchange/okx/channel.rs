@@ -1,6 +1,7 @@
 use super::{Okx, okx_interval};
 use crate::{
     Identifier,
+    exchange::ExchangeServer,
     subscription::{Subscription, candle::Candles, trade::PublicTrades},
 };
 use serde::Serialize;
@@ -20,13 +21,19 @@ impl OkxChannel {
     pub const TRADES: Self = Self(SmolStr::new_static("trades"));
 }
 
-impl<Instrument> Identifier<OkxChannel> for Subscription<Okx, Instrument, PublicTrades> {
+impl<Instrument, Server> Identifier<OkxChannel> for Subscription<Okx<Server>, Instrument, PublicTrades>
+where
+    Server: ExchangeServer,
+{
     fn id(&self) -> OkxChannel {
         OkxChannel::TRADES
     }
 }
 
-impl<Instrument> Identifier<OkxChannel> for Subscription<Okx, Instrument, Candles> {
+impl<Instrument, Server> Identifier<OkxChannel> for Subscription<Okx<Server>, Instrument, Candles>
+where
+    Server: ExchangeServer,
+{
     fn id(&self) -> OkxChannel {
         OkxChannel(format_smolstr!("candle{}", okx_interval(self.kind.0)))
     }
@@ -41,14 +48,15 @@ impl AsRef<str> for OkxChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::exchange::okx::spot::OkxSpot;
     use crate::subscription::candle::{Candles, Interval};
     use barter_instrument::instrument::market_data::{
         MarketDataInstrument, kind::MarketDataInstrumentKind,
     };
 
     fn candles_channel(interval: Interval) -> OkxChannel {
-        let sub: Subscription<Okx, MarketDataInstrument, Candles> = Subscription::new(
-            Okx,
+        let sub: Subscription<OkxSpot, MarketDataInstrument, Candles> = Subscription::new(
+            OkxSpot::default(),
             MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
             Candles(interval),
         );

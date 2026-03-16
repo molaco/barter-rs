@@ -55,11 +55,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Since batch contains 2 ExchangeIds and 1 SubscriptionKind, 2 (2x1) WebSocket connections
         // will be spawned for this batch (back-end requires to further split).
         vec![
-            (Okx, "btc", "usdt", Spot, PublicTrades),
-            (Okx, "btc", "usdt", Perpetual, PublicTrades),
+            (OkxSpot, "btc", "usdt", Spot, PublicTrades),
+            (OkxPerpetualsUsd, "btc", "usdt", Perpetual, PublicTrades),
             (Bitmex, "btc", "usdt", Perpetual, PublicTrades),
-            (Okx, "eth", "usdt", Spot, PublicTrades),
-            (Okx, "eth", "usdt", Perpetual, PublicTrades),
+            (OkxSpot, "eth", "usdt", Spot, PublicTrades),
+            (OkxPerpetualsUsd, "eth", "usdt", Perpetual, PublicTrades),
             (Bitmex, "eth", "usdt", Perpetual, PublicTrades),
         ],
     ]).await.unwrap();

@@ -39,7 +39,7 @@
 //!         gateio::spot::GateioSpot,
 //!         binance::{futures::BinanceFuturesUsd, spot::BinanceSpot},
 //!         coinbase::Coinbase,
-//!         okx::Okx,
+//!         okx::{perpetual::OkxPerpetualsUsd, spot::OkxSpot},
 //!     },
 //!     streams::{Streams, reconnect::stream::ReconnectingStream},
 //!     subscription::trade::PublicTrades,
@@ -71,10 +71,12 @@
 //!             (GateioSpot::default(), "eth", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
 //!         ])
 //!         .subscribe([
-//!             (Okx, "btc", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
-//!             (Okx, "eth", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
-//!             (Okx, "btc", "usdt", MarketDataInstrumentKind::Perpetual, PublicTrades),
-//!             (Okx, "eth", "usdt", MarketDataInstrumentKind::Perpetual, PublicTrades),
+//!             (OkxSpot::default(), "btc", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
+//!             (OkxSpot::default(), "eth", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
+//!        ])
+//!         .subscribe([
+//!             (OkxPerpetualsUsd::default(), "btc", "usdt", MarketDataInstrumentKind::Perpetual, PublicTrades),
+//!             (OkxPerpetualsUsd::default(), "eth", "usdt", MarketDataInstrumentKind::Perpetual, PublicTrades),
 //!        ])
 //!         .init()
 //!         .await

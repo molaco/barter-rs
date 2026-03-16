@@ -74,6 +74,8 @@ pub enum ExchangeId {
     Liquid,
     Mexc,
     Okx,
+    OkxPerpetualsUsd,
+    OkxSpot,
     Poloniex,
 }
 
@@ -123,6 +125,8 @@ impl ExchangeId {
             ExchangeId::Liquid => "liquid",
             ExchangeId::Mexc => "mexc",
             ExchangeId::Okx => "okx",
+            ExchangeId::OkxPerpetualsUsd => "okx_perpetuals_usd",
+            ExchangeId::OkxSpot => "okx_spot",
             ExchangeId::Poloniex => "poloniex",
         }
     }
@@ -178,6 +182,8 @@ impl std::str::FromStr for ExchangeId {
             "liquid" => Ok(ExchangeId::Liquid),
             "mexc" => Ok(ExchangeId::Mexc),
             "okx" => Ok(ExchangeId::Okx),
+            "okx_perpetuals_usd" | "okxperps" | "okx_perps" => Ok(ExchangeId::OkxPerpetualsUsd),
+            "okx_spot" | "okxspot" => Ok(ExchangeId::OkxSpot),
             "poloniex" => Ok(ExchangeId::Poloniex),
             _ => Err(format!("unrecognised ExchangeId: {s}")),
         }
@@ -245,6 +251,8 @@ mod tests {
             ExchangeId::Liquid,
             ExchangeId::Mexc,
             ExchangeId::Okx,
+            ExchangeId::OkxPerpetualsUsd,
+            ExchangeId::OkxSpot,
             ExchangeId::Poloniex,
         ];
         for variant in variants {

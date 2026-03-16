@@ -302,26 +302,28 @@ pub fn exchange_supports_instrument_kind(
     match (exchange, instrument_kind) {
         // Spot
         (
-            BinanceFuturesUsd | Bitmex | BybitPerpetualsUsd | GateioPerpetualsUsd
-            | GateioPerpetualsBtc,
+            BinanceFuturesUsd | Bitmex | BybitPerpetualsUsd | OkxPerpetualsUsd
+            | GateioPerpetualsUsd | GateioPerpetualsBtc,
             Spot,
         ) => false,
         (_, Spot) => true,
 
         // Future
-        (GateioFuturesUsd | GateioFuturesBtc | Okx, Future { .. }) => true,
+        (GateioFuturesUsd | GateioFuturesBtc | Okx | OkxSpot | OkxPerpetualsUsd, Future { .. }) => {
+            true
+        }
         (_, Future { .. }) => false,
 
         // Perpetual
         (
-            BinanceFuturesUsd | Bitmex | Okx | BybitPerpetualsUsd | GateioPerpetualsUsd
-            | GateioPerpetualsBtc | Hyperliquid,
+            BinanceFuturesUsd | Bitmex | Okx | OkxSpot | OkxPerpetualsUsd | BybitPerpetualsUsd
+            | GateioPerpetualsUsd | GateioPerpetualsBtc | Hyperliquid,
             Perpetual,
         ) => true,
         (_, Perpetual) => false,
 
         // Option
-        (GateioOptions | Okx, Option { .. }) => true,
+        (GateioOptions | Okx | OkxSpot | OkxPerpetualsUsd, Option { .. }) => true,
         (_, Option { .. }) => false,
     }
 }
@@ -381,7 +383,8 @@ pub fn exchange_supports_instrument_kind_sub_kind(
         (GateioPerpetualsBtc, Perpetual, PublicTrades) => true,
         (GateioOptions, Option { .. }, PublicTrades) => true,
         (Kraken, Spot, PublicTrades | OrderBooksL1) => true,
-        (Okx, Spot | Future { .. } | Perpetual | Option { .. }, PublicTrades) => true,
+        (Okx | OkxSpot, Spot | Future { .. } | Perpetual | Option { .. }, PublicTrades) => true,
+        (OkxPerpetualsUsd, Perpetual | Future { .. } | Option { .. }, PublicTrades) => true,
 
         // Candles (WebSocket)
         (BinanceSpot, Spot, Candles(_)) => true,
@@ -399,7 +402,8 @@ pub fn exchange_supports_instrument_kind_sub_kind(
         (GateioPerpetualsBtc, Perpetual, Candles(_)) => true,
         (GateioOptions, Option { .. }, Candles(_)) => true,
         (Kraken, Spot, Candles(_)) => true,
-        (Okx, Spot | Future { .. } | Perpetual | Option { .. }, Candles(_)) => true,
+        (Okx | OkxSpot, Spot | Future { .. } | Perpetual | Option { .. }, Candles(_)) => true,
+        (OkxPerpetualsUsd, Perpetual | Future { .. } | Option { .. }, Candles(_)) => true,
 
         (_, _, _) => false,
     }
@@ -481,7 +485,7 @@ mod tests {
     mod subscription {
         use super::*;
         use crate::{
-            exchange::{coinbase::Coinbase, okx::Okx},
+            exchange::{coinbase::Coinbase, okx::spot::OkxSpot},
             subscription::trade::PublicTrades,
         };
         use barter_instrument::instrument::market_data::MarketDataInstrument;
@@ -492,7 +496,7 @@ mod tests {
                 exchange::{
                     binance::{futures::BinanceFuturesUsd, spot::BinanceSpot},
                     gateio::perpetual::GateioPerpetualsUsd,
-                    okx::Okx,
+                    okx::spot::OkxSpot,
                 },
                 subscription::{book::OrderBooksL2, trade::PublicTrades},
             };
@@ -502,7 +506,7 @@ mod tests {
             fn test_subscription_okx_spot_public_trades() {
                 let input = r#"
                 {
-                    "exchange": "okx",
+                    "exchange": "okx_spot",
                     "base": "btc",
                     "quote": "usdt",
                     "instrument_kind": "spot",
@@ -510,7 +514,7 @@ mod tests {
                 }
                 "#;
 
-                serde_json::from_str::<Subscription<Okx, MarketDataInstrument, PublicTrades>>(
+                serde_json::from_str::<Subscription<OkxSpot, MarketDataInstrument, PublicTrades>>(
                     input,
                 )
                 .unwrap();
@@ -633,23 +637,23 @@ mod tests {
         #[test]
         fn test_validate_okx_public_trades() {
             struct TestCase {
-                input: Subscription<Okx, MarketDataInstrument, PublicTrades>,
+                input: Subscription<OkxSpot, MarketDataInstrument, PublicTrades>,
                 expected:
-                    Result<Subscription<Okx, MarketDataInstrument, PublicTrades>, SocketError>,
+                    Result<Subscription<OkxSpot, MarketDataInstrument, PublicTrades>, SocketError>,
             }
 
             let tests = vec![
                 TestCase {
-                    // TC0: Valid Okx Spot PublicTrades subscription
+                    // TC0: Valid OkxSpot Spot PublicTrades subscription
                     input: Subscription::from((
-                        Okx,
+                        OkxSpot::default(),
                         "base",
                         "quote",
                         MarketDataInstrumentKind::Spot,
                         PublicTrades,
                     )),
                     expected: Ok(Subscription::from((
-                        Okx,
+                        OkxSpot::default(),
                         "base",
                         "quote",
                         MarketDataInstrumentKind::Spot,
@@ -657,16 +661,16 @@ mod tests {
                     ))),
                 },
                 TestCase {
-                    // TC1: Valid Okx FuturePerpetual PublicTrades subscription
+                    // TC1: Valid OkxSpot FuturePerpetual PublicTrades subscription
                     input: Subscription::from((
-                        Okx,
+                        OkxSpot::default(),
                         "base",
                         "quote",
                         MarketDataInstrumentKind::Perpetual,
                         PublicTrades,
                     )),
                     expected: Ok(Subscription::from((
-                        Okx,
+                        OkxSpot::default(),
                         "base",
                         "quote",
                         MarketDataInstrumentKind::Perpetual,

@@ -8,7 +8,7 @@ use barter_data::{
             perpetual::{GateioPerpetualsBtc, GateioPerpetualsUsd},
             spot::GateioSpot,
         },
-        okx::Okx,
+        okx::{perpetual::OkxPerpetualsUsd, spot::OkxSpot},
     },
     streams::{Streams, reconnect::stream::ReconnectingStream},
     subscription::trade::PublicTrades,
@@ -59,10 +59,13 @@ async fn main() {
         ])
 
         .subscribe([
-            (Okx, "btc", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
-            (Okx, "btc", "usdt", MarketDataInstrumentKind::Perpetual, PublicTrades),
-            (Okx, "btc", "usd", MarketDataInstrumentKind::Future(future_contract_expiry()), PublicTrades),
-            (Okx, "btc", "usd", MarketDataInstrumentKind::Option(call_contract()), PublicTrades),
+            (OkxSpot::default(), "btc", "usdt", MarketDataInstrumentKind::Spot, PublicTrades),
+            (OkxSpot::default(), "btc", "usd", MarketDataInstrumentKind::Future(future_contract_expiry()), PublicTrades),
+            (OkxSpot::default(), "btc", "usd", MarketDataInstrumentKind::Option(call_contract()), PublicTrades),
+        ])
+
+        .subscribe([
+            (OkxPerpetualsUsd::default(), "btc", "usdt", MarketDataInstrumentKind::Perpetual, PublicTrades),
         ])
 
         .subscribe([
