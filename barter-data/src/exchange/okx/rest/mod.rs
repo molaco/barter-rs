@@ -1,7 +1,7 @@
 use crate::{
     error::DataError,
     rest::{
-        KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
+        ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
         retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
     subscription::candle::{Candle, Interval},
@@ -53,16 +53,6 @@ impl HttpParser for OkxHttpParser {
     }
 }
 
-/// Type alias for the direct (non-keyed) rate limiter used by the OKX REST client.
-///
-/// Uses an in-memory state with the default clock and no middleware.
-type OkxRateLimiter = governor::RateLimiter<
-    governor::state::NotKeyed,
-    governor::state::InMemoryState,
-    governor::clock::DefaultClock,
-    governor::middleware::NoOpMiddleware,
->;
-
 /// OKX REST API base URL.
 const OKX_REST_BASE_URL: &str = "https://www.okx.com";
 
@@ -79,14 +69,14 @@ const OKX_REST_BASE_URL: &str = "https://www.okx.com";
 #[derive(Clone)]
 pub struct OkxRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, OkxHttpParser>>,
-    pub rate_limiter: Arc<OkxRateLimiter>,
+    pub rate_limiter: Arc<ExchangeRateLimiter>,
 }
 
 impl fmt::Debug for OkxRestClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OkxRestClient")
             .field("client", &self.client)
-            .field("rate_limiter", &"OkxRateLimiter { .. }")
+            .field("rate_limiter", &"ExchangeRateLimiter { .. }")
             .finish()
     }
 }
@@ -106,13 +96,27 @@ impl OkxRestClient {
         Self::with_base_url(OKX_REST_BASE_URL.to_owned())
     }
 
+    /// Construct a new [`OkxRestClient`] with a caller-provided rate limiter.
+    ///
+    /// This allows sharing an [`ExchangeRateLimiter`] across multiple clients
+    /// that hit the same exchange endpoint, ensuring the combined request rate
+    /// stays within the exchange's limits.
+    pub fn with_rate_limiter(rate_limiter: Arc<ExchangeRateLimiter>) -> Self {
+        let client = RestClient::new(OKX_REST_BASE_URL.to_owned(), PublicNoHeaders, OkxHttpParser);
+
+        Self {
+            client: Arc::new(client),
+            rate_limiter,
+        }
+    }
+
     /// Construct an [`OkxRestClient`] with a custom base URL.
     ///
     /// Useful for testing with a mock server where the URL is not known at
     /// compile time.
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, OkxHttpParser);
-        let quota = Quota::per_minute(NonZeroU32::new(600).unwrap());
+        let quota = Quota::per_minute(NonZeroU32::new(600).unwrap()).allow_burst(NonZeroU32::new(10).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
 
         Self {

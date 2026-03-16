@@ -1,7 +1,7 @@
 use crate::{
     error::DataError,
     rest::{
-        KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
+        ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
         retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
     subscription::candle::{Candle, Interval},
@@ -51,16 +51,6 @@ impl HttpParser for KrakenHttpParser {
     }
 }
 
-/// Type alias for the direct (non-keyed) rate limiter used by the Kraken REST client.
-///
-/// Uses an in-memory state with the default clock and no middleware.
-type KrakenRateLimiter = governor::RateLimiter<
-    governor::state::NotKeyed,
-    governor::state::InMemoryState,
-    governor::clock::DefaultClock,
-    governor::middleware::NoOpMiddleware,
->;
-
 /// REST client for the Kraken exchange.
 ///
 /// Kraken is a single-variant exchange (no `ExchangeServer` pattern).
@@ -70,14 +60,14 @@ type KrakenRateLimiter = governor::RateLimiter<
 #[derive(Clone)]
 pub struct KrakenRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, KrakenHttpParser>>,
-    pub rate_limiter: Arc<KrakenRateLimiter>,
+    pub rate_limiter: Arc<ExchangeRateLimiter>,
 }
 
 impl fmt::Debug for KrakenRestClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("KrakenRestClient")
             .field("client", &self.client)
-            .field("rate_limiter", &"KrakenRateLimiter { .. }")
+            .field("rate_limiter", &"ExchangeRateLimiter { .. }")
             .finish()
     }
 }
@@ -100,12 +90,31 @@ impl KrakenRestClient {
             KrakenHttpParser,
         );
 
-        let quota = Quota::per_second(NonZeroU32::new(1).unwrap());
+        let quota = Quota::per_second(NonZeroU32::new(1).unwrap()).allow_burst(NonZeroU32::new(1).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
 
         Self {
             client: Arc::new(client),
             rate_limiter: Arc::new(rate_limiter),
+        }
+    }
+
+    /// Construct a new [`KrakenRestClient`] using the default Kraken base URL
+    /// and a pre-existing shared rate limiter.
+    ///
+    /// This allows multiple clients or components to share the same
+    /// [`ExchangeRateLimiter`] so that aggregate request rates stay within
+    /// Kraken's limits.
+    pub fn with_rate_limiter(rate_limiter: Arc<ExchangeRateLimiter>) -> Self {
+        let client = RestClient::new(
+            KRAKEN_REST_BASE_URL.to_owned(),
+            PublicNoHeaders,
+            KrakenHttpParser,
+        );
+
+        Self {
+            client: Arc::new(client),
+            rate_limiter,
         }
     }
 
@@ -115,7 +124,7 @@ impl KrakenRestClient {
     /// compile time.
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, KrakenHttpParser);
-        let quota = Quota::per_second(NonZeroU32::new(1).unwrap());
+        let quota = Quota::per_second(NonZeroU32::new(1).unwrap()).allow_burst(NonZeroU32::new(1).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
         Self {
             client: Arc::new(client),

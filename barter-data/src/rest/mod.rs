@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use futures::Stream;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 /// Request parameters for fetching historical kline/candlestick data.
 #[derive(Clone, Debug, PartialEq)]
@@ -63,6 +64,17 @@ pub struct TradeRequest {
     pub limit: Option<u32>,
 }
 
+/// Unified rate-limiter type shared across all exchange REST clients.
+///
+/// Wrap in `Arc` and pass to `rest_client()` so that multiple clients
+/// hitting the same exchange IP share a single token bucket.
+pub type ExchangeRateLimiter = governor::RateLimiter<
+    governor::state::NotKeyed,
+    governor::state::InMemoryState,
+    governor::clock::DefaultClock,
+    governor::middleware::NoOpMiddleware,
+>;
+
 /// Trait for fetching historical trades from an exchange REST API.
 ///
 /// Implementations provide access to historical trade data via single-batch
@@ -116,19 +128,27 @@ pub trait TradeFetcher: Send + Sync {
 ///
 /// Returns `None` if the exchange does not support REST trade fetching.
 #[cfg(feature = "rest")]
-pub fn rest_client(exchange_id: ExchangeId) -> Option<Box<dyn TradeFetcher>> {
+pub fn rest_client(
+    exchange_id: ExchangeId,
+    rate_limiter: Option<Arc<ExchangeRateLimiter>>,
+) -> Option<Box<dyn TradeFetcher>> {
     use crate::exchange::{
         binance::{futures::BinanceServerFuturesUsd, rest::BinanceRestClient, spot::BinanceServerSpot},
         coinbase::rest::CoinbaseRestClient,
         kraken::rest::KrakenRestClient,
         okx::rest::OkxRestClient,
     };
-    match exchange_id {
-        ExchangeId::BinanceSpot => Some(Box::new(BinanceRestClient::<BinanceServerSpot>::new())),
-        ExchangeId::BinanceFuturesUsd => Some(Box::new(BinanceRestClient::<BinanceServerFuturesUsd>::new())),
-        ExchangeId::Okx => Some(Box::new(OkxRestClient::new())),
-        ExchangeId::Coinbase => Some(Box::new(CoinbaseRestClient::new())),
-        ExchangeId::Kraken => Some(Box::new(KrakenRestClient::new())),
+    match (exchange_id, rate_limiter) {
+        (ExchangeId::BinanceSpot, Some(rl)) => Some(Box::new(BinanceRestClient::<BinanceServerSpot>::with_rate_limiter(rl))),
+        (ExchangeId::BinanceSpot, None) => Some(Box::new(BinanceRestClient::<BinanceServerSpot>::new())),
+        (ExchangeId::BinanceFuturesUsd, Some(rl)) => Some(Box::new(BinanceRestClient::<BinanceServerFuturesUsd>::with_rate_limiter(rl))),
+        (ExchangeId::BinanceFuturesUsd, None) => Some(Box::new(BinanceRestClient::<BinanceServerFuturesUsd>::new())),
+        (ExchangeId::Okx, Some(rl)) => Some(Box::new(OkxRestClient::with_rate_limiter(rl))),
+        (ExchangeId::Okx, None) => Some(Box::new(OkxRestClient::new())),
+        (ExchangeId::Coinbase, Some(rl)) => Some(Box::new(CoinbaseRestClient::with_rate_limiter(rl))),
+        (ExchangeId::Coinbase, None) => Some(Box::new(CoinbaseRestClient::new())),
+        (ExchangeId::Kraken, Some(rl)) => Some(Box::new(KrakenRestClient::with_rate_limiter(rl))),
+        (ExchangeId::Kraken, None) => Some(Box::new(KrakenRestClient::new())),
         _ => None,
     }
 }

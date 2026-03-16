@@ -2,7 +2,7 @@ use crate::{
     error::DataError,
     exchange::RestExchangeServer,
     rest::{
-        KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
+        ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
         retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
     subscription::candle::{Candle, Interval},
@@ -52,16 +52,6 @@ impl HttpParser for BinanceHttpParser {
     }
 }
 
-/// Type alias for the direct (non-keyed) rate limiter used by the Binance REST client.
-///
-/// Uses an in-memory state with the default clock and no middleware.
-type BinanceRateLimiter = governor::RateLimiter<
-    governor::state::NotKeyed,
-    governor::state::InMemoryState,
-    governor::clock::DefaultClock,
-    governor::middleware::NoOpMiddleware,
->;
-
 /// Generic REST client for Binance exchange variants.
 ///
 /// The `Server` type parameter determines which Binance server variant
@@ -73,7 +63,7 @@ type BinanceRateLimiter = governor::RateLimiter<
 #[derive(Clone)]
 pub struct BinanceRestClient<Server> {
     pub client: Arc<RestClient<'static, PublicNoHeaders, BinanceHttpParser>>,
-    pub rate_limiter: Arc<BinanceRateLimiter>,
+    pub rate_limiter: Arc<ExchangeRateLimiter>,
     _server: PhantomData<Server>,
 }
 
@@ -81,7 +71,7 @@ impl<Server> fmt::Debug for BinanceRestClient<Server> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BinanceRestClient")
             .field("client", &self.client)
-            .field("rate_limiter", &"BinanceRateLimiter { .. }")
+            .field("rate_limiter", &"ExchangeRateLimiter { .. }")
             .finish()
     }
 }
@@ -111,12 +101,31 @@ where
             BinanceHttpParser,
         );
 
-        let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap());
+        let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap()).allow_burst(NonZeroU32::new(20).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
 
         Self {
             client: Arc::new(client),
             rate_limiter: Arc::new(rate_limiter),
+            _server: PhantomData,
+        }
+    }
+
+    /// Construct a new [`BinanceRestClient`] with a shared rate limiter.
+    ///
+    /// Uses the base URL from [`Server::rest_base_url()`](RestExchangeServer::rest_base_url)
+    /// but accepts an externally-owned [`ExchangeRateLimiter`] instead of creating one.
+    /// This is useful when multiple clients should share the same rate-limit budget.
+    pub fn with_rate_limiter(rate_limiter: Arc<ExchangeRateLimiter>) -> Self {
+        let client = RestClient::new(
+            Server::rest_base_url().to_owned(),
+            PublicNoHeaders,
+            BinanceHttpParser,
+        );
+
+        Self {
+            client: Arc::new(client),
+            rate_limiter,
             _server: PhantomData,
         }
     }
@@ -130,7 +139,7 @@ impl<Server> BinanceRestClient<Server> {
     /// [`RestExchangeServer`] since the URL is provided directly.
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, BinanceHttpParser);
-        let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap());
+        let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap()).allow_burst(NonZeroU32::new(20).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
         Self {
             client: Arc::new(client),

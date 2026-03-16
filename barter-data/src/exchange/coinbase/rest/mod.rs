@@ -1,7 +1,7 @@
 use crate::{
     error::DataError,
     rest::{
-        KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
+        ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
         retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
     subscription::candle::{Candle, Interval},
@@ -51,16 +51,6 @@ impl HttpParser for CoinbaseHttpParser {
     }
 }
 
-/// Type alias for the direct (non-keyed) rate limiter used by the Coinbase REST client.
-///
-/// Uses an in-memory state with the default clock and no middleware.
-type CoinbaseRateLimiter = governor::RateLimiter<
-    governor::state::NotKeyed,
-    governor::state::InMemoryState,
-    governor::clock::DefaultClock,
-    governor::middleware::NoOpMiddleware,
->;
-
 /// Base URL for the Coinbase REST API.
 const COINBASE_REST_BASE_URL: &str = "https://api.coinbase.com";
 
@@ -73,14 +63,14 @@ const COINBASE_REST_BASE_URL: &str = "https://api.coinbase.com";
 #[derive(Clone)]
 pub struct CoinbaseRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, CoinbaseHttpParser>>,
-    pub rate_limiter: Arc<CoinbaseRateLimiter>,
+    pub rate_limiter: Arc<ExchangeRateLimiter>,
 }
 
 impl fmt::Debug for CoinbaseRestClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CoinbaseRestClient")
             .field("client", &self.client)
-            .field("rate_limiter", &"CoinbaseRateLimiter { .. }")
+            .field("rate_limiter", &"ExchangeRateLimiter { .. }")
             .finish()
     }
 }
@@ -100,13 +90,30 @@ impl CoinbaseRestClient {
         Self::with_base_url(COINBASE_REST_BASE_URL.to_owned())
     }
 
+    /// Construct a new [`CoinbaseRestClient`] using the default Coinbase
+    /// REST API base URL and a caller-provided rate limiter.
+    ///
+    /// This is useful when you want to share a single rate limiter across
+    /// multiple client instances or customise the quota.
+    pub fn with_rate_limiter(rate_limiter: Arc<ExchangeRateLimiter>) -> Self {
+        let client = RestClient::new(
+            COINBASE_REST_BASE_URL.to_owned(),
+            PublicNoHeaders,
+            CoinbaseHttpParser,
+        );
+        Self {
+            client: Arc::new(client),
+            rate_limiter,
+        }
+    }
+
     /// Construct a [`CoinbaseRestClient`] with a custom base URL.
     ///
     /// Useful for testing with a mock server where the URL is not known at
     /// compile time.
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, CoinbaseHttpParser);
-        let quota = Quota::per_second(NonZeroU32::new(10).unwrap());
+        let quota = Quota::per_second(NonZeroU32::new(10).unwrap()).allow_burst(NonZeroU32::new(10).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
         Self {
             client: Arc::new(client),
