@@ -1,12 +1,11 @@
 pub mod trades;
 
 use crate::{
-    bulk::{BulkConfig, BulkDayTradeFetcher, BulkTradeRequest, date_range},
+    bulk::{BulkConfig, BulkDayTradeFetcher},
     error::DataError,
     trade::RestTrade,
 };
-use chrono::{Datelike, NaiveDate};
-use futures::{Stream, StreamExt, stream};
+use chrono::NaiveDate;
 use std::{future::Future, io::Read, pin::Pin};
 
 /// Bulk archive download client for OKX.
@@ -168,76 +167,6 @@ pub async fn download_monthly_trades(
     Ok(Some(trades))
 }
 
-/// Choose monthly archives for complete months, daily for partial months.
-///
-/// Note: canonical implementation is in `barter-collector::scheduling`.
-/// Kept here temporarily until stream composition moves to collector.
-///
-/// Given an inclusive date range `[start, end]`, returns:
-/// - `complete_months`: `Vec<(year, month)>` for months entirely within the range.
-/// - `remaining_days`: `Vec<NaiveDate>` for days in partial months at the boundaries.
-///
-/// A month is "complete" if both its first and last day fall within `[start, end]`.
-pub fn partition_date_range(start: NaiveDate, end: NaiveDate) -> (Vec<(i32, u32)>, Vec<NaiveDate>) {
-    if start > end {
-        return (Vec::new(), Vec::new());
-    }
-
-    let mut complete_months = Vec::new();
-    let mut remaining_days = Vec::new();
-
-    let mut current = start;
-    while current <= end {
-        let year = current.year();
-        let month = current.month();
-        let first_of_month = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
-        let last_of_month = last_day_of_month(year, month);
-
-        if first_of_month >= start && last_of_month <= end {
-            // This entire month is within range -- use monthly archive
-            complete_months.push((year, month));
-            // Advance past this month
-            current = if month == 12 {
-                match NaiveDate::from_ymd_opt(year + 1, 1, 1) {
-                    Some(d) => d,
-                    None => break,
-                }
-            } else {
-                NaiveDate::from_ymd_opt(year, month + 1, 1).unwrap()
-            };
-        } else {
-            // Partial month -- add individual days
-            let month_end = last_of_month.min(end);
-            while current <= month_end {
-                remaining_days.push(current);
-                current = match current.succ_opt() {
-                    Some(d) => d,
-                    None => break,
-                };
-            }
-        }
-    }
-
-    (complete_months, remaining_days)
-}
-
-/// Return the last day of the given month.
-///
-/// Note: canonical implementation is in `barter-collector::scheduling`.
-fn last_day_of_month(year: i32, month: u32) -> NaiveDate {
-    if month == 12 {
-        NaiveDate::from_ymd_opt(year + 1, 1, 1)
-            .unwrap()
-            .pred_opt()
-            .unwrap()
-    } else {
-        NaiveDate::from_ymd_opt(year, month + 1, 1)
-            .unwrap()
-            .pred_opt()
-            .unwrap()
-    }
-}
-
 impl Default for OkxBulkClient {
     fn default() -> Self {
         Self::new()
@@ -251,43 +180,6 @@ impl BulkDayTradeFetcher for OkxBulkClient {
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
         Box::pin(self.download_and_parse_trades(market, date))
-    }
-}
-
-/// Standalone stream method kept temporarily until stream composition moves
-/// to the collector crate.
-impl OkxBulkClient {
-    pub fn stream_bulk_trades(
-        &self,
-        request: BulkTradeRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        // OKX daily archives use UTC+8 (Hong Kong) day boundaries:
-        // archive "2026-03-16" covers 2026-03-15T16:00Z → 2026-03-16T16:00Z.
-        // To get full UTC day coverage, we must also download the next day's
-        // archive which covers the 16:00-23:59 UTC window.
-        let extended_end = request.end.succ_opt().unwrap_or(request.end);
-        let dates = date_range(request.start, extended_end);
-        let concurrency = self.config.concurrency;
-        let client = self.client.clone();
-        let config = self.config.clone();
-
-        Box::pin(stream::iter(dates)
-            .map(move |date| {
-                let bulk_client = OkxBulkClient {
-                    client: client.clone(),
-                    config: config.clone(),
-                };
-                let market = request.market.clone();
-                async move { bulk_client.download_and_parse_trades(&market, date).await }
-            })
-            .buffer_unordered(concurrency)
-            .filter_map(|result| async move {
-                match result {
-                    Ok(Some(trades)) => Some(Ok(trades)),
-                    Ok(None) => None,
-                    Err(e) => Some(Err(e)),
-                }
-            }))
     }
 }
 
@@ -314,142 +206,4 @@ mod tests {
         assert!(!client.config.verify_checksum);
     }
 
-    // -----------------------------------------------------------------------
-    // partition_date_range tests
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_partition_single_complete_month() {
-        let start = NaiveDate::from_ymd_opt(2024, 3, 1).unwrap();
-        let end = NaiveDate::from_ymd_opt(2024, 3, 31).unwrap();
-        let (months, days) = partition_date_range(start, end);
-        assert_eq!(months, vec![(2024, 3)]);
-        assert!(days.is_empty());
-    }
-
-    #[test]
-    fn test_partition_partial_month_start() {
-        // Start mid-January, end at end of February
-        let start = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
-        let end = NaiveDate::from_ymd_opt(2024, 2, 29).unwrap();
-        let (months, days) = partition_date_range(start, end);
-        // February is complete (2024 is a leap year), January is partial
-        assert_eq!(months, vec![(2024, 2)]);
-        assert_eq!(days.len(), 17); // Jan 15..=31 = 17 days
-        assert_eq!(days[0], NaiveDate::from_ymd_opt(2024, 1, 15).unwrap());
-        assert_eq!(days[16], NaiveDate::from_ymd_opt(2024, 1, 31).unwrap());
-    }
-
-    #[test]
-    fn test_partition_partial_month_end() {
-        // Start at beginning of March, end mid-April
-        let start = NaiveDate::from_ymd_opt(2024, 3, 1).unwrap();
-        let end = NaiveDate::from_ymd_opt(2024, 4, 15).unwrap();
-        let (months, days) = partition_date_range(start, end);
-        // March is complete, April is partial
-        assert_eq!(months, vec![(2024, 3)]);
-        assert_eq!(days.len(), 15); // Apr 1..=15 = 15 days
-        assert_eq!(days[0], NaiveDate::from_ymd_opt(2024, 4, 1).unwrap());
-        assert_eq!(days[14], NaiveDate::from_ymd_opt(2024, 4, 15).unwrap());
-    }
-
-    #[test]
-    fn test_partition_multiple_complete_months() {
-        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
-        let end = NaiveDate::from_ymd_opt(2024, 3, 31).unwrap();
-        let (months, days) = partition_date_range(start, end);
-        assert_eq!(months, vec![(2024, 1), (2024, 2), (2024, 3)]);
-        assert!(days.is_empty());
-    }
-
-    #[test]
-    fn test_partition_no_complete_months() {
-        // Mid-month to mid-month within same month
-        let start = NaiveDate::from_ymd_opt(2024, 5, 10).unwrap();
-        let end = NaiveDate::from_ymd_opt(2024, 5, 20).unwrap();
-        let (months, days) = partition_date_range(start, end);
-        assert!(months.is_empty());
-        assert_eq!(days.len(), 11); // May 10..=20
-    }
-
-    #[test]
-    fn test_partition_cross_year_boundary() {
-        let start = NaiveDate::from_ymd_opt(2024, 12, 1).unwrap();
-        let end = NaiveDate::from_ymd_opt(2025, 1, 31).unwrap();
-        let (months, days) = partition_date_range(start, end);
-        assert_eq!(months, vec![(2024, 12), (2025, 1)]);
-        assert!(days.is_empty());
-    }
-
-    #[test]
-    fn test_partition_single_day() {
-        let d = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
-        let (months, days) = partition_date_range(d, d);
-        assert!(months.is_empty());
-        assert_eq!(days, vec![d]);
-    }
-
-    #[test]
-    fn test_partition_empty_when_start_after_end() {
-        let start = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
-        let end = NaiveDate::from_ymd_opt(2024, 6, 10).unwrap();
-        let (months, days) = partition_date_range(start, end);
-        assert!(months.is_empty());
-        assert!(days.is_empty());
-    }
-
-    #[test]
-    fn test_partition_both_partial_months() {
-        // Mid-January to mid-March: February is complete, Jan and Mar partial
-        let start = NaiveDate::from_ymd_opt(2024, 1, 20).unwrap();
-        let end = NaiveDate::from_ymd_opt(2024, 3, 10).unwrap();
-        let (months, days) = partition_date_range(start, end);
-        assert_eq!(months, vec![(2024, 2)]);
-        // Jan 20..=31 = 12 days + Mar 1..=10 = 10 days = 22 days
-        assert_eq!(days.len(), 22);
-        assert_eq!(days[0], NaiveDate::from_ymd_opt(2024, 1, 20).unwrap());
-        assert_eq!(days[11], NaiveDate::from_ymd_opt(2024, 1, 31).unwrap());
-        assert_eq!(days[12], NaiveDate::from_ymd_opt(2024, 3, 1).unwrap());
-        assert_eq!(days[21], NaiveDate::from_ymd_opt(2024, 3, 10).unwrap());
-    }
-
-    // -----------------------------------------------------------------------
-    // last_day_of_month tests
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_last_day_of_month_regular() {
-        assert_eq!(
-            last_day_of_month(2024, 1),
-            NaiveDate::from_ymd_opt(2024, 1, 31).unwrap()
-        );
-        assert_eq!(
-            last_day_of_month(2024, 4),
-            NaiveDate::from_ymd_opt(2024, 4, 30).unwrap()
-        );
-    }
-
-    #[test]
-    fn test_last_day_of_month_february_leap() {
-        assert_eq!(
-            last_day_of_month(2024, 2),
-            NaiveDate::from_ymd_opt(2024, 2, 29).unwrap()
-        );
-    }
-
-    #[test]
-    fn test_last_day_of_month_february_non_leap() {
-        assert_eq!(
-            last_day_of_month(2025, 2),
-            NaiveDate::from_ymd_opt(2025, 2, 28).unwrap()
-        );
-    }
-
-    #[test]
-    fn test_last_day_of_month_december() {
-        assert_eq!(
-            last_day_of_month(2024, 12),
-            NaiveDate::from_ymd_opt(2024, 12, 31).unwrap()
-        );
-    }
 }

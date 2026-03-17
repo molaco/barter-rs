@@ -1,13 +1,13 @@
 pub mod trades;
 
 use crate::{
-    bulk::{BulkConfig, BulkDayTradeFetcher, BulkTradeRequest, date_range},
+    bulk::{BulkConfig, BulkDayTradeFetcher},
     error::DataError,
     trade::RestTrade,
 };
 use async_compression::tokio::bufread::GzipDecoder;
 use chrono::NaiveDate;
-use futures::{Stream, StreamExt, TryStreamExt, stream};
+use futures::TryStreamExt;
 use std::{future::Future, marker::PhantomData, pin::Pin};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::io::StreamReader;
@@ -175,39 +175,6 @@ impl<Server: BybitBulkServer> BulkDayTradeFetcher for BybitBulkClient<Server> {
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
         Box::pin(self.download_and_parse_trades(market, date))
-    }
-}
-
-/// Standalone stream method kept temporarily until stream composition moves
-/// to the collector crate.
-impl<Server: BybitBulkServer> BybitBulkClient<Server> {
-    pub fn stream_bulk_trades(
-        &self,
-        request: BulkTradeRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let dates = date_range(request.start, request.end);
-        let concurrency = self.config.concurrency;
-        let client = self.client.clone();
-        let config = self.config.clone();
-
-        Box::pin(stream::iter(dates)
-            .map(move |date| {
-                let client = BybitBulkClient::<Server> {
-                    client: client.clone(),
-                    config: config.clone(),
-                    _server: PhantomData,
-                };
-                let market = request.market.clone();
-                async move { client.download_and_parse_trades(&market, date).await }
-            })
-            .buffer_unordered(concurrency)
-            .filter_map(|result| async move {
-                match result {
-                    Ok(Some(trades)) => Some(Ok(trades)),
-                    Ok(None) => None,
-                    Err(e) => Some(Err(e)),
-                }
-            }))
     }
 }
 

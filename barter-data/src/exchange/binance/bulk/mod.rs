@@ -3,9 +3,8 @@ pub mod trades;
 
 use crate::{
     bulk::{
-        BulkConfig, BulkDayKlineFetcher, BulkDayTradeFetcher, BulkKlineRequest, BulkTradeRequest,
+        BulkConfig, BulkDayKlineFetcher, BulkDayTradeFetcher,
         checksum::{parse_binance_checksum, should_skip, verify_sha256, write_verified_marker},
-        date_range,
     },
     error::DataError,
     exchange::binance::{
@@ -16,7 +15,7 @@ use crate::{
     trade::RestTrade,
 };
 use chrono::NaiveDate;
-use futures::{Stream, StreamExt, stream};
+use futures::StreamExt;
 use std::{future::Future, io::Cursor, marker::PhantomData, path::PathBuf, pin::Pin};
 
 /// Trait for Binance bulk archive server variants.
@@ -420,80 +419,6 @@ impl<Server: BulkArchiveServer> BulkDayKlineFetcher for BinanceBulkClient<Server
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<Candle>>, DataError>> + Send + 'a>> {
         let bi = binance_interval(interval);
         Box::pin(download_and_parse_klines::<Server>(&self.client, &self.config, &self.retry, market, bi, date))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Standalone stream methods (kept temporarily until stream composition moves
-// to the collector crate)
-// ---------------------------------------------------------------------------
-
-impl<Server: BulkArchiveServer> BinanceBulkClient<Server> {
-    pub fn stream_bulk_trades(
-        &self,
-        request: BulkTradeRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let dates = date_range(request.start, request.end);
-        let client = self.client.clone();
-        let config = self.config.clone();
-        let concurrency = self.config.concurrency;
-        let retry = self.retry.clone();
-        let market = request.market;
-
-        Box::pin(stream::iter(dates)
-            .map(move |date| {
-                let client = client.clone();
-                let config = config.clone();
-                let retry = retry.clone();
-                let market = market.clone();
-                async move {
-                    download_and_parse_trades::<Server>(&client, &config, &retry, &market, date)
-                        .await
-                }
-            })
-            .buffer_unordered(concurrency)
-            .filter_map(|result| async {
-                match result {
-                    Ok(None) => None,
-                    Ok(Some(trades)) => Some(Ok(trades)),
-                    Err(e) => Some(Err(e)),
-                }
-            }))
-    }
-
-    pub fn stream_bulk_klines(
-        &self,
-        request: BulkKlineRequest,
-    ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send + '_ {
-        let dates = date_range(request.start, request.end);
-        let client = self.client.clone();
-        let config = self.config.clone();
-        let concurrency = self.config.concurrency;
-        let retry = self.retry.clone();
-        let market = request.market;
-        let interval = binance_interval(request.interval);
-
-        stream::iter(dates)
-            .map(move |date| {
-                let client = client.clone();
-                let config = config.clone();
-                let retry = retry.clone();
-                let market = market.clone();
-                async move {
-                    download_and_parse_klines::<Server>(
-                        &client, &config, &retry, &market, interval, date,
-                    )
-                    .await
-                }
-            })
-            .buffer_unordered(concurrency)
-            .filter_map(|result| async {
-                match result {
-                    Ok(None) => None,
-                    Ok(Some(candles)) => Some(Ok(candles)),
-                    Err(e) => Some(Err(e)),
-                }
-            })
     }
 }
 

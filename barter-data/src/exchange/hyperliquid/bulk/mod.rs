@@ -2,13 +2,12 @@ pub mod s3_signer;
 pub mod trades;
 
 use crate::{
-    bulk::{BulkConfig, BulkDayTradeFetcher, BulkTradeRequest, date_range},
+    bulk::{BulkConfig, BulkDayTradeFetcher},
     error::DataError,
     retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     trade::RestTrade,
 };
 use chrono::NaiveDate;
-use futures::Stream;
 use s3_signer::AwsCredentials;
 use std::{collections::HashMap, future::Future, pin::Pin};
 use trades::{parse_fills, parse_fills_multi};
@@ -241,45 +240,6 @@ impl HyperliquidBulkClient {
     }
 }
 
-impl HyperliquidBulkClient {
-    /// Stream all coins' trades grouped by coin, one HashMap per date.
-    ///
-    /// Downloads each hourly S3 file once and fans out trades to all coins.
-    /// Dates with no data are silently skipped.
-    pub fn stream_bulk_trades_multi(
-        &self,
-        start: NaiveDate,
-        end: NaiveDate,
-    ) -> impl Stream<Item = Result<HashMap<String, Vec<RestTrade>>, DataError>> + Send {
-        let dates = date_range(start, end);
-        let concurrency = self.config.concurrency;
-        let client = reqwest::Client::clone(&self.client);
-        let retry = self.retry.clone();
-        let credentials = self.credentials.clone();
-
-        futures::stream::iter(dates.into_iter().map(move |date| {
-            let client = client.clone();
-            let retry = retry.clone();
-            let credentials = credentials.clone();
-            async move {
-                let bulk = HyperliquidBulkClient {
-                    client,
-                    config: BulkConfig::default(),
-                    retry,
-                    credentials,
-                };
-                match bulk.download_and_parse_trades_multi(date).await {
-                    Ok(Some(map)) => Some(Ok(map)),
-                    Ok(None) => None,
-                    Err(e) => Some(Err(e)),
-                }
-            }
-        }))
-        .buffer_unordered(concurrency)
-        .filter_map(|opt| async { opt })
-    }
-}
-
 impl Default for HyperliquidBulkClient {
     fn default() -> Self {
         Self::new()
@@ -295,49 +255,6 @@ impl BulkDayTradeFetcher for HyperliquidBulkClient {
         Box::pin(self.download_and_parse_trades(market, date))
     }
 }
-
-/// Standalone stream method kept temporarily until stream composition moves
-/// to the collector crate.
-impl HyperliquidBulkClient {
-    pub fn stream_bulk_trades(
-        &self,
-        request: BulkTradeRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let dates = date_range(request.start, request.end);
-        let concurrency = self.config.concurrency;
-        let market = request.market;
-
-        // Each date downloads its 24 hours sequentially; dates are buffered concurrently.
-        let client = reqwest::Client::clone(&self.client);
-        let retry = self.retry.clone();
-        let credentials = self.credentials.clone();
-
-        Box::pin(futures::stream::iter(dates.into_iter().map(move |date| {
-            let market = market.clone();
-            let client = client.clone();
-            let retry = retry.clone();
-            let credentials = credentials.clone();
-            async move {
-                let bulk = HyperliquidBulkClient {
-                    client,
-                    config: BulkConfig::default(),
-                    retry,
-                    credentials,
-                };
-                match bulk.download_and_parse_trades(&market, date).await {
-                    Ok(Some(trades)) => Some(Ok(trades)),
-                    Ok(None) => None,
-                    Err(e) => Some(Err(e)),
-                }
-            }
-        }))
-        .buffer_unordered(concurrency)
-        .filter_map(|opt| async { opt }))
-    }
-}
-
-// Required imports for the stream combinators.
-use futures::StreamExt;
 
 #[cfg(test)]
 mod tests {
