@@ -15,6 +15,32 @@ pub struct RetryPolicy {
     pub max_retries: u32,
 }
 
+impl RetryPolicy {
+    /// Create a new `RetryPolicy`.
+    ///
+    /// # Panics (debug builds)
+    ///
+    /// Panics if `initial_backoff > max_backoff` or `multiplier < 1`.
+    pub fn new(
+        initial_backoff: Duration,
+        max_backoff: Duration,
+        multiplier: u32,
+        max_retries: u32,
+    ) -> Self {
+        debug_assert!(
+            initial_backoff <= max_backoff,
+            "initial_backoff ({initial_backoff:?}) must be <= max_backoff ({max_backoff:?})"
+        );
+        debug_assert!(multiplier >= 1, "multiplier ({multiplier}) must be >= 1");
+        Self {
+            initial_backoff,
+            max_backoff,
+            multiplier,
+            max_retries,
+        }
+    }
+}
+
 impl Default for RetryPolicy {
     fn default() -> Self {
         Self {
@@ -109,6 +135,34 @@ mod tests {
         Arc,
         atomic::{AtomicU32, Ordering},
     };
+
+    #[test]
+    fn test_retry_policy_new() {
+        let policy = RetryPolicy::new(
+            Duration::from_millis(100),
+            Duration::from_secs(30),
+            2,
+            3,
+        );
+        assert_eq!(policy.initial_backoff, Duration::from_millis(100));
+        assert_eq!(policy.max_backoff, Duration::from_secs(30));
+        assert_eq!(policy.multiplier, 2);
+        assert_eq!(policy.max_retries, 3);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "initial_backoff")]
+    fn test_retry_policy_invalid_backoff_range() {
+        RetryPolicy::new(Duration::from_secs(60), Duration::from_secs(1), 2, 3);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "multiplier")]
+    fn test_retry_policy_zero_multiplier() {
+        RetryPolicy::new(Duration::from_millis(100), Duration::from_secs(30), 0, 3);
+    }
 
     #[test]
     fn test_default_retry_policy() {
