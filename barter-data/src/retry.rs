@@ -46,7 +46,9 @@ where
             Ok(value) => return Ok(value),
             Err(err) if should_retry(&err) => {
                 sleep(backoff).await;
-                backoff = (backoff * policy.multiplier).min(policy.max_backoff);
+                backoff = backoff
+                    .saturating_mul(policy.multiplier)
+                    .min(policy.max_backoff);
             }
             Err(err) => return Err(err),
         }
@@ -352,5 +354,27 @@ mod tests {
     fn test_not_retriable_other_variant() {
         let err = DataError::SubscriptionsEmpty;
         assert!(!is_retriable_data_error(&err));
+    }
+
+    #[tokio::test]
+    async fn test_retry_backoff_overflow_safety() {
+        // initial_backoff * u32::MAX would overflow without saturating_mul;
+        // max_backoff caps the result so the sleep stays short.
+        let policy = RetryPolicy {
+            initial_backoff: Duration::from_millis(1),
+            max_backoff: Duration::from_millis(1),
+            multiplier: u32::MAX,
+            max_retries: 2,
+        };
+
+        let result: Result<(), &str> = retry_with_backoff(
+            &policy,
+            |_: &&str| true,
+            || async { Err("fail") },
+        )
+        .await;
+
+        assert_eq!(result, Err("fail"));
+        // Key: did not panic from Duration overflow
     }
 }
