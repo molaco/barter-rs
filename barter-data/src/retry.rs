@@ -53,6 +53,20 @@ impl Default for RetryPolicy {
     }
 }
 
+/// Apply ±25% jitter to a duration to prevent thundering herd.
+#[cfg(any(feature = "rest", feature = "bulk"))]
+fn apply_jitter(duration: Duration) -> Duration {
+    use rand::Rng;
+    let factor = rand::rng().random_range(0.75..=1.25);
+    duration.mul_f64(factor)
+}
+
+/// No-op when jitter dependencies are unavailable.
+#[cfg(not(any(feature = "rest", feature = "bulk")))]
+fn apply_jitter(duration: Duration) -> Duration {
+    duration
+}
+
 /// Execute a future-producing closure with exponential backoff retry.
 ///
 /// The `should_retry` closure determines whether a given error is retriable.
@@ -79,9 +93,11 @@ where
                     "retriable error, backing off"
                 );
                 sleep(backoff).await;
-                backoff = backoff
-                    .saturating_mul(policy.multiplier)
-                    .min(policy.max_backoff);
+                backoff = apply_jitter(
+                    backoff
+                        .saturating_mul(policy.multiplier)
+                        .min(policy.max_backoff),
+                );
             }
             Err(err) => return Err(err),
         }
