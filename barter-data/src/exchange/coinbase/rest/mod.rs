@@ -57,7 +57,7 @@ const COINBASE_REST_BASE_URL: &str = "https://api.coinbase.com";
 /// Unlike the Binance client this is not generic over a server variant
 /// because Coinbase uses a single REST API endpoint for all markets.
 ///
-/// Includes a rate limiter configured for 60 requests per second.
+/// Includes a rate limiter configured for 10 requests per second.
 #[derive(Clone)]
 pub struct CoinbaseRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, CoinbaseHttpParser>>,
@@ -83,7 +83,7 @@ impl CoinbaseRestClient {
     /// Construct a new [`CoinbaseRestClient`] using the default Coinbase
     /// REST API base URL.
     ///
-    /// Initialises a rate limiter with a quota of 60 requests per second.
+    /// Initialises a rate limiter with a quota of 10 requests per second.
     pub fn new() -> Self {
         Self::with_base_url(COINBASE_REST_BASE_URL.to_owned())
     }
