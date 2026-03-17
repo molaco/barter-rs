@@ -171,7 +171,8 @@ impl Connector for Hyperliquid {
                 base,
                 quote,
                 instrument_kind,
-            } => hyperliquid_market(base, quote, instrument_kind),
+            } => hyperliquid_market(base, quote, instrument_kind)
+                .expect("unsupported instrument kind for Hyperliquid"),
             MarketInput::ExchangeName(name) => HyperliquidMarket(name.name().clone()),
         }
     }

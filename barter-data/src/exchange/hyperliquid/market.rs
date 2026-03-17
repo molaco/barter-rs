@@ -1,3 +1,4 @@
+use crate::error::DataError;
 use barter_instrument::{
     asset::name::AssetNameInternal, instrument::market_data::kind::MarketDataInstrumentKind,
 };
@@ -26,17 +27,20 @@ pub(in crate::exchange::hyperliquid) fn hyperliquid_market(
     base: &AssetNameInternal,
     quote: &AssetNameInternal,
     kind: &MarketDataInstrumentKind,
-) -> HyperliquidMarket {
+) -> Result<HyperliquidMarket, DataError> {
     match kind {
         MarketDataInstrumentKind::Perpetual => {
-            HyperliquidMarket(base.as_ref().to_uppercase_smolstr())
+            Ok(HyperliquidMarket(base.as_ref().to_uppercase_smolstr()))
         }
-        MarketDataInstrumentKind::Spot => HyperliquidMarket(format_smolstr!(
+        MarketDataInstrumentKind::Spot => Ok(HyperliquidMarket(format_smolstr!(
             "{}/{}",
             base.as_ref().to_uppercase_smolstr(),
             quote.as_ref().to_uppercase_smolstr()
-        )),
-        other => panic!("Hyperliquid does not support {other} instruments"),
+        ))),
+        other => Err(DataError::UnsupportedInstrument {
+            exchange: "hyperliquid".into(),
+            instrument: format!("{other:?}"),
+        }),
     }
 }
 
@@ -51,7 +55,8 @@ mod tests {
     fn test_hyperliquid_market_perpetual() {
         let instrument =
             MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Perpetual));
-        let market = hyperliquid_market(&instrument.base, &instrument.quote, &instrument.kind);
+        let market =
+            hyperliquid_market(&instrument.base, &instrument.quote, &instrument.kind).unwrap();
         assert_eq!(market.as_ref(), "BTC");
     }
 
@@ -59,13 +64,13 @@ mod tests {
     fn test_hyperliquid_market_spot() {
         let instrument =
             MarketDataInstrument::from(("btc", "usdc", MarketDataInstrumentKind::Spot));
-        let market = hyperliquid_market(&instrument.base, &instrument.quote, &instrument.kind);
+        let market =
+            hyperliquid_market(&instrument.base, &instrument.quote, &instrument.kind).unwrap();
         assert_eq!(market.as_ref(), "BTC/USDC");
     }
 
     #[test]
-    #[should_panic(expected = "Hyperliquid does not support")]
-    fn test_hyperliquid_market_unsupported() {
+    fn test_hyperliquid_market_unsupported_returns_error() {
         use barter_instrument::instrument::market_data::kind::MarketDataFutureContract;
         use chrono::Utc;
 
@@ -74,6 +79,8 @@ mod tests {
             "usdt",
             MarketDataInstrumentKind::Future(MarketDataFutureContract { expiry: Utc::now() }),
         ));
-        hyperliquid_market(&instrument.base, &instrument.quote, &instrument.kind);
+        let result =
+            hyperliquid_market(&instrument.base, &instrument.quote, &instrument.kind);
+        assert!(result.is_err());
     }
 }

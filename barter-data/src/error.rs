@@ -103,6 +103,13 @@ pub enum DataError {
         interval: String,
     },
 
+    /// Exchange does not support the requested instrument kind.
+    #[error("{exchange} does not support instrument kind: {instrument}")]
+    UnsupportedInstrument {
+        exchange: String,
+        instrument: String,
+    },
+
     /// Local filesystem I/O error (distinct from archive decompression).
     #[error("I/O error: {0}")]
     Io(String),
