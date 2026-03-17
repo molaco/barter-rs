@@ -210,6 +210,9 @@ pub async fn download_monthly_trades(
 
 /// Choose monthly archives for complete months, daily for partial months.
 ///
+/// Note: canonical implementation is in `barter-collector::scheduling`.
+/// Kept here temporarily until stream composition moves to collector.
+///
 /// Given an inclusive date range `[start, end]`, returns:
 /// - `complete_months`: `Vec<(year, month)>` for months entirely within the range.
 /// - `remaining_days`: `Vec<NaiveDate>` for days in partial months at the boundaries.
@@ -259,6 +262,8 @@ pub fn partition_date_range(start: NaiveDate, end: NaiveDate) -> (Vec<(i32, u32)
 }
 
 /// Return the last day of the given month.
+///
+/// Note: canonical implementation is in `barter-collector::scheduling`.
 fn last_day_of_month(year: i32, month: u32) -> NaiveDate {
     if month == 12 {
         NaiveDate::from_ymd_opt(year + 1, 1, 1)

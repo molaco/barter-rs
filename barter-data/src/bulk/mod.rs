@@ -80,6 +80,10 @@ pub trait BulkKlineFetcher {
 }
 
 /// Generate an inclusive sequence of dates from `start` to `end`.
+///
+/// Note: canonical implementation is in `barter-collector::scheduling`.
+/// This is a temporary re-implementation kept until `stream_bulk_*` methods
+/// move to the collector crate.
 pub fn date_range(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
     let mut dates = Vec::new();
     let mut current = start;
