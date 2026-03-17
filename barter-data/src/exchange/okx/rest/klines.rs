@@ -202,7 +202,7 @@ impl OkxKlineRaw {
             quote_volume: Some(quote_volume),
             // OKX does not return trade count in the klines response.
             trade_count: 0,
-            is_closed: true,
+            is_closed: self.confirm == "1",
         })
     }
 
@@ -367,6 +367,38 @@ mod tests {
         assert!((candle.volume - 1234.56).abs() < 1e-6);
         assert!((candle.quote_volume.unwrap() - 20800000.0).abs() < 1e-6);
         assert_eq!(candle.trade_count, 0);
+    }
+
+    #[test]
+    fn test_try_into_candle_confirmed() {
+        let raw = OkxKlineRaw {
+            ts: "1672502400000".to_string(),
+            open: "16800.00".to_string(),
+            high: "16900.50".to_string(),
+            low: "16750.00".to_string(),
+            close: "16850.00".to_string(),
+            volume: "1234.56".to_string(),
+            vol_ccy_quote: "20800000.00".to_string(),
+            confirm: "1".to_string(),
+        };
+        let candle = raw.try_into_candle(Interval::M1).unwrap();
+        assert!(candle.is_closed);
+    }
+
+    #[test]
+    fn test_try_into_candle_incomplete() {
+        let raw = OkxKlineRaw {
+            ts: "1672502400000".to_string(),
+            open: "16800.00".to_string(),
+            high: "16900.50".to_string(),
+            low: "16750.00".to_string(),
+            close: "16850.00".to_string(),
+            volume: "1234.56".to_string(),
+            vol_ccy_quote: "20800000.00".to_string(),
+            confirm: "0".to_string(),
+        };
+        let candle = raw.try_into_candle(Interval::M1).unwrap();
+        assert!(!candle.is_closed);
     }
 
     #[test]
