@@ -41,7 +41,8 @@ impl<Instrument> Identifier<KrakenChannel> for Subscription<Kraken, Instrument, 
     fn id(&self) -> KrakenChannel {
         KrakenChannel(format_smolstr!(
             "ohlc-{}",
-            kraken_interval(self.kind.0).unwrap_or(1)
+            kraken_interval(self.kind.0)
+                .expect("caller must validate interval is supported by Kraken")
         ))
     }
 }
@@ -110,13 +111,8 @@ mod tests {
     }
 
     #[test]
-    fn test_candles_channel_unsupported_falls_back_to_1() {
-        // Kraken uses unwrap_or(1) for unsupported intervals
-        assert_eq!(candles_channel(Interval::M3).as_ref(), "ohlc-1");
-        assert_eq!(candles_channel(Interval::H2).as_ref(), "ohlc-1");
-        assert_eq!(candles_channel(Interval::H6).as_ref(), "ohlc-1");
-        assert_eq!(candles_channel(Interval::H12).as_ref(), "ohlc-1");
-        assert_eq!(candles_channel(Interval::D3).as_ref(), "ohlc-1");
-        assert_eq!(candles_channel(Interval::Month1).as_ref(), "ohlc-1");
+    #[should_panic(expected = "caller must validate interval is supported by Kraken")]
+    fn test_candles_channel_unsupported_panics() {
+        candles_channel(Interval::M3);
     }
 }

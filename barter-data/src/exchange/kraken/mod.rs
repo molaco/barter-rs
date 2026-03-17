@@ -145,8 +145,11 @@ impl Connector for Kraken {
                 // Kraken OHLC channels are encoded as "ohlc-<interval>" (eg/ "ohlc-1").
                 // The subscription request requires "name": "ohlc" with a separate
                 // "interval" field.
+                // Channel names are constructed by Identifier<KrakenChannel>::id(), which
+                // guarantees the interval portion is a valid u32.
                 let subscription = if let Some(interval_str) = channel_str.strip_prefix("ohlc-") {
-                    let interval: u32 = interval_str.parse().unwrap_or(1);
+                    let interval: u32 = interval_str.parse()
+                        .expect("interval is a valid u32 from channel name");
                     json!({
                         "name": "ohlc",
                         "interval": interval
@@ -177,8 +180,11 @@ impl Connector for Kraken {
             .map(|ExchangeSub { channel, market }| {
                 let channel_str = channel.as_ref();
 
+                // Channel names are constructed by Identifier<KrakenChannel>::id(), which
+                // guarantees the interval portion is a valid u32.
                 let subscription = if let Some(interval_str) = channel_str.strip_prefix("ohlc-") {
-                    let interval: u32 = interval_str.parse().unwrap_or(1);
+                    let interval: u32 = interval_str.parse()
+                        .expect("interval is a valid u32 from channel name");
                     json!({
                         "name": "ohlc",
                         "interval": interval
