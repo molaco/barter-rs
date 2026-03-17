@@ -2,10 +2,11 @@
 resolver = "3"
 members = [
     "barter",
+    "barter-collector",
     "barter-data",
     "barter-execution",
     "barter-integration",
-    "barter-macro", 
+    "barter-macro",
     "barter-instrument"
 ]
 

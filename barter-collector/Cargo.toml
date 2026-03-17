@@ -1,0 +1,34 @@
+[package]
+name = "barter-collector"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Orchestration layer for barter-data: pagination, streaming, caching, retry"
+
+[dependencies]
+# Barter Ecosystem
+barter-data = { path = "../barter-data", features = ["rest", "bulk"] }
+barter-integration = { workspace = true }
+barter-instrument = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Async
+tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "time"] }
+futures = { workspace = true }
+futures-util = { workspace = true }
+
+# Error
+thiserror = { workspace = true }
+
+# Misc
+chrono = { workspace = true }
+governor = { workspace = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile = { workspace = true }
