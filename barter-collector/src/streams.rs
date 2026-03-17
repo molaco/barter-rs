@@ -167,7 +167,7 @@ mod tests {
         }
 
         let strategy = CountingStrategy { count: 0, max: 3 };
-        let quota = governor::Quota::per_second(NonZeroU32::new(100).unwrap());
+        let quota = governor::Quota::per_second(NonZeroU32::new(100).unwrap()); // 100 is non-zero
         let limiter = Arc::new(governor::RateLimiter::direct(quota));
 
         let stream = stream_paginated(strategy, limiter);

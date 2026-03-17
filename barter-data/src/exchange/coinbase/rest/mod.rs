@@ -111,6 +111,7 @@ impl CoinbaseRestClient {
     /// compile time.
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, CoinbaseHttpParser);
+        // 10 is non-zero
         let quota = Quota::per_second(NonZeroU32::new(10).unwrap()).allow_burst(NonZeroU32::new(10).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
         Self {

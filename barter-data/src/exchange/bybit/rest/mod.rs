@@ -120,7 +120,7 @@ where
             BybitHttpParser,
         );
 
-        let quota = Quota::per_second(NonZeroU32::new(10).unwrap());
+        let quota = Quota::per_second(NonZeroU32::new(10).unwrap()); // 10 is non-zero
         let rate_limiter = governor::RateLimiter::direct(quota);
 
         Self {
@@ -139,7 +139,7 @@ impl<Server> BybitRestClient<Server> {
     /// [`RestExchangeServer`] since the URL is provided directly.
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, BybitHttpParser);
-        let quota = Quota::per_second(NonZeroU32::new(10).unwrap());
+        let quota = Quota::per_second(NonZeroU32::new(10).unwrap()); // 10 is non-zero
         let rate_limiter = governor::RateLimiter::direct(quota);
         Self {
             client: Arc::new(client),

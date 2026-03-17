@@ -99,6 +99,7 @@ where
             BinanceHttpParser,
         );
 
+        // 1200 and 20 are non-zero
         let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap()).allow_burst(NonZeroU32::new(20).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
 
@@ -137,6 +138,7 @@ impl<Server> BinanceRestClient<Server> {
     /// [`RestExchangeServer`] since the URL is provided directly.
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, BinanceHttpParser);
+        // 1200 and 20 are non-zero
         let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap()).allow_burst(NonZeroU32::new(20).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
         Self {

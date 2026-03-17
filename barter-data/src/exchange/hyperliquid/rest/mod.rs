@@ -109,7 +109,7 @@ impl HyperliquidRestClient {
     /// compile time.
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, HyperliquidHttpParser);
-        let quota = Quota::per_minute(NonZeroU32::new(600).unwrap());
+        let quota = Quota::per_minute(NonZeroU32::new(600).unwrap()); // 600 is non-zero
         let rate_limiter = governor::RateLimiter::direct(quota);
 
         Self {
