@@ -10,7 +10,7 @@ use crate::{
     exchange::binance::{
         binance_interval, futures::BinanceServerFuturesUsd, spot::BinanceServerSpot,
     },
-    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
+    retry::{RetryPolicy, is_retriable_data_error},
     subscription::candle::{Candle, Interval},
     trade::RestTrade,
 };
@@ -142,95 +142,140 @@ const RANGE_RESUME_THRESHOLD: usize = 1_048_576;
 /// is discarded and the full download is accepted. A `416` response
 /// triggers a full restart from scratch.
 ///
+/// Uses an owned `Vec<u8>` buffer across a manual retry loop — no
+/// `Arc<Mutex<>>` needed since retries are sequential.
+///
 /// Returns `Ok(None)` on 404.
 async fn download_bytes_resumable(
     client: &reqwest::Client,
     retry: &RetryPolicy,
     url: &str,
 ) -> Result<Option<Vec<u8>>, DataError> {
-    let url_owned = url.to_string();
+    use crate::retry::apply_backoff;
 
-    // Accumulated bytes across retries, shared via Arc+Mutex for the retry closure.
-    let partial = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+    let mut partial = Vec::new();
+    let mut attempts = 0u32;
 
-    let result = retry_with_backoff(retry, is_retriable_data_error, || {
-        let client = client.clone();
-        let url = url_owned.clone();
-        let partial = partial.clone();
-        async move {
-            let existing_len = partial.lock().unwrap().len();
+    loop {
+        attempts += 1;
+        let existing_len = partial.len();
 
-            // Build request, optionally with Range header for resume.
-            let mut request = client.get(&url);
-            if existing_len >= RANGE_RESUME_THRESHOLD {
-                request = request.header("Range", format!("bytes={existing_len}-"));
-                tracing::debug!(
-                    url = %url,
-                    resume_from = existing_len,
-                    "resuming download with Range header"
-                );
-            }
+        // Build request, optionally with Range header for resume.
+        let mut request = client.get(url);
+        if existing_len >= RANGE_RESUME_THRESHOLD {
+            request = request.header("Range", format!("bytes={existing_len}-"));
+            tracing::debug!(
+                url = %url,
+                resume_from = existing_len,
+                "resuming download with Range header"
+            );
+        }
 
-            let response = request
-                .send()
-                .await
-                .map_err(|e| DataError::Http {
+        let response = match request.send().await {
+            Ok(r) => r,
+            Err(e) => {
+                let err = DataError::Http {
                     status: None,
-                    url: url.clone(),
+                    url: url.to_string(),
                     message: format!("request failed: {e}"),
-                })?;
-
-            let status = response.status();
-            if status == reqwest::StatusCode::NOT_FOUND {
-                return Ok(None);
+                };
+                if !is_retriable_data_error(&err) || attempts > retry.max_retries {
+                    return Err(err);
+                }
+                tracing::warn!(
+                    attempt = attempts,
+                    url = %url,
+                    %err,
+                    "retriable download error, will retry"
+                );
+                apply_backoff(retry, attempts).await;
+                continue;
             }
+        };
 
-            // 416 Range Not Satisfiable: file changed or already complete, restart.
-            if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
-                tracing::debug!(url = %url, "got 416, restarting download from scratch");
-                partial.lock().unwrap().clear();
+        let status = response.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        // 416 Range Not Satisfiable: file changed or already complete, restart.
+        if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+            tracing::debug!(url = %url, "got 416, restarting download from scratch");
+            partial.clear();
+            if attempts > retry.max_retries {
                 return Err(DataError::Http {
                     status: Some(416),
-                    url: url.clone(),
+                    url: url.to_string(),
                     message: "Range Not Satisfiable".into(),
                 });
             }
-
-            if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
-                return Err(DataError::Http {
-                    status: Some(status.as_u16()),
-                    url: url.clone(),
-                    message: format!("HTTP {status}"),
-                });
-            }
-
-            if status == reqwest::StatusCode::OK && existing_len > 0 {
-                // Server does not support Range: discard partial, accept full body.
-                tracing::debug!(
-                    url = %url,
-                    "server returned 200 (no range support), restarting"
-                );
-                partial.lock().unwrap().clear();
-            }
-
-            // Stream the response body, accumulating into partial buffer.
-            let mut byte_stream = response.bytes_stream();
-            while let Some(chunk_result) = byte_stream.next().await {
-                let chunk = chunk_result.map_err(|e| DataError::Http {
-                    status: None,
-                    url: url.clone(),
-                    message: format!("body read failed: {e}"),
-                })?;
-                partial.lock().unwrap().extend_from_slice(&chunk);
-            }
-
-            let data = std::mem::take(&mut *partial.lock().unwrap());
-            Ok(Some(data))
+            apply_backoff(retry, attempts).await;
+            continue;
         }
-    })
-    .await?;
 
-    Ok(result)
+        if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
+            let err = DataError::Http {
+                status: Some(status.as_u16()),
+                url: url.to_string(),
+                message: format!("HTTP {status}"),
+            };
+            if !is_retriable_data_error(&err) || attempts > retry.max_retries {
+                return Err(err);
+            }
+            tracing::warn!(
+                attempt = attempts,
+                url = %url,
+                %err,
+                "retriable HTTP status, will retry"
+            );
+            apply_backoff(retry, attempts).await;
+            continue;
+        }
+
+        if status == reqwest::StatusCode::OK && existing_len > 0 {
+            // Server does not support Range: discard partial, accept full body.
+            tracing::debug!(
+                url = %url,
+                "server returned 200 (no range support), restarting"
+            );
+            partial.clear();
+        }
+
+        // Stream the response body into the partial buffer.
+        let mut byte_stream = response.bytes_stream();
+        let mut stream_err = None;
+        while let Some(chunk_result) = byte_stream.next().await {
+            match chunk_result {
+                Ok(chunk) => partial.extend_from_slice(&chunk),
+                Err(e) => {
+                    stream_err = Some(e);
+                    break;
+                }
+            }
+        }
+
+        if let Some(e) = stream_err {
+            let err = DataError::Http {
+                status: None,
+                url: url.to_string(),
+                message: format!("body read failed: {e}"),
+            };
+            if !is_retriable_data_error(&err) || attempts > retry.max_retries {
+                return Err(err);
+            }
+            // Partial buffer retained for Range resume on next attempt.
+            tracing::warn!(
+                attempt = attempts,
+                url = %url,
+                partial_bytes = partial.len(),
+                "stream error, will retry with partial buffer"
+            );
+            apply_backoff(retry, attempts).await;
+            continue;
+        }
+
+        return Ok(Some(std::mem::take(&mut partial)));
+    }
 }
 
 /// Download and parse a `.CHECKSUM` file. Returns `Ok(None)` on 404.
@@ -304,7 +349,9 @@ async fn download_and_parse_trades<Server: BulkArchiveServer>(
         None => return Ok(None),
     };
 
-    let csv_data = extract_zip_csv(&zip_bytes)?;
+    let csv_data = tokio::task::spawn_blocking(move || extract_zip_csv(&zip_bytes))
+        .await
+        .map_err(|e| DataError::BulkArchive(format!("ZIP task panicked: {e}")))??;
     let trades = trades::parse_trades(
         &csv_data,
         Server::csv_has_headers(),
@@ -330,7 +377,9 @@ async fn download_and_parse_klines<Server: BulkArchiveServer>(
         None => return Ok(None),
     };
 
-    let csv_data = extract_zip_csv(&zip_bytes)?;
+    let csv_data = tokio::task::spawn_blocking(move || extract_zip_csv(&zip_bytes))
+        .await
+        .map_err(|e| DataError::BulkArchive(format!("ZIP task panicked: {e}")))??;
     let candles = klines::parse_klines(&csv_data, Server::csv_has_headers())?;
 
     Ok(Some(candles))

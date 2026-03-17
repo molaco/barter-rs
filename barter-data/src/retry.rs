@@ -67,6 +67,26 @@ fn apply_jitter(duration: Duration) -> Duration {
     duration
 }
 
+/// Compute and sleep for the backoff duration for the given attempt number.
+///
+/// Uses the same exponential backoff with jitter as [`retry_with_backoff`].
+pub async fn apply_backoff(policy: &RetryPolicy, attempt: u32) {
+    let mut backoff = policy.initial_backoff;
+    for _ in 1..attempt {
+        backoff = backoff
+            .saturating_mul(policy.multiplier)
+            .min(policy.max_backoff);
+    }
+    let backoff = apply_jitter(backoff.min(policy.max_backoff));
+    warn!(
+        attempt,
+        max_retries = policy.max_retries,
+        backoff_ms = backoff.as_millis() as u64,
+        "backing off before retry"
+    );
+    sleep(backoff).await;
+}
+
 /// Execute a future-producing closure with exponential backoff retry.
 ///
 /// The `should_retry` closure determines whether a given error is retriable.
