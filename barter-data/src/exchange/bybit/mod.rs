@@ -90,7 +90,15 @@ pub fn bybit_interval(interval: Interval) -> &'static str {
         Interval::H6 => "360",
         Interval::H12 => "720",
         Interval::D1 => "D",
-        Interval::D3 => "D",
+        Interval::D3 => {
+            tracing::warn!(
+                exchange = "bybit",
+                requested = "D3",
+                actual = "D",
+                "Bybit does not support 3-day interval, falling back to daily"
+            );
+            "D"
+        }
         Interval::W1 => "W",
         Interval::Month1 => "M",
     }
