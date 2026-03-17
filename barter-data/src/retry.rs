@@ -1,6 +1,7 @@
 use crate::error::DataError;
 use std::{future::Future, time::Duration};
 use tokio::time::sleep;
+use tracing::warn;
 
 /// Configuration for exponential backoff retry.
 #[derive(Debug, Clone)]
@@ -67,10 +68,16 @@ where
 {
     let mut backoff = policy.initial_backoff;
 
-    for _ in 0..policy.max_retries {
+    for attempt in 0..policy.max_retries {
         match operation().await {
             Ok(value) => return Ok(value),
             Err(err) if should_retry(&err) => {
+                warn!(
+                    attempt = attempt + 1,
+                    max_retries = policy.max_retries,
+                    backoff_ms = backoff.as_millis() as u64,
+                    "retriable error, backing off"
+                );
                 sleep(backoff).await;
                 backoff = backoff
                     .saturating_mul(policy.multiplier)
