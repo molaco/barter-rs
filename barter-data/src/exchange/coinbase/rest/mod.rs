@@ -457,6 +457,7 @@ impl TradeFetcher for CoinbaseRestClient {
                     start,
                     end: Some(cursor),
                     limit: None,
+                    initial_cursor: None,
                 };
 
                 match client.fetch_trades(req).await {

@@ -519,7 +519,7 @@ impl TradeFetcher for OkxRestClient {
             start: request.start,
             end: request.end,
             limit: request.limit,
-            cursor: None,
+            cursor: request.initial_cursor,
             pages_fetched: 0,
             done: false,
         };

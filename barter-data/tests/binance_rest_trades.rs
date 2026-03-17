@@ -81,6 +81,7 @@ async fn test_fetch_trades_single_batch() {
         start: None,
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -137,6 +138,7 @@ async fn test_fetch_trades_empty_response() {
         start: None,
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -164,6 +166,7 @@ async fn test_fetch_trades_api_error() {
         start: None,
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let result = client.fetch_trades(request).await;
@@ -253,6 +256,7 @@ async fn test_stream_trades_pagination() {
         start: Some(DateTime::from_timestamp_millis(1609459200000).unwrap()),
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let batches: Vec<_> = client.stream_trades(request).collect().await;
@@ -302,6 +306,7 @@ async fn test_fetch_trades_oldest_first_ordering() {
         start: None,
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -349,6 +354,7 @@ async fn test_futures_fetch_trades() {
         start: None,
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -396,6 +402,7 @@ async fn test_futures_fetch_trades_api_error() {
         start: None,
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let result = client.fetch_trades(request).await;

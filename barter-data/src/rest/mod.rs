@@ -62,6 +62,12 @@ pub struct TradeRequest {
     pub end: Option<DateTime<Utc>>,
     /// Optional limit on the number of trades to return per batch.
     pub limit: Option<u32>,
+    /// Optional initial pagination cursor (exchange-specific trade ID).
+    ///
+    /// When set, exchanges that support ID-based pagination (e.g., OKX) will
+    /// start streaming from this cursor instead of from the most recent trade.
+    /// This enables chunked backfill with cursor carriage between chunks.
+    pub initial_cursor: Option<String>,
 }
 
 /// Unified rate-limiter type shared across all exchange REST clients.
