@@ -4,6 +4,7 @@ use std::pin::Pin;
 
 /// Outcome of one pagination step.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum PageResult<T> {
     /// Yield this batch and continue with the next page.
     Continue(Vec<T>),

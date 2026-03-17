@@ -37,7 +37,7 @@ pub fn partition_date_range(
     while current <= end {
         let year = current.year();
         let month = current.month();
-        // 1st of this month is always valid
+        // month is 1..=12 from Datelike::month(), so day=1 is always valid
         let first_of_month = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
         let last_of_month = last_day_of_month(year, month);
 
@@ -51,6 +51,7 @@ pub fn partition_date_range(
                     None => break,
                 }
             } else {
+                // month is 1..=11 here (12 handled above), so month+1 is valid
                 NaiveDate::from_ymd_opt(year, month + 1, 1).unwrap()
             };
         } else {
@@ -70,17 +71,25 @@ pub fn partition_date_range(
 }
 
 /// Return the last day of the given month.
+///
+/// # Panics
+///
+/// Panics if `month` is not 1..=12 or if `year` overflows the calendar.
 pub fn last_day_of_month(year: i32, month: u32) -> NaiveDate {
+    // Next month's 1st always exists for valid year/month, and pred_opt
+    // of any date > Jan 1 of MIN_YEAR is always Some.
     if month == 12 {
+        // Jan 1 of next year is valid for any reasonable year
         NaiveDate::from_ymd_opt(year + 1, 1, 1)
-            .unwrap()
+            .expect("year+1 overflows NaiveDate range")
             .pred_opt()
-            .unwrap()
+            .expect("Jan 1 always has a predecessor")
     } else {
+        // month+1 is 2..=12, always valid
         NaiveDate::from_ymd_opt(year, month + 1, 1)
-            .unwrap()
+            .expect("month+1 is 2..=12, always valid")
             .pred_opt()
-            .unwrap()
+            .expect("any date after Jan 1 has a predecessor")
     }
 }
 
