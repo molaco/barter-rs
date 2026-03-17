@@ -264,7 +264,12 @@ impl BulkTradeFetcher for OkxBulkClient {
         &self,
         request: BulkTradeRequest,
     ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let dates = date_range(request.start, request.end);
+        // OKX daily archives use UTC+8 (Hong Kong) day boundaries:
+        // archive "2026-03-16" covers 2026-03-15T16:00Z → 2026-03-16T16:00Z.
+        // To get full UTC day coverage, we must also download the next day's
+        // archive which covers the 16:00-23:59 UTC window.
+        let extended_end = request.end.succ_opt().unwrap_or(request.end);
+        let dates = date_range(request.start, extended_end);
         let concurrency = self.config.concurrency;
         let client = self.client.clone();
         let config = self.config.clone();
