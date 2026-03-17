@@ -120,33 +120,39 @@ impl<InstrumentKey> From<(ExchangeId, InstrumentKey, HyperliquidKline)>
     ) -> Self {
         let candle = kline.candle;
 
-        let open: f64 = candle.open.parse().unwrap_or(0.0);
-        let high: f64 = candle.high.parse().unwrap_or(0.0);
-        let low: f64 = candle.low.parse().unwrap_or(0.0);
-        let close: f64 = candle.close.parse().unwrap_or(0.0);
-        let volume: f64 = candle.volume.parse().unwrap_or(0.0);
+        let result = (|| {
+            let open: f64 = candle.open.parse().ok()?;
+            let high: f64 = candle.high.parse().ok()?;
+            let low: f64 = candle.low.parse().ok()?;
+            let close: f64 = candle.close.parse().ok()?;
+            let volume: f64 = candle.volume.parse().ok()?;
 
-        let open_time = datetime_utc_from_epoch_duration(Duration::from_millis(candle.open_time));
-        let close_time = datetime_utc_from_epoch_duration(Duration::from_millis(candle.close_time));
+            let open_time =
+                datetime_utc_from_epoch_duration(Duration::from_millis(candle.open_time));
+            let close_time =
+                datetime_utc_from_epoch_duration(Duration::from_millis(candle.close_time));
 
-        Self(vec![Ok(MarketEvent {
-            time_exchange: close_time,
-            time_received: Utc::now(),
-            exchange: exchange_id,
-            instrument,
-            kind: Candle {
-                open_time,
-                close_time,
-                open,
-                high,
-                low,
-                close,
-                volume,
-                quote_volume: None,
-                trade_count: candle.trade_count,
-                is_closed: true,
-            },
-        })])
+            Some(Ok(MarketEvent {
+                time_exchange: close_time,
+                time_received: Utc::now(),
+                exchange: exchange_id,
+                instrument,
+                kind: Candle {
+                    open_time,
+                    close_time,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume,
+                    quote_volume: None,
+                    trade_count: candle.trade_count,
+                    is_closed: true,
+                },
+            }))
+        })();
+
+        Self(result.into_iter().collect())
     }
 }
 
@@ -310,6 +316,30 @@ mod tests {
         let sub_id = kline.id();
 
         assert_eq!(sub_id, Some(SubscriptionId::from("candle.1h|BTC")));
+    }
+
+    #[test]
+    fn test_hyperliquid_kline_to_candle_unparseable_price_drops_candle() {
+        let kline = HyperliquidKline {
+            subscription_id: SubscriptionId::from("candle.1m|ETH"),
+            candle: HyperliquidCandle {
+                open_time: 1672502400000,
+                close_time: 1672502459999,
+                coin: "ETH".to_string(),
+                interval: "1m".to_string(),
+                open: "not_a_number".to_string(),
+                high: "1860.0".to_string(),
+                low: "1845.0".to_string(),
+                close: "1855.5".to_string(),
+                volume: "12.345".to_string(),
+                trade_count: 150,
+            },
+        };
+
+        let market_iter: MarketIter<&str, Candle> =
+            MarketIter::from((ExchangeId::Hyperliquid, "instrument_key", kline));
+
+        assert!(market_iter.0.is_empty());
     }
 
     #[test]
