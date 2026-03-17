@@ -5,7 +5,6 @@ use barter_data::{
     rest::{TradeFetcher, TradeRequest},
 };
 use chrono::DateTime;
-use futures::StreamExt;
 use serde_json::json;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -92,7 +91,6 @@ async fn test_fetch_trades_single_batch() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -157,7 +155,6 @@ async fn test_fetch_trades_empty_response() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -185,7 +182,6 @@ async fn test_fetch_trades_api_error() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let result = client.fetch_trades(request).await;
@@ -200,117 +196,6 @@ async fn test_fetch_trades_api_error() {
         err_msg.contains("Product not found"),
         "error should contain Coinbase error message, got: {err_msg}"
     );
-}
-
-// ---------------------------------------------------------------------------
-// Test 4: stream_trades paginates backward through multiple batches
-// ---------------------------------------------------------------------------
-#[tokio::test]
-async fn test_stream_trades_pagination() {
-    let (mock_server, client) = setup().await;
-
-    // Backward pagination: start=2021-01-01T00:00:00Z (1609459200),
-    //                      end  =2021-01-01T00:10:00Z (1609459800).
-    //
-    // Coinbase returns the *newest* trades in a [start, end] window, so
-    // stream_trades paginates backward from `end`.
-    //
-    // Request 1: start=1609459200 & end=1609459800
-    //   -> Returns trade_C (00:05:00Z) newest-first.
-    //   -> After reversal: [trade_C]. Oldest = trade_C at 00:05:00Z.
-    //   -> New cursor = 00:05:00Z - 1ms => .timestamp() = 1609459499.
-    //
-    // Request 2: start=1609459200 & end=1609459499
-    //   -> Returns [trade_B (00:02:00Z), trade_A (00:00:00Z)] newest-first.
-    //   -> After reversal: [trade_A, trade_B]. Oldest = trade_A at 00:00:00Z.
-    //   -> New cursor = 00:00:00Z - 1ms = 1609459199.999Z.
-    //   -> cursor < start => pagination stops.
-    //
-    // Batches collected newest-window-first: [[trade_C], [trade_A, trade_B]].
-    // After reversing: [[trade_A, trade_B], [trade_C]].
-
-    // Request 1: end=1609459800 (the user's requested end)
-    Mock::given(method("GET"))
-        .and(path("/api/v3/brokerage/market/products/BTC-USD/ticker"))
-        .and(query_param("end", "1609459800"))
-        .and(query_param("start", "1609459200"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(coinbase_trades_response(json!([
-                {
-                    "trade_id": "34964585",
-                    "product_id": "BTC-USD",
-                    "price": "29200.00",
-                    "size": "0.750000",
-                    "time": "2021-01-01T00:05:00.000Z",
-                    "side": "SELL",
-                    "bid": "",
-                    "ask": ""
-                }
-            ]))),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Request 2: end=1609459499 (oldest trade from batch 1 minus 1ms,
-    //            truncated to seconds by .timestamp())
-    Mock::given(method("GET"))
-        .and(path("/api/v3/brokerage/market/products/BTC-USD/ticker"))
-        .and(query_param("end", "1609459499"))
-        .and(query_param("start", "1609459200"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(coinbase_trades_response(json!([
-                {
-                    "trade_id": "34964584",
-                    "product_id": "BTC-USD",
-                    "price": "29100.50",
-                    "size": "1.200000",
-                    "time": "2021-01-01T00:02:00.000Z",
-                    "side": "BUY",
-                    "bid": "",
-                    "ask": ""
-                },
-                {
-                    "trade_id": "34964583",
-                    "product_id": "BTC-USD",
-                    "price": "29000.00",
-                    "size": "0.500000",
-                    "time": "2021-01-01T00:00:00.000Z",
-                    "side": "SELL",
-                    "bid": "",
-                    "ask": ""
-                }
-            ]))),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let request = TradeRequest {
-        market: "BTC-USD".to_string(),
-        start: Some(DateTime::from_timestamp(1609459200, 0).unwrap()),
-        end: Some(DateTime::from_timestamp(1609459800, 0).unwrap()),
-        limit: None,
-        initial_cursor: None,
-    };
-
-    let batches: Vec<_> = client.stream_trades(request).collect().await;
-
-    assert_eq!(batches.len(), 2, "expected 2 non-empty batches");
-    let batch1 = batches[0].as_ref().unwrap();
-    let batch2 = batches[1].as_ref().unwrap();
-
-    assert_eq!(batch1.len(), 2, "first batch should have 2 trades (oldest window)");
-    assert_eq!(batch2.len(), 1, "second batch should have 1 trade (newest window)");
-
-    // Verify total trade count
-    let total: usize = batches.iter().map(|b| b.as_ref().unwrap().len()).sum();
-    assert_eq!(total, 3, "expected 3 trades in total");
-
-    // Verify ordering: batches are in chronological order (oldest-first overall)
-    assert_eq!(trades_id(&batch1[0]), "34964583");
-    assert_eq!(trades_id(&batch1[1]), "34964584");
-    assert_eq!(trades_id(&batch2[0]), "34964585");
 }
 
 // ---------------------------------------------------------------------------
@@ -335,7 +220,6 @@ async fn test_fetch_trades_oldest_first_after_reversal() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();

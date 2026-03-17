@@ -1,13 +1,12 @@
 pub mod checksum;
 
-use barter_instrument::exchange::ExchangeId;
 use crate::{
     error::DataError,
     subscription::candle::{Candle, Interval},
     trade::RestTrade,
 };
 use chrono::NaiveDate;
-use futures::Stream;
+use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 
@@ -58,25 +57,29 @@ impl Default for BulkConfig {
     }
 }
 
-/// Stream daily batches of trades from archive files.
+/// Fetch a single day's trades from a bulk archive.
 ///
-/// Each `Ok(Vec<RestTrade>)` represents one day's trades in chronological order.
-/// HTTP 404 dates are silently skipped. 5xx/429 errors are retried.
-pub trait BulkTradeFetcher: Send + Sync {
-    fn stream_bulk_trades(
-        &self,
-        request: BulkTradeRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>>;
+/// Returns `Ok(Some(trades))` on success, `Ok(None)` if the date is not
+/// available (e.g. HTTP 404), or `Err` on failure.
+pub trait BulkDayTradeFetcher: Send + Sync {
+    fn fetch_day_trades<'a>(
+        &'a self,
+        market: &'a str,
+        date: NaiveDate,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>>;
 }
 
-/// Stream daily batches of klines from archive files.
+/// Fetch a single day's klines from a bulk archive.
 ///
-/// Only Binance has kline archives.
-pub trait BulkKlineFetcher {
-    fn stream_bulk_klines(
-        &self,
-        request: BulkKlineRequest,
-    ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send;
+/// Returns `Ok(Some(candles))` on success, `Ok(None)` if the date is not
+/// available (e.g. HTTP 404), or `Err` on failure.
+pub trait BulkDayKlineFetcher: Send + Sync {
+    fn fetch_day_klines<'a>(
+        &'a self,
+        market: &'a str,
+        interval: Interval,
+        date: NaiveDate,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<Candle>>, DataError>> + Send + 'a>>;
 }
 
 /// Generate an inclusive sequence of dates from `start` to `end`.
@@ -96,33 +99,6 @@ pub fn date_range(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
         }
     }
     dates
-}
-
-/// Create a boxed bulk trade client for the given exchange.
-///
-/// Returns `None` if the exchange does not support bulk archive downloading.
-#[cfg(feature = "bulk")]
-pub fn bulk_client(exchange_id: ExchangeId, config: BulkConfig) -> Option<Box<dyn BulkTradeFetcher>> {
-    use crate::exchange::{
-        binance::{
-            bulk::{BinanceBulkClient, BinanceServerFuturesCoin},
-            futures::BinanceServerFuturesUsd,
-            spot::BinanceServerSpot,
-        },
-        bybit::{bulk::BybitBulkClient, futures::BybitServerPerpetualsUsd, spot::BybitServerSpot},
-        hyperliquid::bulk::HyperliquidBulkClient,
-        okx::bulk::OkxBulkClient,
-    };
-    match exchange_id {
-        ExchangeId::BinanceSpot => Some(Box::new(BinanceBulkClient::<BinanceServerSpot>::with_config(config))),
-        ExchangeId::BinanceFuturesUsd => Some(Box::new(BinanceBulkClient::<BinanceServerFuturesUsd>::with_config(config))),
-        ExchangeId::BinanceFuturesCoin => Some(Box::new(BinanceBulkClient::<BinanceServerFuturesCoin>::with_config(config))),
-        ExchangeId::BybitSpot => Some(Box::new(BybitBulkClient::<BybitServerSpot>::with_config(config))),
-        ExchangeId::BybitPerpetualsUsd => Some(Box::new(BybitBulkClient::<BybitServerPerpetualsUsd>::with_config(config))),
-        ExchangeId::OkxSpot | ExchangeId::OkxPerpetualsUsd => Some(Box::new(OkxBulkClient::with_config(config))),
-        ExchangeId::Hyperliquid => Some(Box::new(HyperliquidBulkClient::with_config(config))),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

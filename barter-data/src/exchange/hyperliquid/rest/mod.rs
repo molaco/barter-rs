@@ -2,20 +2,19 @@ use crate::{
     error::DataError,
     rest::{
         KlineFetcher, KlineRequest,
-        retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
+    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
     HttpParser, public::PublicNoHeaders, rest::client::RestClient,
 };
-use chrono::{DateTime, TimeDelta, Utc};
-use futures::stream::{self, Stream};
+use chrono::Utc;
 use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, num::NonZeroU32, sync::Arc};
-use tracing::{Instrument, debug, info, warn};
+use tracing::{Instrument, debug, warn};
 
 /// Hyperliquid kline/candlestick REST request, raw DTO, and conversion to
 /// [`Candle`](crate::subscription::candle::Candle).
@@ -132,20 +131,6 @@ impl HyperliquidRestClient {
     }
 }
 
-/// Internal pagination state used by [`KlineFetcher::stream_klines`] to
-/// track the cursor position when fetching consecutive batches.
-struct PaginationState {
-    client: HyperliquidRestClient,
-    market: String,
-    interval: Interval,
-    /// Current forward cursor: we request data after this timestamp.
-    cursor: DateTime<Utc>,
-    /// End boundary: we stop when the cursor passes this timestamp.
-    end: Option<DateTime<Utc>>,
-    limit: Option<u32>,
-    done: bool,
-}
-
 impl KlineFetcher for HyperliquidRestClient {
     fn supported_intervals() -> &'static [Interval] {
         &[
@@ -244,87 +229,5 @@ impl KlineFetcher for HyperliquidRestClient {
             Ok(candles)
         }
         .instrument(span)
-    }
-
-    /// Stream paginated batches of klines using time-cursor based pagination.
-    ///
-    /// Uses [`futures::stream::unfold`] to repeatedly call
-    /// [`fetch_klines`](Self::fetch_klines), advancing the `startTime` cursor
-    /// past the last candle's `close_time` in each batch.
-    ///
-    /// Hyperliquid returns data oldest-first. The cursor advances past the
-    /// close time of the last (newest) candle in each batch.
-    ///
-    /// The stream terminates when an empty batch is returned, when the cursor
-    /// passes the requested end time, or on the first error (which is yielded
-    /// before stopping).
-    fn stream_klines(
-        &self,
-        request: KlineRequest,
-    ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send {
-        let state = PaginationState {
-            client: self.clone(),
-            market: request.market,
-            interval: request.interval,
-            cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
-            end: request.end,
-            limit: request.limit,
-            done: false,
-        };
-
-        stream::unfold(state, |mut state| async move {
-            if state.done {
-                return None;
-            }
-
-            info!(
-                market = %state.market,
-                interval = %state.interval,
-                cursor = %state.cursor,
-                "starting klines pagination"
-            );
-
-            let request = KlineRequest {
-                market: state.market.clone(),
-                interval: state.interval,
-                start: Some(state.cursor),
-                end: state.end,
-                limit: state.limit,
-            };
-
-            match state.client.fetch_klines(request).await {
-                Err(err) => {
-                    state.done = true;
-                    Some((Err(err), state))
-                }
-                Ok(batch) if batch.is_empty() => {
-                    debug!("klines pagination complete");
-                    None
-                }
-                Ok(batch) => {
-                    // Advance cursor past the close_time of the last (newest) candle.
-                    // Hyperliquid returns oldest-first, so the last element is newest.
-                    if let Some(last) = batch.last() {
-                        state.cursor = last.close_time + TimeDelta::milliseconds(1);
-
-                        // If cursor has passed the requested end, mark done
-                        if let Some(end) = state.end
-                            && state.cursor >= end
-                        {
-                            state.done = true;
-                            debug!("klines pagination complete");
-                        }
-                    }
-
-                    debug!(
-                        batch_size = batch.len(),
-                        cursor = %state.cursor,
-                        "advancing klines pagination"
-                    );
-
-                    Some((Ok(batch), state))
-                }
-            }
-        })
     }
 }

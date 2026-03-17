@@ -5,7 +5,6 @@ use barter_data::{
     rest::{TradeFetcher, TradeRequest},
 };
 use chrono::DateTime;
-use futures::StreamExt;
 use serde_json::json;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -98,7 +97,6 @@ async fn test_fetch_trades_single_batch() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -166,7 +164,6 @@ async fn test_fetch_trades_empty_response() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -194,7 +191,6 @@ async fn test_fetch_trades_api_error() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let result = client.fetch_trades(request).await;
@@ -205,115 +201,6 @@ async fn test_fetch_trades_api_error() {
         err_msg.contains("EGeneral:Invalid arguments"),
         "error should contain Kraken error message, got: {err_msg}"
     );
-}
-
-// ---------------------------------------------------------------------------
-// Test 4: stream_trades paginates using nonce-based `last` / `since` params
-// ---------------------------------------------------------------------------
-#[tokio::test]
-async fn test_stream_trades_pagination() {
-    let (mock_server, client) = setup().await;
-
-    // The start time 2021-01-01T00:00:00Z = 1609459200 seconds
-    // As nanoseconds: 1609459200000000000
-    //
-    // Page 1: since=1609459200000000000 -> returns 2 trades, last="1609459260123400000"
-    Mock::given(method("GET"))
-        .and(path("/0/public/Trades"))
-        .and(query_param("since", "1609459200000000000"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(kraken_trades_response(
-                "XXBTZUSD",
-                vec![
-                    json!([
-                        "29000.00000",
-                        "0.50000000",
-                        1609459200.0000,
-                        "b",
-                        "m",
-                        "",
-                        391120170_u64
-                    ]),
-                    json!([
-                        "29100.50000",
-                        "1.20000000",
-                        1609459260.1234,
-                        "s",
-                        "l",
-                        "",
-                        391120171_u64
-                    ]),
-                ],
-                "1609459260123400000",
-            )),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Page 2: since=1609459260123400000 -> returns 1 trade, last="1609459320567800000"
-    Mock::given(method("GET"))
-        .and(path("/0/public/Trades"))
-        .and(query_param("since", "1609459260123400000"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(kraken_trades_response(
-                "XXBTZUSD",
-                vec![json!([
-                    "29200.00000",
-                    "0.75000000",
-                    1609459320.5678,
-                    "b",
-                    "m",
-                    "",
-                    391120172_u64
-                ])],
-                "1609459320567800000",
-            )),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Page 3: since=1609459320567800000 -> returns empty -> pagination ends
-    Mock::given(method("GET"))
-        .and(path("/0/public/Trades"))
-        .and(query_param("since", "1609459320567800000"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(kraken_trades_response(
-                "XXBTZUSD",
-                vec![],
-                "1609459320567800000",
-            )),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let request = TradeRequest {
-        market: "XBTUSD".to_string(),
-        start: Some(DateTime::from_timestamp(1609459200, 0).unwrap()),
-        end: None,
-        limit: None,
-        initial_cursor: None,
-    };
-
-    let batches: Vec<_> = client.stream_trades(request).collect().await;
-
-    assert_eq!(batches.len(), 2, "expected 2 non-empty batches");
-    let batch1 = batches[0].as_ref().unwrap();
-    let batch2 = batches[1].as_ref().unwrap();
-
-    assert_eq!(batch1.len(), 2, "first batch should have 2 trades");
-    assert_eq!(batch2.len(), 1, "second batch should have 1 trade");
-
-    // Verify total trade count
-    let total: usize = batches.iter().map(|b| b.as_ref().unwrap().len()).sum();
-    assert_eq!(total, 3, "expected 3 trades in total");
-
-    // Spot-check ordering across batches (oldest-first, Kraken returns this natively)
-    assert_eq!(batch1[0].id, "391120170");
-    assert_eq!(batch1[1].id, "391120171");
-    assert_eq!(batch2[0].id, "391120172");
 }
 
 // ---------------------------------------------------------------------------
@@ -341,7 +228,6 @@ async fn test_fetch_trades_oldest_first_ordering() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -392,7 +278,6 @@ async fn test_fetch_trades_dynamic_pair_key() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();

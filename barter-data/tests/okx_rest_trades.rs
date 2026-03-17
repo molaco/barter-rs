@@ -5,7 +5,6 @@ use barter_data::{
     rest::{TradeFetcher, TradeRequest},
 };
 use chrono::DateTime;
-use futures::StreamExt;
 use serde_json::json;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -86,7 +85,6 @@ async fn test_fetch_trades_single_batch() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -145,7 +143,6 @@ async fn test_fetch_trades_empty_response() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -174,7 +171,6 @@ async fn test_fetch_trades_api_error() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let result = client.fetch_trades(request).await;
@@ -214,7 +210,6 @@ async fn test_fetch_trades_okx_level_error() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let result = client.fetch_trades(request).await;
@@ -225,107 +220,6 @@ async fn test_fetch_trades_okx_level_error() {
         err_msg.contains("51001"),
         "error should contain OKX error code, got: {err_msg}"
     );
-}
-
-// ---------------------------------------------------------------------------
-// Test 5: stream_trades paginates using ID-based backward pagination
-// ---------------------------------------------------------------------------
-#[tokio::test]
-async fn test_stream_trades_pagination() {
-    let (mock_server, client) = setup().await;
-
-    // OKX stream_trades starts from the most recent trades and walks backward.
-    //
-    // Page 1 (no cursor): returns 2 trades newest-first.
-    //   In response order: [trade_C(id=172), trade_B(id=171)]
-    //   data.last() = trade_B(id=171) -> next cursor after=171
-    //   Reversed: [trade_B(id=171), trade_C(id=172)]
-    Mock::given(method("GET"))
-        .and(path("/api/v5/market/history-trades"))
-        .and(query_param_is_missing("after"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(okx_trades_response(json!([
-                {
-                    "instId": "BTC-USDT",
-                    "tradeId": "391120172",
-                    "px": "29200.00",
-                    "sz": "0.750000",
-                    "side": "buy",
-                    "ts": "1609459320000"
-                },
-                {
-                    "instId": "BTC-USDT",
-                    "tradeId": "391120171",
-                    "px": "29100.50",
-                    "sz": "1.200000",
-                    "side": "sell",
-                    "ts": "1609459260000"
-                }
-            ]))),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Page 2 (after=391120171): returns 1 trade.
-    //   In response order: [trade_A(id=170)]
-    //   data.last() = trade_A(id=170) -> next cursor after=170
-    //   Reversed: [trade_A(id=170)]
-    Mock::given(method("GET"))
-        .and(path("/api/v5/market/history-trades"))
-        .and(query_param("after", "391120171"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(okx_trades_response(json!([
-                {
-                    "instId": "BTC-USDT",
-                    "tradeId": "391120170",
-                    "px": "29000.00",
-                    "sz": "0.500000",
-                    "side": "buy",
-                    "ts": "1609459200000"
-                }
-            ]))),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Page 3 (after=391120170): returns empty -> pagination ends.
-    Mock::given(method("GET"))
-        .and(path("/api/v5/market/history-trades"))
-        .and(query_param("after", "391120170"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(okx_trades_response(json!([]))))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let request = TradeRequest {
-        market: "BTC-USDT".to_string(),
-        start: None,
-        end: None,
-        limit: None,
-        initial_cursor: None,
-    };
-
-    let batches: Vec<_> = client.stream_trades(request).collect().await;
-
-    assert_eq!(batches.len(), 2, "expected 2 non-empty batches");
-    let batch1 = batches[0].as_ref().unwrap();
-    let batch2 = batches[1].as_ref().unwrap();
-
-    assert_eq!(batch1.len(), 2, "first batch should have 2 trades");
-    assert_eq!(batch2.len(), 1, "second batch should have 1 trade");
-
-    // Verify total trade count
-    let total: usize = batches.iter().map(|b| b.as_ref().unwrap().len()).sum();
-    assert_eq!(total, 3, "expected 3 trades in total");
-
-    // Within each batch, trades are reversed to oldest-first.
-    // Batch 1: [B(id=171), C(id=172)] -- oldest-first
-    assert_eq!(batch1[0].id, "391120171");
-    assert_eq!(batch1[1].id, "391120172");
-    // Batch 2: [A(id=170)]
-    assert_eq!(batch2[0].id, "391120170");
 }
 
 // ---------------------------------------------------------------------------
@@ -350,7 +244,6 @@ async fn test_fetch_trades_oldest_first_after_reversal() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();

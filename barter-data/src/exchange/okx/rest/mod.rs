@@ -2,20 +2,19 @@ use crate::{
     error::DataError,
     rest::{
         ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
-        retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
+    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
     HttpParser, public::PublicNoHeaders, rest::client::RestClient,
 };
-use chrono::{DateTime, TimeDelta, Utc};
-use futures::stream::{self, Stream};
+use chrono::DateTime;
 use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, future::Future, num::NonZeroU32, pin::Pin, sync::Arc};
-use tracing::{Instrument, debug, info, warn};
+use tracing::{Instrument, debug, warn};
 
 /// OKX kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
@@ -141,8 +140,8 @@ impl OkxRestClient {
     /// returned by the API (newest-first). Callers are responsible for reversal,
     /// conversion, and filtering.
     ///
-    /// This is the shared implementation used by both [`TradeFetcher::fetch_trades`]
-    /// and [`TradeFetcher::stream_trades`] to avoid duplicating HTTP execution logic.
+    /// This is the shared implementation used by [`TradeFetcher::fetch_trades`]
+    /// to avoid duplicating HTTP execution logic.
     async fn fetch_trades_raw(
         &self,
         request: trades::GetOkxTrades,
@@ -183,18 +182,28 @@ impl OkxRestClient {
     }
 }
 
-/// Internal pagination state used by [`KlineFetcher::stream_klines`] to
-/// track the cursor position when fetching consecutive batches.
-struct PaginationState {
-    client: OkxRestClient,
-    market: String,
-    interval: Interval,
-    /// Current forward cursor: we request data after this timestamp.
-    cursor: DateTime<Utc>,
-    /// End boundary: we request data before this timestamp.
-    end: Option<DateTime<Utc>>,
-    limit: Option<u32>,
-    done: bool,
+/// Filter trades to the `[start, end]` time range (inclusive on both bounds).
+fn filter_trades_by_time(
+    trades: Vec<RestTrade>,
+    start: Option<DateTime<chrono::Utc>>,
+    end: Option<DateTime<chrono::Utc>>,
+) -> Vec<RestTrade> {
+    trades
+        .into_iter()
+        .filter(|t| {
+            if let Some(start) = start
+                && t.time < start
+            {
+                return false;
+            }
+            if let Some(end) = end
+                && t.time > end
+            {
+                return false;
+            }
+            true
+        })
+        .collect()
 }
 
 impl KlineFetcher for OkxRestClient {
@@ -298,145 +307,6 @@ impl KlineFetcher for OkxRestClient {
         }
         .instrument(span)
     }
-
-    /// Stream paginated batches of klines using time-cursor based pagination.
-    ///
-    /// Uses [`futures::stream::unfold`] to repeatedly call
-    /// [`fetch_klines`](Self::fetch_klines), advancing the `before` cursor
-    /// past the last candle's `close_time` in each batch.
-    ///
-    /// OKX pagination semantics:
-    /// - `before`: returns records **newer** than this timestamp
-    /// - `after`: returns records **older** than this timestamp
-    ///
-    /// So for forward (oldest-to-newest) pagination:
-    /// - Set `before` = cursor (advancing start boundary)
-    /// - Set `after` = end boundary
-    ///
-    /// Data comes newest-first from OKX, but `fetch_klines` reverses it.
-    /// After reversing, the last element is the newest candle. Advance the
-    /// cursor past its `close_time`.
-    ///
-    /// The stream terminates when an empty batch is returned, when the cursor
-    /// passes the requested end time, or on the first error (which is yielded
-    /// before stopping).
-    fn stream_klines(
-        &self,
-        request: KlineRequest,
-    ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send {
-        let state = PaginationState {
-            client: self.clone(),
-            market: request.market,
-            interval: request.interval,
-            cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
-            end: request.end,
-            limit: request.limit,
-            done: false,
-        };
-
-        stream::unfold(state, |mut state| async move {
-            if state.done {
-                return None;
-            }
-
-            info!(
-                market = %state.market,
-                interval = %state.interval,
-                cursor = %state.cursor,
-                "starting klines pagination"
-            );
-
-            let request = KlineRequest {
-                market: state.market.clone(),
-                interval: state.interval,
-                start: Some(state.cursor),
-                end: state.end,
-                limit: state.limit,
-            };
-
-            match state.client.fetch_klines(request).await {
-                Err(err) => {
-                    state.done = true;
-                    Some((Err(err), state))
-                }
-                Ok(batch) if batch.is_empty() => {
-                    debug!("klines pagination complete");
-                    None
-                }
-                Ok(batch) => {
-                    // Advance cursor past the close_time of the last (newest) candle
-                    if let Some(last) = batch.last() {
-                        state.cursor = last.close_time + TimeDelta::milliseconds(1);
-
-                        // If cursor has passed the requested end, mark done
-                        if let Some(end) = state.end
-                            && state.cursor >= end
-                        {
-                            state.done = true;
-                            debug!("klines pagination complete");
-                        }
-                    }
-
-                    debug!(
-                        batch_size = batch.len(),
-                        cursor = %state.cursor,
-                        "advancing klines pagination"
-                    );
-
-                    Some((Ok(batch), state))
-                }
-            }
-        })
-    }
-}
-
-/// Filter trades to the `[start, end]` time range (inclusive on both bounds).
-fn filter_trades_by_time(
-    trades: Vec<RestTrade>,
-    start: Option<DateTime<Utc>>,
-    end: Option<DateTime<Utc>>,
-) -> Vec<RestTrade> {
-    trades
-        .into_iter()
-        .filter(|t| {
-            if let Some(start) = start
-                && t.time < start
-            {
-                return false;
-            }
-            if let Some(end) = end
-                && t.time > end
-            {
-                return false;
-            }
-            true
-        })
-        .collect()
-}
-
-/// Maximum number of pages to fetch before terminating pagination.
-///
-/// This prevents runaway pagination on high-volume symbols when no `start`
-/// boundary is specified. At 100 trades per page, 10,000 pages covers
-/// 1,000,000 trades which is more than sufficient for any practical use case.
-const MAX_TRADE_PAGES: u32 = 10_000;
-
-/// Internal pagination state used by [`TradeFetcher::stream_trades`] to
-/// track the cursor position when fetching consecutive batches of trades.
-///
-/// OKX uses ID-based backward pagination: the `after` parameter returns
-/// trades with `tradeId` less than the given value (older trades).
-struct TradePaginationState {
-    client: OkxRestClient,
-    market: String,
-    start: Option<DateTime<Utc>>,
-    end: Option<DateTime<Utc>>,
-    limit: Option<u32>,
-    /// Trade ID cursor for backward pagination.
-    cursor: Option<String>,
-    /// Number of pages fetched so far (safety limit to prevent runaway pagination).
-    pages_fetched: u32,
-    done: bool,
 }
 
 impl TradeFetcher for OkxRestClient {
@@ -451,8 +321,6 @@ impl TradeFetcher for OkxRestClient {
     /// **Note:** OKX's history-trades endpoint uses trade-ID-based cursors, not timestamps.
     /// This method always fetches the most recent trades and filters client-side.
     /// For historical time ranges far in the past, most or all results may be filtered out.
-    /// Use `stream_trades` for paginated historical access, though it also starts from
-    /// the most recent trades and walks backward.
     fn fetch_trades(
         &self,
         request: TradeRequest,
@@ -497,160 +365,5 @@ impl TradeFetcher for OkxRestClient {
             Ok(filtered)
         }
         .instrument(span))
-    }
-
-    /// Stream paginated batches of trades using ID-based backward pagination.
-    ///
-    /// OKX `history-trades` returns newest-first. The `after` parameter fetches
-    /// trades with `tradeId` less than the given value (older trades). Each batch
-    /// is reversed to oldest-first before yielding.
-    ///
-    /// Pagination advances by setting `after` to the smallest trade ID from the
-    /// previous batch (the oldest trade after reversal, i.e., `batch.first().id`).
-    ///
-    /// Each batch is filtered to the `[start, end]` time range. The stream
-    /// terminates when an empty batch is returned, when all trades in a batch
-    /// are older than the requested start time, when the page limit is exceeded,
-    /// or on the first error (which is yielded before stopping).
-    ///
-    /// **Limitation:** Pagination starts from the most recent trades and walks backward.
-    /// For time ranges far in the past on high-volume symbols, this may require many pages
-    /// and could hit the `MAX_TRADE_PAGES` safety limit before reaching the target range.
-    fn stream_trades(
-        &self,
-        request: TradeRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        Box::pin({let state = TradePaginationState {
-            client: self.clone(),
-            market: request.market,
-            start: request.start,
-            end: request.end,
-            limit: request.limit,
-            cursor: request.initial_cursor,
-            pages_fetched: 0,
-            done: false,
-        };
-
-        stream::unfold(state, |mut state| async move {
-            if state.done {
-                return None;
-            }
-
-            // Safety limit: prevent runaway pagination
-            if state.pages_fetched >= MAX_TRADE_PAGES {
-                warn!(
-                    market = %state.market,
-                    pages_fetched = state.pages_fetched,
-                    "trades pagination terminated: exceeded max page limit ({})",
-                    MAX_TRADE_PAGES,
-                );
-                state.done = true;
-                return Some((
-                    Err(DataError::PaginationLimit {
-                        exchange: "okx".into(),
-                        market: state.market.clone(),
-                        limit: MAX_TRADE_PAGES as usize,
-                    }),
-                    state,
-                ));
-            }
-
-            info!(
-                market = %state.market,
-                cursor = ?state.cursor,
-                page = state.pages_fetched,
-                "starting trades pagination"
-            );
-
-            let get_trades_request = trades::GetOkxTrades {
-                params: trades::GetOkxTradesParams {
-                    inst_id: state.market.clone(),
-                    after: state.cursor.clone(),
-                    before: None,
-                    limit: state.limit,
-                },
-            };
-
-            let data = match state.client.fetch_trades_raw(get_trades_request).await {
-                Ok(data) => data,
-                Err(error) => {
-                    state.done = true;
-                    return Some((Err(error), state));
-                }
-            };
-
-            state.pages_fetched += 1;
-
-            // Empty batch means no more data
-            if data.is_empty() {
-                debug!("trades pagination complete (empty batch)");
-                return None;
-            }
-
-            // Advance cursor: before reversing, data is newest-first,
-            // so data.last() is the oldest (smallest tradeId).
-            // Use that as the `after` cursor for the next request.
-            state.cursor = data.last().map(|t| t.trade_id.clone());
-
-            // Reverse to oldest-first
-            let mut batch_raw = data;
-            batch_raw.reverse();
-
-            // Check if the oldest trade in the batch (now batch_raw.first())
-            // is older than our start boundary — if so, we've gone far enough.
-            if let Some(start) = state.start
-                && let Some(oldest) = batch_raw.first()
-            {
-                let oldest_ts: i64 = match oldest.ts.parse() {
-                    Ok(ts) => ts,
-                    Err(e) => {
-                        state.done = true;
-                        return Some((
-                            Err(DataError::DataParse(format!(
-                                "failed to parse trade timestamp '{}': {}",
-                                oldest.ts, e
-                            ))),
-                            state,
-                        ));
-                    }
-                };
-                if let Some(oldest_time) = DateTime::from_timestamp_millis(oldest_ts)
-                    && oldest_time < start
-                {
-                    state.done = true;
-                }
-            }
-
-            // Convert DTOs to RestTrade
-            let rest_trades = match batch_raw
-                .into_iter()
-                .map(RestTrade::try_from)
-                .collect::<Result<Vec<_>, _>>()
-            {
-                Ok(trades) => trades,
-                Err(e) => {
-                    state.done = true;
-                    return Some((Err(DataError::DataParse(e)), state));
-                }
-            };
-
-            // Filter to [start, end] range
-            let filtered = filter_trades_by_time(rest_trades, state.start, state.end);
-
-            debug!(
-                batch_size = filtered.len(),
-                cursor = ?state.cursor,
-                page = state.pages_fetched,
-                "advancing trades pagination"
-            );
-
-            // If all trades were filtered out and pagination is done,
-            // terminate cleanly instead of yielding an empty batch.
-            if filtered.is_empty() && state.done {
-                return None;
-            }
-
-            Some((Ok(filtered), state))
-        })})
     }
 }

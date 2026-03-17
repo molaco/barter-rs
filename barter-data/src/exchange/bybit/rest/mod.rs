@@ -3,20 +3,18 @@ use crate::{
     exchange::RestExchangeServer,
     rest::{
         KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
-        retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
+    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
     HttpParser, public::PublicNoHeaders, rest::client::RestClient,
 };
-use chrono::{DateTime, TimeDelta, Utc};
-use futures::stream::{self, Stream};
 use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, future::Future, marker::PhantomData, num::NonZeroU32, pin::Pin, sync::Arc};
-use tracing::{Instrument, debug, info, warn};
+use tracing::{Instrument, debug, warn};
 
 /// Bybit kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
@@ -161,18 +159,6 @@ impl<Server> BybitRestClient<Server> {
     }
 }
 
-/// Internal pagination state used by [`KlineFetcher::stream_klines`] to
-/// track the cursor position when fetching consecutive batches.
-struct PaginationState<Server> {
-    client: BybitRestClient<Server>,
-    market: String,
-    interval: Interval,
-    cursor: DateTime<Utc>,
-    end: Option<DateTime<Utc>>,
-    limit: Option<u32>,
-    done: bool,
-}
-
 impl<Server> KlineFetcher for BybitRestClient<Server>
 where
     Server: RestExchangeServer + BybitCategory + Sync + 'static,
@@ -280,82 +266,6 @@ where
         }
         .instrument(span)
     }
-
-    /// Stream paginated batches of klines using time-cursor based pagination.
-    ///
-    /// Uses [`futures::stream::unfold`] to repeatedly call [`fetch_klines`](Self::fetch_klines),
-    /// advancing the `start` cursor past the last candle's `open_time` in each batch.
-    /// The stream terminates when an empty batch is returned, when the cursor passes the
-    /// requested end time, or on the first error (which is yielded before stopping).
-    fn stream_klines(
-        &self,
-        request: KlineRequest,
-    ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send {
-        let state = PaginationState {
-            client: self.clone(),
-            market: request.market,
-            interval: request.interval,
-            cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
-            end: request.end,
-            limit: request.limit,
-            done: false,
-        };
-
-        stream::unfold(state, |mut state| async move {
-            if state.done {
-                return None;
-            }
-
-            info!(
-                market = %state.market,
-                interval = %state.interval,
-                cursor = %state.cursor,
-                "starting klines pagination"
-            );
-
-            let request = KlineRequest {
-                market: state.market.clone(),
-                interval: state.interval,
-                start: Some(state.cursor),
-                end: state.end,
-                limit: state.limit,
-            };
-
-            match state.client.fetch_klines(request).await {
-                Err(err) => {
-                    state.done = true;
-                    Some((Err(err), state))
-                }
-                Ok(batch) if batch.is_empty() => {
-                    debug!("klines pagination complete");
-                    None
-                }
-                Ok(batch) => {
-                    // Advance cursor past the open_time of the last candle
-                    // (Bybit klines use open_time as the primary timestamp)
-                    if let Some(last) = batch.last() {
-                        state.cursor = last.open_time + TimeDelta::milliseconds(1);
-
-                        // If cursor has passed the requested end, mark done
-                        if let Some(end) = state.end
-                            && state.cursor >= end
-                        {
-                            state.done = true;
-                            debug!("klines pagination complete");
-                        }
-                    }
-
-                    debug!(
-                        batch_size = batch.len(),
-                        cursor = %state.cursor,
-                        "advancing klines pagination"
-                    );
-
-                    Some((Ok(batch), state))
-                }
-            }
-        })
-    }
 }
 
 impl<Server> TradeFetcher for BybitRestClient<Server>
@@ -450,17 +360,5 @@ where
             Ok(rest_trades)
         }
         .instrument(span))
-    }
-
-    /// Stream a single batch of recent trades from the Bybit REST API.
-    ///
-    /// Bybit's `/v5/market/recent-trade` endpoint does not support time-based
-    /// pagination, so this yields exactly one batch and then terminates.
-    fn stream_trades(
-        &self,
-        request: TradeRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let this = self.clone();
-        Box::pin(stream::once(async move { this.fetch_trades(request).await }))
     }
 }

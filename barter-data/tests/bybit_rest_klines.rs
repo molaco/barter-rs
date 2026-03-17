@@ -10,7 +10,6 @@ use barter_data::{
 };
 use barter_integration::protocol::http::HttpParser;
 use chrono::DateTime;
-use futures::StreamExt;
 use reqwest::StatusCode;
 use serde_json::json;
 use wiremock::{
@@ -198,112 +197,6 @@ async fn test_fetch_klines_api_error() {
     assert!(
         err_msg.contains("params error"),
         "error should contain Bybit error message, got: {err_msg}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Test 4: stream_klines paginates through multiple batches
-// ---------------------------------------------------------------------------
-#[tokio::test]
-async fn test_stream_klines_pagination() {
-    let (mock_server, client) = setup().await;
-
-    // First batch (start = 1609459200000): return 2 klines (newest-first in response).
-    // After reversal: open_times 1609459200000, 1609545600000.
-    // Cursor advances to last open_time + 1ms = 1609545600001.
-    Mock::given(method("GET"))
-        .and(path("/v5/market/kline"))
-        .and(query_param("start", "1609459200000"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(bybit_klines_response(vec![
-                // newest first (will be reversed)
-                vec![
-                    "1609545600000",
-                    "29200.00",
-                    "30000.00",
-                    "29100.00",
-                    "29800.00",
-                    "1200.00",
-                    "35000000.00",
-                ],
-                vec![
-                    "1609459200000",
-                    "29000.00",
-                    "29500.00",
-                    "28800.00",
-                    "29200.00",
-                    "1000.00",
-                    "29000000.00",
-                ],
-            ])),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Second batch (start = 1609545600001): return 1 kline.
-    // After reversal: open_time 1609632000000.
-    // Cursor advances to 1609632000001.
-    Mock::given(method("GET"))
-        .and(path("/v5/market/kline"))
-        .and(query_param("start", "1609545600001"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(bybit_klines_response(vec![vec![
-                "1609632000000",
-                "29800.00",
-                "30500.00",
-                "29600.00",
-                "30100.00",
-                "800.00",
-                "24000000.00",
-            ]])),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Third batch (start = 1609632000001): return empty -> pagination ends.
-    Mock::given(method("GET"))
-        .and(path("/v5/market/kline"))
-        .and(query_param("start", "1609632000001"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(bybit_klines_response(vec![])))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let request = KlineRequest {
-        market: "BTCUSDT".to_string(),
-        interval: Interval::H1,
-        start: Some(DateTime::from_timestamp_millis(1609459200000).unwrap()),
-        end: None,
-        limit: None,
-    };
-
-    let batches: Vec<_> = client.stream_klines(request).collect().await;
-
-    assert_eq!(batches.len(), 2, "expected 2 non-empty batches");
-    let batch1 = batches[0].as_ref().unwrap();
-    let batch2 = batches[1].as_ref().unwrap();
-
-    assert_eq!(batch1.len(), 2, "first batch should have 2 candles");
-    assert_eq!(batch2.len(), 1, "second batch should have 1 candle");
-
-    // Verify total candle count
-    let total: usize = batches.iter().map(|b| b.as_ref().unwrap().len()).sum();
-    assert_eq!(total, 3, "expected 3 candles in total");
-
-    // Verify oldest-first ordering within each batch
-    assert_eq!(
-        batch1[0].open_time,
-        DateTime::from_timestamp_millis(1609459200000).unwrap()
-    );
-    assert_eq!(
-        batch1[1].open_time,
-        DateTime::from_timestamp_millis(1609545600000).unwrap()
-    );
-    assert_eq!(
-        batch2[0].open_time,
-        DateTime::from_timestamp_millis(1609632000000).unwrap()
     );
 }
 

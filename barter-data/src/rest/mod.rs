@@ -1,15 +1,10 @@
-pub mod retry;
-
-use barter_instrument::exchange::ExchangeId;
 use crate::{
     error::DataError,
     subscription::candle::{Candle, Interval},
 };
 use chrono::{DateTime, Utc};
-use futures::Stream;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 
 /// Request parameters for fetching historical kline/candlestick data.
 #[derive(Clone, Debug, PartialEq)]
@@ -27,7 +22,7 @@ pub struct KlineRequest {
 }
 
 /// Trait for fetching historical kline/candlestick data from an exchange.
-pub trait KlineFetcher {
+pub trait KlineFetcher: Send + Sync {
     /// Return the list of [`Interval`]s that this exchange supports for REST
     /// kline fetching.
     ///
@@ -41,12 +36,6 @@ pub trait KlineFetcher {
         &self,
         request: KlineRequest,
     ) -> impl Future<Output = Result<Vec<Candle>, DataError>> + Send;
-
-    /// Stream paginated batches of klines for the given request parameters.
-    fn stream_klines(
-        &self,
-        request: KlineRequest,
-    ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send;
 }
 
 pub use crate::trade::RestTrade;
@@ -62,18 +51,12 @@ pub struct TradeRequest {
     pub end: Option<DateTime<Utc>>,
     /// Optional limit on the number of trades to return per batch.
     pub limit: Option<u32>,
-    /// Optional initial pagination cursor (exchange-specific trade ID).
-    ///
-    /// When set, exchanges that support ID-based pagination (e.g., OKX) will
-    /// start streaming from this cursor instead of from the most recent trade.
-    /// This enables chunked backfill with cursor carriage between chunks.
-    pub initial_cursor: Option<String>,
 }
 
 /// Unified rate-limiter type shared across all exchange REST clients.
 ///
-/// Wrap in `Arc` and pass to `rest_client()` so that multiple clients
-/// hitting the same exchange IP share a single token bucket.
+/// Wrap in `Arc` and pass to multiple clients so that they share a single
+/// token bucket.
 pub type ExchangeRateLimiter = governor::RateLimiter<
     governor::state::NotKeyed,
     governor::state::InMemoryState,
@@ -84,11 +67,10 @@ pub type ExchangeRateLimiter = governor::RateLimiter<
 /// Trait for fetching historical trades from an exchange REST API.
 ///
 /// Implementations provide access to historical trade data via single-batch
-/// fetching ([`TradeFetcher::fetch_trades`]) and paginated streaming
-/// ([`TradeFetcher::stream_trades`]). Not all exchanges support all features;
-/// for example, some exchanges do not support time-based filtering and will
-/// ignore the `start`/`end` fields on [`TradeRequest`], returning only the
-/// most recent trades instead.
+/// fetching ([`TradeFetcher::fetch_trades`]). Not all exchanges support all
+/// features; for example, some exchanges do not support time-based filtering
+/// and will ignore the `start`/`end` fields on [`TradeRequest`], returning
+/// only the most recent trades instead.
 ///
 /// # Exchange Support
 ///
@@ -114,47 +96,4 @@ pub trait TradeFetcher: Send + Sync {
         &self,
         request: TradeRequest,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>>;
-
-    /// Stream paginated batches of trades in chronological order (oldest-first).
-    ///
-    /// Each yielded item is a batch `Vec<RestTrade>`. The stream terminates
-    /// when all trades in the requested time range have been fetched, or when
-    /// the exchange reports that no more data is available.
-    ///
-    /// Not all exchanges support full pagination. For example, Bybit yields a
-    /// single batch. Callers should not assume that all trades in a time range
-    /// will be returned — some exchanges impose per-page or total-page limits.
-    fn stream_trades(
-        &self,
-        request: TradeRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>>;
-}
-
-/// Create a boxed REST trade client for the given exchange.
-///
-/// Returns `None` if the exchange does not support REST trade fetching.
-#[cfg(feature = "rest")]
-pub fn rest_client(
-    exchange_id: ExchangeId,
-    rate_limiter: Option<Arc<ExchangeRateLimiter>>,
-) -> Option<Box<dyn TradeFetcher>> {
-    use crate::exchange::{
-        binance::{futures::BinanceServerFuturesUsd, rest::BinanceRestClient, spot::BinanceServerSpot},
-        coinbase::rest::CoinbaseRestClient,
-        kraken::rest::KrakenRestClient,
-        okx::rest::OkxRestClient,
-    };
-    match (exchange_id, rate_limiter) {
-        (ExchangeId::BinanceSpot, Some(rl)) => Some(Box::new(BinanceRestClient::<BinanceServerSpot>::with_rate_limiter(rl))),
-        (ExchangeId::BinanceSpot, None) => Some(Box::new(BinanceRestClient::<BinanceServerSpot>::new())),
-        (ExchangeId::BinanceFuturesUsd, Some(rl)) => Some(Box::new(BinanceRestClient::<BinanceServerFuturesUsd>::with_rate_limiter(rl))),
-        (ExchangeId::BinanceFuturesUsd, None) => Some(Box::new(BinanceRestClient::<BinanceServerFuturesUsd>::new())),
-        (ExchangeId::OkxSpot | ExchangeId::OkxPerpetualsUsd, Some(rl)) => Some(Box::new(OkxRestClient::with_rate_limiter(rl))),
-        (ExchangeId::OkxSpot | ExchangeId::OkxPerpetualsUsd, None) => Some(Box::new(OkxRestClient::new())),
-        (ExchangeId::Coinbase, Some(rl)) => Some(Box::new(CoinbaseRestClient::with_rate_limiter(rl))),
-        (ExchangeId::Coinbase, None) => Some(Box::new(CoinbaseRestClient::new())),
-        (ExchangeId::Kraken, Some(rl)) => Some(Box::new(KrakenRestClient::with_rate_limiter(rl))),
-        (ExchangeId::Kraken, None) => Some(Box::new(KrakenRestClient::new())),
-        _ => None,
-    }
 }

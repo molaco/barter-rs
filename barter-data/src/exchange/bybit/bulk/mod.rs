@@ -1,7 +1,7 @@
 pub mod trades;
 
 use crate::{
-    bulk::{BulkConfig, BulkTradeFetcher, BulkTradeRequest, date_range},
+    bulk::{BulkConfig, BulkDayTradeFetcher, BulkTradeRequest, date_range},
     error::DataError,
     retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     trade::RestTrade,
@@ -9,7 +9,7 @@ use crate::{
 use async_compression::tokio::bufread::GzipDecoder;
 use chrono::NaiveDate;
 use futures::{Stream, StreamExt, TryStreamExt, stream};
-use std::{marker::PhantomData, pin::Pin};
+use std::{future::Future, marker::PhantomData, pin::Pin};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::io::StreamReader;
 
@@ -187,8 +187,20 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
     }
 }
 
-impl<Server: BybitBulkServer> BulkTradeFetcher for BybitBulkClient<Server> {
-    fn stream_bulk_trades(
+impl<Server: BybitBulkServer> BulkDayTradeFetcher for BybitBulkClient<Server> {
+    fn fetch_day_trades<'a>(
+        &'a self,
+        market: &'a str,
+        date: NaiveDate,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
+        Box::pin(self.download_and_parse_trades(market, date))
+    }
+}
+
+/// Standalone stream method kept temporarily until stream composition moves
+/// to the collector crate.
+impl<Server: BybitBulkServer> BybitBulkClient<Server> {
+    pub fn stream_bulk_trades(
         &self,
         request: BulkTradeRequest,
     ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {

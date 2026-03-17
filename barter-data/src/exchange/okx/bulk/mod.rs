@@ -1,14 +1,14 @@
 pub mod trades;
 
 use crate::{
-    bulk::{BulkConfig, BulkTradeFetcher, BulkTradeRequest, date_range},
+    bulk::{BulkConfig, BulkDayTradeFetcher, BulkTradeRequest, date_range},
     error::DataError,
     retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     trade::RestTrade,
 };
 use chrono::{Datelike, NaiveDate};
 use futures::{Stream, StreamExt, stream};
-use std::{io::Read, pin::Pin};
+use std::{future::Future, io::Read, pin::Pin};
 
 /// Bulk archive download client for OKX.
 ///
@@ -284,8 +284,20 @@ impl Default for OkxBulkClient {
     }
 }
 
-impl BulkTradeFetcher for OkxBulkClient {
-    fn stream_bulk_trades(
+impl BulkDayTradeFetcher for OkxBulkClient {
+    fn fetch_day_trades<'a>(
+        &'a self,
+        market: &'a str,
+        date: NaiveDate,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
+        Box::pin(self.download_and_parse_trades(market, date))
+    }
+}
+
+/// Standalone stream method kept temporarily until stream composition moves
+/// to the collector crate.
+impl OkxBulkClient {
+    pub fn stream_bulk_trades(
         &self,
         request: BulkTradeRequest,
     ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {

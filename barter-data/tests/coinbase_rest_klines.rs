@@ -9,7 +9,6 @@ use barter_data::{
 };
 use barter_integration::protocol::http::HttpParser;
 use chrono::DateTime;
-use futures::StreamExt;
 use reqwest::StatusCode;
 use serde_json::json;
 use wiremock::{
@@ -200,92 +199,6 @@ async fn test_fetch_klines_unsupported_interval() {
     assert!(
         err_msg.contains("does not support interval"),
         "error should mention unsupported interval, got: {err_msg}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Test 5: stream_klines paginates through multiple batches
-// ---------------------------------------------------------------------------
-#[tokio::test]
-async fn test_stream_klines_pagination() {
-    let (mock_server, client) = setup().await;
-
-    // Batch 1 (start=1609459200): return 2 klines newest-first.
-    // After reversal: [candle_A, candle_B]
-    //   candle_A: start=1609459200, close_time=1609462800
-    //   candle_B: start=1609462800, close_time=1609466400
-    // Next cursor = 1609466400 + 1 = 1609466401
-    Mock::given(method("GET"))
-        .and(path("/api/v3/brokerage/market/products/BTC-USD/candles"))
-        .and(query_param("start", "1609459200"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(coinbase_klines_response(json!([
-                {"start": "1609462800", "low": "29100.00", "high": "30000.00", "open": "29200.00", "close": "29800.00", "volume": "1200.00"},
-                {"start": "1609459200", "low": "28800.00", "high": "29500.00", "open": "29000.00", "close": "29200.00", "volume": "1000.00"}
-            ]))),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Batch 2 (start=1609466401): return 1 kline.
-    // After reversal: [candle_C]
-    //   candle_C: start=1609466400, close_time=1609470000
-    // Next cursor = 1609470000 + 1 = 1609470001
-    Mock::given(method("GET"))
-        .and(path("/api/v3/brokerage/market/products/BTC-USD/candles"))
-        .and(query_param("start", "1609466401"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(coinbase_klines_response(json!([
-                {"start": "1609466400", "low": "29600.00", "high": "30500.00", "open": "29800.00", "close": "30100.00", "volume": "800.00"}
-            ]))),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Batch 3 (start=1609470001): return empty -> pagination ends.
-    Mock::given(method("GET"))
-        .and(path("/api/v3/brokerage/market/products/BTC-USD/candles"))
-        .and(query_param("start", "1609470001"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(coinbase_klines_response(json!([]))))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let request = KlineRequest {
-        market: "BTC-USD".to_string(),
-        interval: Interval::H1,
-        start: Some(DateTime::from_timestamp(1609459200, 0).unwrap()),
-        end: None,
-        limit: None,
-    };
-
-    let batches: Vec<_> = client.stream_klines(request).collect().await;
-
-    assert_eq!(batches.len(), 2, "expected 2 non-empty batches");
-    let batch1 = batches[0].as_ref().unwrap();
-    let batch2 = batches[1].as_ref().unwrap();
-
-    assert_eq!(batch1.len(), 2, "first batch should have 2 candles");
-    assert_eq!(batch2.len(), 1, "second batch should have 1 candle");
-
-    // Verify total candle count
-    let total: usize = batches.iter().map(|b| b.as_ref().unwrap().len()).sum();
-    assert_eq!(total, 3, "expected 3 candles in total");
-
-    // Spot-check ordering: candles within each batch are oldest-first.
-    assert_eq!(
-        batch1[0].open_time,
-        DateTime::from_timestamp(1609459200, 0).unwrap()
-    );
-    assert_eq!(
-        batch1[1].open_time,
-        DateTime::from_timestamp(1609462800, 0).unwrap()
-    );
-    assert_eq!(
-        batch2[0].open_time,
-        DateTime::from_timestamp(1609466400, 0).unwrap()
     );
 }
 

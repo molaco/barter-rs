@@ -2,7 +2,7 @@ pub mod s3_signer;
 pub mod trades;
 
 use crate::{
-    bulk::{BulkConfig, BulkTradeFetcher, BulkTradeRequest, date_range},
+    bulk::{BulkConfig, BulkDayTradeFetcher, BulkTradeRequest, date_range},
     error::DataError,
     retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     trade::RestTrade,
@@ -10,7 +10,7 @@ use crate::{
 use chrono::NaiveDate;
 use futures::Stream;
 use s3_signer::AwsCredentials;
-use std::{collections::HashMap, pin::Pin};
+use std::{collections::HashMap, future::Future, pin::Pin};
 use trades::{parse_fills, parse_fills_multi};
 
 /// Base URL for Hyperliquid hourly node fill data (S3).
@@ -286,8 +286,20 @@ impl Default for HyperliquidBulkClient {
     }
 }
 
-impl BulkTradeFetcher for HyperliquidBulkClient {
-    fn stream_bulk_trades(
+impl BulkDayTradeFetcher for HyperliquidBulkClient {
+    fn fetch_day_trades<'a>(
+        &'a self,
+        market: &'a str,
+        date: NaiveDate,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
+        Box::pin(self.download_and_parse_trades(market, date))
+    }
+}
+
+/// Standalone stream method kept temporarily until stream composition moves
+/// to the collector crate.
+impl HyperliquidBulkClient {
+    pub fn stream_bulk_trades(
         &self,
         request: BulkTradeRequest,
     ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {

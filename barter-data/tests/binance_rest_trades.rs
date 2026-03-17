@@ -7,7 +7,7 @@ use barter_data::{
     rest::{TradeFetcher, TradeRequest},
 };
 use chrono::DateTime;
-use futures::StreamExt;
+
 use serde_json::json;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -81,7 +81,6 @@ async fn test_fetch_trades_single_batch() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -138,7 +137,6 @@ async fn test_fetch_trades_empty_response() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -166,7 +164,6 @@ async fn test_fetch_trades_api_error() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let result = client.fetch_trades(request).await;
@@ -184,111 +181,7 @@ async fn test_fetch_trades_api_error() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 4: stream_trades paginates through multiple batches using ID cursor
-// ---------------------------------------------------------------------------
-#[tokio::test]
-async fn test_stream_trades_pagination() {
-    let (mock_server, client) = setup().await;
-
-    // First batch (startTime = 1609459200000): return 2 trades.
-    // Last agg_trade_id = 26130, so next fromId = 26131
-    Mock::given(method("GET"))
-        .and(path("/api/v3/aggTrades"))
-        .and(query_param("startTime", "1609459200000"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            {
-                "a": 26129,
-                "p": "29000.00",
-                "q": "0.50000000",
-                "f": 27781,
-                "l": 27781,
-                "T": 1609459200000_i64,
-                "m": true,
-                "M": true
-            },
-            {
-                "a": 26130,
-                "p": "29100.50",
-                "q": "1.20000000",
-                "f": 27782,
-                "l": 27782,
-                "T": 1609459260000_i64,
-                "m": false,
-                "M": true
-            }
-        ])))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Second batch (fromId = 26131): return 1 trade.
-    // Last agg_trade_id = 26131, so next fromId = 26132
-    Mock::given(method("GET"))
-        .and(path("/api/v3/aggTrades"))
-        .and(query_param("fromId", "26131"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            {
-                "a": 26131,
-                "p": "29200.00",
-                "q": "0.75000000",
-                "f": 27783,
-                "l": 27783,
-                "T": 1609459320000_i64,
-                "m": true,
-                "M": true
-            }
-        ])))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Third batch (fromId = 26132): return empty -> pagination ends
-    Mock::given(method("GET"))
-        .and(path("/api/v3/aggTrades"))
-        .and(query_param("fromId", "26132"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let request = TradeRequest {
-        market: "BTCUSDT".to_string(),
-        start: Some(DateTime::from_timestamp_millis(1609459200000).unwrap()),
-        end: None,
-        limit: None,
-        initial_cursor: None,
-    };
-
-    let batches: Vec<_> = client.stream_trades(request).collect().await;
-
-    assert_eq!(batches.len(), 2, "expected 2 non-empty batches");
-    let batch1 = batches[0].as_ref().unwrap();
-    let batch2 = batches[1].as_ref().unwrap();
-
-    assert_eq!(batch1.len(), 2, "first batch should have 2 trades");
-    assert_eq!(batch2.len(), 1, "second batch should have 1 trade");
-
-    // Verify total trade count
-    let total: usize = batches.iter().map(|b| b.as_ref().unwrap().len()).sum();
-    assert_eq!(total, 3, "expected 3 trades in total");
-
-    // Verify ordering: oldest-first within each batch
-    assert_eq!(
-        batch1[0].time,
-        DateTime::from_timestamp_millis(1609459200000).unwrap()
-    );
-    assert_eq!(
-        batch1[1].time,
-        DateTime::from_timestamp_millis(1609459260000).unwrap()
-    );
-    assert_eq!(
-        batch2[0].time,
-        DateTime::from_timestamp_millis(1609459320000).unwrap()
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Test 5: trades are returned in chronological order (oldest-first)
+// Test 4: trades are returned in chronological order (oldest-first)
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn test_fetch_trades_oldest_first_ordering() {
@@ -306,7 +199,6 @@ async fn test_fetch_trades_oldest_first_ordering() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -354,7 +246,6 @@ async fn test_futures_fetch_trades() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -402,7 +293,6 @@ async fn test_futures_fetch_trades_api_error() {
         start: None,
         end: None,
         limit: None,
-        initial_cursor: None,
     };
 
     let result = client.fetch_trades(request).await;

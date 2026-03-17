@@ -7,7 +7,7 @@ use barter_data::{
 };
 use barter_integration::protocol::http::HttpParser;
 use chrono::DateTime;
-use futures::StreamExt;
+
 use reqwest::StatusCode;
 use serde_json::json;
 use wiremock::{
@@ -191,108 +191,7 @@ async fn test_fetch_klines_api_error() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 4: stream_klines paginates using cursor-based `last` / `since` params
-// ---------------------------------------------------------------------------
-#[tokio::test]
-async fn test_stream_klines_pagination() {
-    let (mock_server, client) = setup().await;
-
-    // Page 1: since=1672502400 (from start time) -> returns 2 klines, last=1672520000
-    Mock::given(method("GET"))
-        .and(path("/0/public/OHLC"))
-        .and(query_param("since", "1672502400"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(kraken_klines_response(
-                "XBTUSD",
-                vec![
-                    json!([
-                        1672502400, "16800.00", "16900.50", "16750.00", "16850.00", "16825.30",
-                        "1234.56", 5000
-                    ]),
-                    json!([
-                        1672506000, "16850.00", "16950.00", "16800.00", "16900.00", "16875.00",
-                        "987.65", 3000
-                    ]),
-                ],
-                1672520000,
-            )),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Page 2: since=1672520000 (cursor from page 1) -> returns 1 kline, last=1672530000
-    Mock::given(method("GET"))
-        .and(path("/0/public/OHLC"))
-        .and(query_param("since", "1672520000"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(kraken_klines_response(
-                "XBTUSD",
-                vec![json!([
-                    1672509600, "16900.00", "17000.00", "16850.00", "16950.00", "16925.00",
-                    "1500.00", 4000
-                ])],
-                1672530000,
-            )),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Page 3: since=1672530000 (cursor from page 2) -> returns empty -> pagination ends
-    Mock::given(method("GET"))
-        .and(path("/0/public/OHLC"))
-        .and(query_param("since", "1672530000"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(kraken_klines_response(
-                "XBTUSD",
-                vec![],
-                1672530000,
-            )),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let request = KlineRequest {
-        market: "XBTUSD".to_string(),
-        interval: Interval::H1,
-        // start time -> converted to seconds via .timestamp() -> since=1672502400
-        start: Some(DateTime::from_timestamp(1672502400, 0).unwrap()),
-        end: None,
-        limit: None,
-    };
-
-    let batches: Vec<_> = client.stream_klines(request).collect().await;
-
-    assert_eq!(batches.len(), 2, "expected 2 non-empty batches");
-    let batch1 = batches[0].as_ref().unwrap();
-    let batch2 = batches[1].as_ref().unwrap();
-
-    assert_eq!(batch1.len(), 2, "first batch should have 2 candles");
-    assert_eq!(batch2.len(), 1, "second batch should have 1 candle");
-
-    // Verify total candle count
-    let total: usize = batches.iter().map(|b| b.as_ref().unwrap().len()).sum();
-    assert_eq!(total, 3, "expected 3 candles in total");
-
-    // Spot-check ordering across batches
-    assert_eq!(
-        batch1[0].open_time,
-        DateTime::from_timestamp_millis(1672502400 * 1000).unwrap()
-    );
-    assert_eq!(
-        batch1[1].open_time,
-        DateTime::from_timestamp_millis(1672506000 * 1000).unwrap()
-    );
-    assert_eq!(
-        batch2[0].open_time,
-        DateTime::from_timestamp_millis(1672509600 * 1000).unwrap()
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Test 5: fetch_klines with an unsupported interval returns an error
+// Test 4: fetch_klines with an unsupported interval returns an error
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn test_fetch_klines_unsupported_interval() {

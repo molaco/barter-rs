@@ -2,20 +2,18 @@ use crate::{
     error::DataError,
     rest::{
         ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
-        retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
+    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
     HttpParser, public::PublicNoHeaders, rest::client::RestClient,
 };
-use chrono::{DateTime, Utc};
-use futures::stream::{self, Stream};
 use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, future::Future, num::NonZeroU32, pin::Pin, sync::Arc};
-use tracing::{Instrument, debug, info, warn};
+use tracing::{Instrument, debug, warn};
 
 /// Kraken kline/OHLC REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
@@ -149,7 +147,7 @@ impl KrakenRestClient {
     /// `last` pagination cursor from the Kraken response.
     ///
     /// This internal method provides access to the raw cursor for use in
-    /// [`stream_klines`](Self::stream_klines) pagination.
+    /// pagination.
     async fn fetch_raw(
         &self,
         market: &str,
@@ -216,7 +214,7 @@ impl KrakenRestClient {
     /// the `last` pagination cursor from the Kraken response.
     ///
     /// This internal method provides access to the raw cursor for use in
-    /// [`stream_trades`](TradeFetcher::stream_trades) pagination.
+    /// pagination.
     async fn fetch_trades_raw(
         &self,
         market: &str,
@@ -278,17 +276,6 @@ impl KrakenRestClient {
     }
 }
 
-/// Internal pagination state used by [`KlineFetcher::stream_klines`] to
-/// track the cursor position when fetching consecutive batches.
-struct PaginationState {
-    client: KrakenRestClient,
-    market: String,
-    interval: Interval,
-    /// Cursor-based pagination: the `last` value from the previous response.
-    since: Option<i64>,
-    done: bool,
-}
-
 impl KlineFetcher for KrakenRestClient {
     fn supported_intervals() -> &'static [Interval] {
         &[
@@ -333,98 +320,6 @@ impl KlineFetcher for KrakenRestClient {
         }
         .instrument(span)
     }
-
-    /// Stream paginated batches of OHLC data using cursor-based pagination.
-    ///
-    /// Uses [`futures::stream::unfold`] to repeatedly call the internal
-    /// [`fetch_raw`](Self::fetch_raw) method, advancing the `since` cursor
-    /// to the `last` value from each response. The stream terminates when an
-    /// empty batch is returned, when the `last` cursor does not advance, or
-    /// on the first error (which is yielded before stopping).
-    ///
-    /// Kraken returns data oldest-first, so no reversal is needed.
-    fn stream_klines(
-        &self,
-        request: KlineRequest,
-    ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send {
-        let state = PaginationState {
-            client: self.clone(),
-            market: request.market,
-            interval: request.interval,
-            since: request.start.map(|dt| dt.timestamp()),
-            done: false,
-        };
-
-        stream::unfold(state, |mut state| async move {
-            if state.done {
-                return None;
-            }
-
-            info!(
-                market = %state.market,
-                interval = %state.interval,
-                since = ?state.since,
-                "starting Kraken OHLC pagination"
-            );
-
-            match state
-                .client
-                .fetch_raw(&state.market, state.interval, state.since)
-                .await
-            {
-                Err(err) => {
-                    state.done = true;
-                    Some((Err(err), state))
-                }
-                Ok((batch, _last)) if batch.is_empty() => {
-                    debug!("Kraken OHLC pagination complete (empty batch)");
-                    None
-                }
-                Ok((batch, last)) => {
-                    // Update the cursor to the `last` value from the response
-                    // for the next pagination request.
-                    match last {
-                        Some(new_since) if state.since == Some(new_since) => {
-                            // Cursor did not advance; pagination is complete
-                            debug!("Kraken OHLC pagination complete (cursor unchanged)");
-                            state.done = true;
-                        }
-                        Some(new_since) => {
-                            state.since = Some(new_since);
-                        }
-                        None => {
-                            // No `last` cursor in response; cannot paginate further
-                            debug!("Kraken OHLC pagination complete (no cursor)");
-                            state.done = true;
-                        }
-                    }
-
-                    debug!(
-                        batch_size = batch.len(),
-                        since = ?state.since,
-                        "advancing Kraken OHLC pagination"
-                    );
-
-                    Some((Ok(batch), state))
-                }
-            }
-        })
-    }
-}
-
-/// Internal pagination state used by [`TradeFetcher::stream_trades`] to
-/// track the nonce-based cursor when fetching consecutive batches of trades.
-///
-/// Kraken uses forward pagination: the `since` parameter is the `last`
-/// nonce string from the previous response.
-struct TradePaginationState {
-    client: KrakenRestClient,
-    market: String,
-    /// Nonce-based cursor: the `last` value from the previous response.
-    since: Option<String>,
-    end: Option<DateTime<Utc>>,
-    limit: Option<u32>,
-    done: bool,
 }
 
 impl TradeFetcher for KrakenRestClient {
@@ -486,126 +381,5 @@ impl TradeFetcher for KrakenRestClient {
             Ok(filtered)
         }
         .instrument(span))
-    }
-
-    /// Stream paginated batches of trades using nonce-based forward pagination.
-    ///
-    /// Uses [`futures::stream::unfold`] to repeatedly call the internal
-    /// [`fetch_trades_raw`](Self::fetch_trades_raw) method, advancing the
-    /// `since` cursor to the `last` nonce from each response. The stream
-    /// terminates when an empty batch is returned, when the cursor does not
-    /// advance, when there is no cursor, or on the first error (which is
-    /// yielded before stopping).
-    ///
-    /// Kraken returns data oldest-first, so no reversal is needed. Each batch
-    /// is filtered to before the `end` time if specified.
-    fn stream_trades(
-        &self,
-        request: TradeRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        Box::pin({let since = request.start.map(|dt| {
-            dt.timestamp_nanos_opt()
-                .ok_or_else(|| {
-                    DataError::DataParse(format!("timestamp out of nanosecond range: {}", dt))
-                })
-                .map(|n| n.to_string())
-        });
-
-        // If the nanosecond conversion failed, start with done=true and
-        // yield the error on the first iteration.
-        let (since, init_error) = match since {
-            Some(Err(err)) => (None, Some(err)),
-            Some(Ok(val)) => (Some(val), None),
-            None => (None, None),
-        };
-
-        let state = TradePaginationState {
-            client: self.clone(),
-            market: request.market,
-            since,
-            end: request.end,
-            limit: request.limit,
-            done: init_error.is_some(),
-        };
-
-        stream::unfold((state, init_error), |(mut state, init_error)| async move {
-            // Yield initialization error if present
-            if let Some(err) = init_error {
-                return Some((Err(err), (state, None)));
-            }
-            if state.done {
-                return None;
-            }
-
-            info!(
-                market = %state.market,
-                since = ?state.since,
-                "starting Kraken trades pagination"
-            );
-
-            match state
-                .client
-                .fetch_trades_raw(&state.market, state.since.clone(), state.limit)
-                .await
-            {
-                Err(err) => {
-                    state.done = true;
-                    Some((Err(err), (state, None)))
-                }
-                Ok((batch, _last)) if batch.is_empty() => {
-                    debug!("Kraken trades pagination complete (empty batch)");
-                    None
-                }
-                Ok((batch, last)) => {
-                    // Update the cursor to the `last` nonce from the response
-                    // for the next pagination request.
-                    match last {
-                        Some(ref new_since) if state.since.as_ref() == Some(new_since) => {
-                            // Cursor did not advance; pagination is complete
-                            debug!("Kraken trades pagination complete (cursor unchanged)");
-                            state.done = true;
-                        }
-                        Some(new_since) => {
-                            state.since = Some(new_since);
-                        }
-                        None => {
-                            // No `last` cursor in response; cannot paginate further
-                            debug!("Kraken trades pagination complete (no cursor)");
-                            state.done = true;
-                        }
-                    }
-
-                    // Filter batch to before `end` if specified
-                    let filtered: Vec<RestTrade> = if let Some(end) = state.end {
-                        let mut past_end = false;
-                        let result: Vec<RestTrade> = batch
-                            .into_iter()
-                            .filter(|t| {
-                                if t.time > end {
-                                    past_end = true;
-                                    false
-                                } else {
-                                    true
-                                }
-                            })
-                            .collect();
-                        if past_end {
-                            state.done = true;
-                        }
-                        result
-                    } else {
-                        batch
-                    };
-
-                    debug!(
-                        batch_size = filtered.len(),
-                        since = ?state.since,
-                        "advancing Kraken trades pagination"
-                    );
-
-                    Some((Ok(filtered), (state, None)))
-                }
-            }
-        })})
     }
 }

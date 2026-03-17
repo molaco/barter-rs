@@ -11,7 +11,6 @@ use barter_data::{
 };
 use barter_integration::protocol::http::HttpParser;
 use chrono::DateTime;
-use futures::StreamExt;
 use reqwest::StatusCode;
 use serde_json::json;
 use wiremock::{
@@ -196,116 +195,6 @@ async fn test_fetch_klines_api_error() {
     assert!(
         err_msg.contains("Invalid symbol"),
         "error should contain Binance error message, got: {err_msg}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Test 4: stream_klines paginates through multiple batches
-// ---------------------------------------------------------------------------
-#[tokio::test]
-async fn test_stream_klines_pagination() {
-    let (mock_server, client) = setup().await;
-
-    // First batch (startTime = 1609459200000): return 2 klines
-    // close_time of last kline = 1609631999999, so next cursor = 1609632000000
-    Mock::given(method("GET"))
-        .and(path("/api/v3/klines"))
-        .and(query_param("startTime", "1609459200000"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            [
-                1609459200000_i64,
-                "29000.00",
-                "29500.00",
-                "28800.00",
-                "29200.00",
-                "1000.00",
-                1609545599999_i64,
-                "29000000.00",
-                5000,
-                "500.00",
-                "14500000.00",
-                "0"
-            ],
-            [
-                1609545600000_i64,
-                "29200.00",
-                "30000.00",
-                "29100.00",
-                "29800.00",
-                "1200.00",
-                1609631999999_i64,
-                "35000000.00",
-                6000,
-                "600.00",
-                "17400000.00",
-                "0"
-            ]
-        ])))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Second batch (startTime = 1609632000000): return 1 kline
-    // close_time of last kline = 1609718399999, so next cursor = 1609718400000
-    Mock::given(method("GET"))
-        .and(path("/api/v3/klines"))
-        .and(query_param("startTime", "1609632000000"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([[
-            1609632000000_i64,
-            "29800.00",
-            "30500.00",
-            "29600.00",
-            "30100.00",
-            "800.00",
-            1609718399999_i64,
-            "24000000.00",
-            4000,
-            "400.00",
-            "12000000.00",
-            "0"
-        ]])))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // Third batch (startTime = 1609718400000): return empty -> pagination ends
-    Mock::given(method("GET"))
-        .and(path("/api/v3/klines"))
-        .and(query_param("startTime", "1609718400000"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let request = KlineRequest {
-        market: "BTCUSDT".to_string(),
-        interval: Interval::H1,
-        start: Some(DateTime::from_timestamp_millis(1609459200000).unwrap()),
-        end: None,
-        limit: None,
-    };
-
-    let batches: Vec<_> = client.stream_klines(request).collect().await;
-
-    assert_eq!(batches.len(), 2, "expected 2 non-empty batches");
-    let batch1 = batches[0].as_ref().unwrap();
-    let batch2 = batches[1].as_ref().unwrap();
-
-    assert_eq!(batch1.len(), 2, "first batch should have 2 candles");
-    assert_eq!(batch2.len(), 1, "second batch should have 1 candle");
-
-    // Verify total candle count
-    let total: usize = batches.iter().map(|b| b.as_ref().unwrap().len()).sum();
-    assert_eq!(total, 3, "expected 3 candles in total");
-
-    // Spot-check ordering
-    assert_eq!(
-        batch1[0].open_time,
-        DateTime::from_timestamp_millis(1609459200000).unwrap()
-    );
-    assert_eq!(
-        batch2[0].open_time,
-        DateTime::from_timestamp_millis(1609632000000).unwrap()
     );
 }
 

@@ -3,7 +3,7 @@ pub mod trades;
 
 use crate::{
     bulk::{
-        BulkConfig, BulkKlineFetcher, BulkKlineRequest, BulkTradeFetcher, BulkTradeRequest,
+        BulkConfig, BulkDayKlineFetcher, BulkDayTradeFetcher, BulkKlineRequest, BulkTradeRequest,
         checksum::{parse_binance_checksum, should_skip, verify_sha256, write_verified_marker},
         date_range,
     },
@@ -12,12 +12,12 @@ use crate::{
         binance_interval, futures::BinanceServerFuturesUsd, spot::BinanceServerSpot,
     },
     retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
-    subscription::candle::Candle,
+    subscription::candle::{Candle, Interval},
     trade::RestTrade,
 };
 use chrono::NaiveDate;
 use futures::{Stream, StreamExt, stream};
-use std::{io::Cursor, marker::PhantomData, path::PathBuf, pin::Pin};
+use std::{future::Future, io::Cursor, marker::PhantomData, path::PathBuf, pin::Pin};
 
 /// Trait for Binance bulk archive server variants.
 ///
@@ -398,11 +398,38 @@ async fn download_and_verify(
 }
 
 // ---------------------------------------------------------------------------
-// BulkTradeFetcher / BulkKlineFetcher implementations
+// BulkDayTradeFetcher / BulkDayKlineFetcher trait implementations
 // ---------------------------------------------------------------------------
 
-impl<Server: BulkArchiveServer> BulkTradeFetcher for BinanceBulkClient<Server> {
-    fn stream_bulk_trades(
+impl<Server: BulkArchiveServer> BulkDayTradeFetcher for BinanceBulkClient<Server> {
+    fn fetch_day_trades<'a>(
+        &'a self,
+        market: &'a str,
+        date: NaiveDate,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
+        Box::pin(download_and_parse_trades::<Server>(&self.client, &self.config, &self.retry, market, date))
+    }
+}
+
+impl<Server: BulkArchiveServer> BulkDayKlineFetcher for BinanceBulkClient<Server> {
+    fn fetch_day_klines<'a>(
+        &'a self,
+        market: &'a str,
+        interval: Interval,
+        date: NaiveDate,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<Candle>>, DataError>> + Send + 'a>> {
+        let bi = binance_interval(interval);
+        Box::pin(download_and_parse_klines::<Server>(&self.client, &self.config, &self.retry, market, bi, date))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Standalone stream methods (kept temporarily until stream composition moves
+// to the collector crate)
+// ---------------------------------------------------------------------------
+
+impl<Server: BulkArchiveServer> BinanceBulkClient<Server> {
+    pub fn stream_bulk_trades(
         &self,
         request: BulkTradeRequest,
     ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
@@ -433,13 +460,11 @@ impl<Server: BulkArchiveServer> BulkTradeFetcher for BinanceBulkClient<Server> {
                 }
             }))
     }
-}
 
-impl<Server: BulkArchiveServer> BulkKlineFetcher for BinanceBulkClient<Server> {
-    fn stream_bulk_klines(
+    pub fn stream_bulk_klines(
         &self,
         request: BulkKlineRequest,
-    ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send {
+    ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send + '_ {
         let dates = date_range(request.start, request.end);
         let client = self.client.clone();
         let config = self.config.clone();

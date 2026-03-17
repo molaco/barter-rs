@@ -2,20 +2,18 @@ use crate::{
     error::DataError,
     rest::{
         ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
-        retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     },
+    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
     HttpParser, public::PublicNoHeaders, rest::client::RestClient,
 };
-use chrono::{DateTime, TimeDelta, Utc};
-use futures::stream::{self, Stream, StreamExt};
 use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, future::Future, num::NonZeroU32, pin::Pin, sync::Arc};
-use tracing::{Instrument, debug, info, warn};
+use tracing::{Instrument, debug, warn};
 
 /// Coinbase kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
@@ -132,18 +130,6 @@ impl CoinbaseRestClient {
     }
 }
 
-/// Internal pagination state used by [`KlineFetcher::stream_klines`] to
-/// track the cursor position when fetching consecutive batches.
-struct PaginationState {
-    client: CoinbaseRestClient,
-    market: String,
-    interval: Interval,
-    cursor: DateTime<Utc>,
-    end: Option<DateTime<Utc>>,
-    limit: Option<u32>,
-    done: bool,
-}
-
 impl KlineFetcher for CoinbaseRestClient {
     fn supported_intervals() -> &'static [Interval] {
         &[
@@ -234,85 +220,6 @@ impl KlineFetcher for CoinbaseRestClient {
             Ok(candles)
         }
         .instrument(span)
-    }
-
-    /// Stream paginated batches of klines using time-cursor based pagination.
-    ///
-    /// Uses [`futures::stream::unfold`] to repeatedly call [`fetch_klines`](Self::fetch_klines),
-    /// advancing the `start` cursor past the last candle's `close_time` in each batch.
-    /// The stream terminates when an empty batch is returned, when the cursor passes the
-    /// requested end time, or on the first error (which is yielded before stopping).
-    ///
-    /// Coinbase uses seconds-based timestamps, so the cursor is advanced by
-    /// one second past the last candle's close time.
-    fn stream_klines(
-        &self,
-        request: KlineRequest,
-    ) -> impl Stream<Item = Result<Vec<Candle>, DataError>> + Send {
-        let state = PaginationState {
-            client: self.clone(),
-            market: request.market,
-            interval: request.interval,
-            cursor: request.start.unwrap_or(DateTime::UNIX_EPOCH),
-            end: request.end,
-            limit: request.limit,
-            done: false,
-        };
-
-        stream::unfold(state, |mut state| async move {
-            if state.done {
-                return None;
-            }
-
-            info!(
-                market = %state.market,
-                interval = %state.interval,
-                cursor = %state.cursor,
-                "starting klines pagination"
-            );
-
-            let request = KlineRequest {
-                market: state.market.clone(),
-                interval: state.interval,
-                start: Some(state.cursor),
-                end: state.end,
-                limit: state.limit,
-            };
-
-            match state.client.fetch_klines(request).await {
-                Err(err) => {
-                    state.done = true;
-                    Some((Err(err), state))
-                }
-                Ok(batch) if batch.is_empty() => {
-                    debug!("klines pagination complete");
-                    None
-                }
-                Ok(batch) => {
-                    // Advance cursor past the close_time of the last candle
-                    // Coinbase uses seconds, so advance by 1 second
-                    if let Some(last) = batch.last() {
-                        state.cursor = last.close_time + TimeDelta::seconds(1);
-
-                        // If cursor has passed the requested end, mark done
-                        if let Some(end) = state.end
-                            && state.cursor >= end
-                        {
-                            state.done = true;
-                            debug!("klines pagination complete");
-                        }
-                    }
-
-                    debug!(
-                        batch_size = batch.len(),
-                        cursor = %state.cursor,
-                        "advancing klines pagination"
-                    );
-
-                    Some((Ok(batch), state))
-                }
-            }
-        })
     }
 }
 
@@ -408,102 +315,5 @@ impl TradeFetcher for CoinbaseRestClient {
             Ok(trades)
         }
         .instrument(span))
-    }
-
-    /// Stream paginated batches of trades in oldest-first order.
-    ///
-    /// Coinbase's REST API returns the **newest** trades in a `[start, end]`
-    /// window, so this method paginates **backward** from `end` toward
-    /// `start`. Each batch moves the `end` cursor earlier using the oldest
-    /// trade's timestamp minus one millisecond. Once all batches have been
-    /// collected they are reversed so the final stream yields trades in
-    /// chronological (oldest-first) order.
-    ///
-    /// The stream terminates when an empty batch is returned, when the cursor
-    /// passes the requested start time, or on the first error (which is
-    /// yielded before stopping).
-    fn stream_trades(
-        &self,
-        request: TradeRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let client = self.clone();
-        let market = request.market;
-        let start = request.start;
-        let end = request.end;
-        let _ = request.limit;
-
-        // Collect all batches by paginating backward, then yield them in
-        // chronological order via `stream::iter`.
-        let future = async move {
-            let mut cursor = end.unwrap_or_else(Utc::now);
-            let mut all_batches: Vec<Result<Vec<RestTrade>, DataError>> = Vec::new();
-
-            loop {
-                // If cursor is at or before the start bound we are done.
-                if let Some(s) = start {
-                    if cursor <= s {
-                        debug!("trades backward pagination complete (cursor <= start)");
-                        break;
-                    }
-                }
-
-                debug!(
-                    market = %market,
-                    cursor = %cursor,
-                    "fetching trades batch (backward pagination)"
-                );
-
-                let req = TradeRequest {
-                    market: market.clone(),
-                    start,
-                    end: Some(cursor),
-                    limit: None,
-                    initial_cursor: None,
-                };
-
-                match client.fetch_trades(req).await {
-                    Err(err) => {
-                        all_batches.push(Err(err));
-                        break;
-                    }
-                    Ok(batch) if batch.is_empty() => {
-                        debug!("trades backward pagination complete (empty batch)");
-                        break;
-                    }
-                    Ok(batch) => {
-                        // `batch` is already oldest-first (fetch_trades reverses).
-                        // Move cursor to just before the oldest trade in this batch.
-                        if let Some(first) = batch.first() {
-                            let new_cursor = first.time - TimeDelta::milliseconds(1);
-
-                            debug!(
-                                batch_size = batch.len(),
-                                cursor = %new_cursor,
-                                "advancing trades backward pagination"
-                            );
-
-                            // If cursor did not move we would loop forever.
-                            if new_cursor >= cursor {
-                                all_batches.push(Ok(batch));
-                                debug!(
-                                    "trades backward pagination complete (cursor stalled)"
-                                );
-                                break;
-                            }
-                            cursor = new_cursor;
-                        }
-
-                        all_batches.push(Ok(batch));
-                    }
-                }
-            }
-
-            // Batches were collected newest-window-first; reverse so we yield
-            // oldest-first overall.
-            all_batches.reverse();
-            stream::iter(all_batches)
-        };
-
-        Box::pin(stream::once(future).flatten())
     }
 }
