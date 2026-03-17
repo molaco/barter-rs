@@ -69,7 +69,7 @@ pub enum DataError {
     /// `status` is `Some` when an HTTP response was received; `None` for
     /// connection-level failures where no response arrived.
     /// `url` captures which endpoint failed.
-    #[error("HTTP error (status={status:?}) for {url}: {message}")]
+    #[error("HTTP error (status={}) for {url}: {message}", status.map_or("none".to_string(), |s| s.to_string()))]
     Http {
         status: Option<u16>,
         url: String,
@@ -153,7 +153,21 @@ impl From<SocketError> for DataError {
                 DataError::DataParse(error.to_string())
             }
             SocketError::Serialise(e) => DataError::DataParse(e.to_string()),
-            other => DataError::Socket(other.to_string()),
+            // Genuine socket/WS/transport errors — keep as Socket
+            SocketError::Sink => DataError::Socket("Sink error".into()),
+            SocketError::QueryParams(e) => DataError::Socket(format!("query params error: {e}")),
+            SocketError::UrlEncoded(e) => DataError::Socket(format!("url encoding error: {e}")),
+            SocketError::UrlParse(e) => DataError::Socket(format!("url parse error: {e}")),
+            SocketError::Subscribe(e) => DataError::Socket(format!("subscribe error: {e}")),
+            SocketError::Terminated(e) => DataError::Socket(format!("terminated: {e}")),
+            SocketError::Unsupported { entity, item } => {
+                DataError::Socket(format!("{entity} does not support: {item}"))
+            }
+            SocketError::WebSocket(e) => DataError::Socket(format!("WebSocket error: {e}")),
+            SocketError::Unidentifiable(id) => {
+                DataError::Socket(format!("unidentifiable message: {id}"))
+            }
+            SocketError::Exchange(e) => DataError::Socket(format!("exchange error: {e}")),
         }
     }
 }

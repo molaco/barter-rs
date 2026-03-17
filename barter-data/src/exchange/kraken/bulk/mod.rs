@@ -29,7 +29,7 @@ impl KrakenArchiveParser {
         })?;
 
         let mut archive = zip::ZipArchive::new(file).map_err(|e| {
-            DataError::Io(format!(
+            DataError::BulkArchive(format!(
                 "failed to read ZIP archive '{}': {e}",
                 zip_path.display()
             ))
