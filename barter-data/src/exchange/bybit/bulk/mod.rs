@@ -151,12 +151,19 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
         // Collect all decompressed lines into a buffer for CSV parsing.
         // We accumulate into a Vec<u8> so that the existing CSV parser
         // (which expects &[u8]) can be reused unchanged.
+        const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
         let mut csv_buf = Vec::new();
         while let Some(line) = lines.next_line().await.map_err(|e: std::io::Error| {
             DataError::BulkArchive(format!("Bybit bulk streaming decompress failed: {e}"))
         })? {
             csv_buf.extend_from_slice(line.as_bytes());
             csv_buf.push(b'\n');
+            if csv_buf.len() as u64 > MAX_DECOMPRESSED_SIZE {
+                return Err(DataError::BulkArchive(format!(
+                    "Bybit decompressed data too large: >{MAX_DECOMPRESSED_SIZE} bytes",
+                )));
+            }
         }
 
         if csv_buf.is_empty() {

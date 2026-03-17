@@ -5,6 +5,9 @@ use futures::Stream;
 use std::path::Path;
 use trades::parse_trades;
 
+/// Maximum allowed uncompressed archive entry size (2 GiB).
+const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Standalone archive parser for Kraken bulk trade data.
 ///
 /// Kraken publishes historical trade archives as ZIP files that must be
@@ -52,12 +55,19 @@ impl KrakenArchiveParser {
                 ))
             })?;
 
-        let mut csv_file = archive
+        let csv_file = archive
             .by_index(csv_index)
             .map_err(|e| DataError::BulkArchive(format!("failed to read ZIP entry: {e}")))?;
 
-        let mut csv_data = Vec::new();
-        std::io::Read::read_to_end(&mut csv_file, &mut csv_data)
+        if csv_file.size() > MAX_DECOMPRESSED_SIZE {
+            return Err(DataError::BulkArchive(format!(
+                "Kraken ZIP entry too large: {} bytes (max {MAX_DECOMPRESSED_SIZE} bytes)",
+                csv_file.size(),
+            )));
+        }
+
+        let mut csv_data = Vec::with_capacity(csv_file.size() as usize);
+        std::io::Read::read_to_end(&mut { csv_file }, &mut csv_data)
             .map_err(|e| DataError::BulkArchive(format!("failed to read CSV data from ZIP: {e}")))?;
 
         parse_trades(&csv_data)

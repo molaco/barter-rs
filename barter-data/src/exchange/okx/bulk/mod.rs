@@ -8,6 +8,9 @@ use crate::{
 use chrono::NaiveDate;
 use std::{future::Future, io::Read, pin::Pin};
 
+/// Maximum allowed uncompressed archive entry size (2 GiB).
+const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Bulk archive download client for OKX.
 ///
 /// Downloads daily ZIP-compressed CSV trade archives from
@@ -85,10 +88,19 @@ impl OkxBulkClient {
             return Ok(Some(Vec::new()));
         }
 
-        let mut csv_data = Vec::new();
-        archive
+        let file = archive
             .by_index(0)
-            .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP read failed: {e}")))?
+            .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP read failed: {e}")))?;
+
+        if file.size() > MAX_DECOMPRESSED_SIZE {
+            return Err(DataError::BulkArchive(format!(
+                "OKX ZIP entry too large: {} bytes (max {MAX_DECOMPRESSED_SIZE} bytes)",
+                file.size(),
+            )));
+        }
+
+        let mut csv_data = Vec::with_capacity(file.size() as usize);
+        { file }
             .read_to_end(&mut csv_data)
             .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP extract failed: {e}")))?;
 
@@ -156,10 +168,19 @@ pub async fn download_monthly_trades(
         return Ok(Some(Vec::new()));
     }
 
-    let mut csv_data = Vec::new();
-    archive
+    let file = archive
         .by_index(0)
-        .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP read failed: {e}")))?
+        .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP read failed: {e}")))?;
+
+    if file.size() > MAX_DECOMPRESSED_SIZE {
+        return Err(DataError::BulkArchive(format!(
+            "OKX monthly ZIP entry too large: {} bytes (max {MAX_DECOMPRESSED_SIZE} bytes)",
+            file.size(),
+        )));
+    }
+
+    let mut csv_data = Vec::with_capacity(file.size() as usize);
+    { file }
         .read_to_end(&mut csv_data)
         .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP extract failed: {e}")))?;
 

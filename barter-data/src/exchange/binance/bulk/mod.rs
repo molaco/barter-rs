@@ -252,6 +252,9 @@ async fn download_checksum(
     }
 }
 
+/// Maximum allowed uncompressed archive entry size (2 GiB).
+const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Extract the first file from a ZIP archive into raw bytes.
 fn extract_zip_csv(zip_bytes: &[u8]) -> Result<Vec<u8>, DataError> {
     let cursor = Cursor::new(zip_bytes);
@@ -264,12 +267,19 @@ fn extract_zip_csv(zip_bytes: &[u8]) -> Result<Vec<u8>, DataError> {
         ));
     }
 
-    let mut file = archive
+    let file = archive
         .by_index(0)
         .map_err(|e| DataError::BulkArchive(format!("failed to read first ZIP entry: {e}")))?;
 
-    let mut buf = Vec::new();
-    std::io::Read::read_to_end(&mut file, &mut buf)
+    if file.size() > MAX_DECOMPRESSED_SIZE {
+        return Err(DataError::BulkArchive(format!(
+            "ZIP entry too large: {} bytes (max {MAX_DECOMPRESSED_SIZE} bytes)",
+            file.size(),
+        )));
+    }
+
+    let mut buf = Vec::with_capacity(file.size() as usize);
+    std::io::Read::read_to_end(&mut { file }, &mut buf)
         .map_err(|e| DataError::BulkArchive(format!("failed to decompress ZIP entry: {e}")))?;
 
     Ok(buf)

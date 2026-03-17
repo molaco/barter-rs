@@ -151,12 +151,21 @@ impl HyperliquidBulkClient {
 
                 // Decompress on the blocking thread pool to avoid stalling
                 // the async executor with synchronous LZ4 I/O.
+                const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
                 let decompressed = tokio::task::spawn_blocking(move || {
+                    use std::io::Read;
                     let mut decoder =
                         lz4_flex::frame::FrameDecoder::new(compressed.as_slice());
                     let mut buf = Vec::new();
-                    std::io::Read::read_to_end(&mut decoder, &mut buf)
+                    let read = Read::take(&mut decoder, MAX_DECOMPRESSED_SIZE + 1)
+                        .read_to_end(&mut buf)
                         .map_err(|e| DataError::BulkArchive(format!("LZ4 decompression failed: {e}")))?;
+                    if read as u64 > MAX_DECOMPRESSED_SIZE {
+                        return Err(DataError::BulkArchive(format!(
+                            "LZ4 decompressed data too large: >{MAX_DECOMPRESSED_SIZE} bytes",
+                        )));
+                    }
                     Ok::<_, DataError>(buf)
                 })
                 .await
