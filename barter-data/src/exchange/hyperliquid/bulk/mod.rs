@@ -4,7 +4,7 @@ pub mod trades;
 use crate::{
     bulk::{BulkConfig, BulkDayTradeFetcher},
     error::DataError,
-    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
+    retry::{RetryPolicy, is_retriable_data_error},
     trade::RestTrade,
 };
 use chrono::NaiveDate;
@@ -63,118 +63,163 @@ impl HyperliquidBulkClient {
     ///
     /// On retry after a partial download (>= 1 MB received), sends a
     /// `Range: bytes=N-` header to resume. S3 natively supports Range requests.
+    ///
+    /// Uses an owned `Vec<u8>` buffer across a manual retry loop — no
+    /// `Arc<Mutex<>>` needed since retries are sequential.
+    ///
     /// Returns `None` if 404.
     async fn download_and_decompress_hour(
         &self,
         date: NaiveDate,
         hour: u8,
     ) -> Result<Option<Vec<u8>>, DataError> {
+        use crate::retry::apply_backoff;
+        use futures::StreamExt;
+
         let date_str = date.format("%Y%m%d");
         let url = format!("{BASE_URL}/{date_str}/{hour}.lz4");
-        let credentials = self.credentials.clone();
+        let retry = RetryPolicy::default();
+        let mut partial = Vec::new();
+        let mut attempts = 0u32;
 
-        // Partial byte accumulator shared across retry attempts.
-        let partial = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let compressed = loop {
+            attempts += 1;
+            let existing_len = partial.len();
 
-        retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
-            let url = url.clone();
-            let client = self.client.clone();
-            let credentials = credentials.clone();
-            let partial = partial.clone();
-            async move {
-                let existing_len = partial.lock().unwrap().len();
+            let mut request = self.client.get(&url);
 
-                let mut request = client.get(&url);
-
-                // Add Range header for resume when enough data has been accumulated.
-                if existing_len >= Self::RANGE_RESUME_THRESHOLD {
-                    request = request.header("Range", format!("bytes={existing_len}-"));
-                    tracing::debug!(
-                        url = %url,
-                        resume_from = existing_len,
-                        "resuming S3 download with Range header"
-                    );
-                }
-
-                if let Some(ref creds) = credentials {
-                    let signed = s3_signer::sign_s3_get(&url, creds, S3_REGION);
-                    request = request
-                        .header("Authorization", &signed.authorization)
-                        .header("x-amz-date", &signed.x_amz_date)
-                        .header("x-amz-content-sha256", signed.x_amz_content_sha256)
-                        .header("x-amz-request-payer", "requester");
-                    if let Some(ref token) = signed.x_amz_security_token {
-                        request = request.header("x-amz-security-token", token);
-                    }
-                }
-
-                let response = request
-                    .send()
-                    .await
-                    .map_err(|e| DataError::Http { status: None, url: url.clone(), message: format!("HTTP request failed: {e}") })?;
-
-                let status = response.status();
-                if status == reqwest::StatusCode::NOT_FOUND {
-                    return Ok(None);
-                }
-
-                // 416 Range Not Satisfiable: restart from scratch.
-                if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
-                    tracing::debug!(url = %url, "got 416, restarting download from scratch");
-                    partial.lock().unwrap().clear();
-                    return Err(DataError::Http { status: Some(416), url: url.clone(), message: "Range Not Satisfiable".into() });
-                }
-
-                if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
-                    return Err(DataError::Http { status: Some(status.as_u16()), url: url.clone(), message: format!("HTTP {status}") });
-                }
-
-                // If server returned 200 instead of 206, discard partial and accept full body.
-                if status == reqwest::StatusCode::OK && existing_len > 0 {
-                    tracing::debug!(
-                        url = %url,
-                        "server returned 200 (no range support), restarting"
-                    );
-                    partial.lock().unwrap().clear();
-                }
-
-                // Stream the response body into the partial buffer.
-                use futures::StreamExt;
-                let mut byte_stream = response.bytes_stream();
-                while let Some(chunk_result) = byte_stream.next().await {
-                    let chunk = chunk_result
-                        .map_err(|e| DataError::Http { status: None, url: url.clone(), message: format!("body read failed: {e}") })?;
-                    partial.lock().unwrap().extend_from_slice(&chunk);
-                }
-
-                let compressed = std::mem::take(&mut *partial.lock().unwrap());
-
-                // Decompress on the blocking thread pool to avoid stalling
-                // the async executor with synchronous LZ4 I/O.
-                const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
-
-                let decompressed = tokio::task::spawn_blocking(move || {
-                    use std::io::Read;
-                    let mut decoder =
-                        lz4_flex::frame::FrameDecoder::new(compressed.as_slice());
-                    let mut buf = Vec::new();
-                    let read = Read::take(&mut decoder, MAX_DECOMPRESSED_SIZE + 1)
-                        .read_to_end(&mut buf)
-                        .map_err(|e| DataError::BulkArchive(format!("LZ4 decompression failed: {e}")))?;
-                    if read as u64 > MAX_DECOMPRESSED_SIZE {
-                        return Err(DataError::BulkArchive(format!(
-                            "LZ4 decompressed data too large: >{MAX_DECOMPRESSED_SIZE} bytes",
-                        )));
-                    }
-                    Ok::<_, DataError>(buf)
-                })
-                .await
-                .map_err(|e| DataError::BulkArchive(format!("LZ4 task panicked: {e}")))??;
-
-                Ok(Some(decompressed))
+            // Add Range header for resume when enough data has been accumulated.
+            if existing_len >= Self::RANGE_RESUME_THRESHOLD {
+                request = request.header("Range", format!("bytes={existing_len}-"));
+                tracing::debug!(
+                    url = %url,
+                    resume_from = existing_len,
+                    "resuming S3 download with Range header"
+                );
             }
+
+            // Sign each attempt (credentials may rotate).
+            if let Some(ref creds) = self.credentials {
+                let signed = s3_signer::sign_s3_get(&url, creds, S3_REGION);
+                request = request
+                    .header("Authorization", &signed.authorization)
+                    .header("x-amz-date", &signed.x_amz_date)
+                    .header("x-amz-content-sha256", signed.x_amz_content_sha256)
+                    .header("x-amz-request-payer", "requester");
+                if let Some(ref token) = signed.x_amz_security_token {
+                    request = request.header("x-amz-security-token", token);
+                }
+            }
+
+            let response = match request.send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    let err = DataError::Http {
+                        status: None,
+                        url: url.clone(),
+                        message: format!("HTTP request failed: {e}"),
+                    };
+                    if !is_retriable_data_error(&err) || attempts > retry.max_retries {
+                        return Err(err);
+                    }
+                    apply_backoff(&retry, attempts).await;
+                    continue;
+                }
+            };
+
+            let status = response.status();
+            if status == reqwest::StatusCode::NOT_FOUND {
+                return Ok(None);
+            }
+
+            // 416 Range Not Satisfiable: restart from scratch.
+            if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                tracing::debug!(url = %url, "got 416, restarting download from scratch");
+                partial.clear();
+                if attempts > retry.max_retries {
+                    return Err(DataError::Http {
+                        status: Some(416),
+                        url: url.clone(),
+                        message: "Range Not Satisfiable".into(),
+                    });
+                }
+                apply_backoff(&retry, attempts).await;
+                continue;
+            }
+
+            if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
+                let err = DataError::Http {
+                    status: Some(status.as_u16()),
+                    url: url.clone(),
+                    message: format!("HTTP {status}"),
+                };
+                if !is_retriable_data_error(&err) || attempts > retry.max_retries {
+                    return Err(err);
+                }
+                apply_backoff(&retry, attempts).await;
+                continue;
+            }
+
+            // If server returned 200 instead of 206, discard partial and accept full body.
+            if status == reqwest::StatusCode::OK && existing_len > 0 {
+                tracing::debug!(
+                    url = %url,
+                    "server returned 200 (no range support), restarting"
+                );
+                partial.clear();
+            }
+
+            // Stream the response body into the partial buffer.
+            let mut byte_stream = response.bytes_stream();
+            let mut stream_err = None;
+            while let Some(chunk_result) = byte_stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => partial.extend_from_slice(&chunk),
+                    Err(e) => {
+                        stream_err = Some(e);
+                        break;
+                    }
+                }
+            }
+
+            if let Some(e) = stream_err {
+                let err = DataError::Http {
+                    status: None,
+                    url: url.clone(),
+                    message: format!("body read failed: {e}"),
+                };
+                if !is_retriable_data_error(&err) || attempts > retry.max_retries {
+                    return Err(err);
+                }
+                apply_backoff(&retry, attempts).await;
+                continue;
+            }
+
+            break std::mem::take(&mut partial);
+        };
+
+        // Decompress on the blocking thread pool to avoid stalling
+        // the async executor with synchronous LZ4 I/O.
+        const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
+        let decompressed = tokio::task::spawn_blocking(move || {
+            use std::io::Read;
+            let mut decoder = lz4_flex::frame::FrameDecoder::new(compressed.as_slice());
+            let mut buf = Vec::new();
+            let read = Read::take(&mut decoder, MAX_DECOMPRESSED_SIZE + 1)
+                .read_to_end(&mut buf)
+                .map_err(|e| DataError::BulkArchive(format!("LZ4 decompression failed: {e}")))?;
+            if read as u64 > MAX_DECOMPRESSED_SIZE {
+                return Err(DataError::BulkArchive(format!(
+                    "LZ4 decompressed data too large: >{MAX_DECOMPRESSED_SIZE} bytes",
+                )));
+            }
+            Ok::<_, DataError>(buf)
         })
         .await
+        .map_err(|e| DataError::BulkArchive(format!("LZ4 task panicked: {e}")))??;
+
+        Ok(Some(decompressed))
     }
 
     /// Download and parse a single hour, filtering for one market.
