@@ -65,8 +65,8 @@ where
 pub fn is_retriable_data_error(error: &DataError) -> bool {
     match error {
         DataError::Http { status, message, .. } => match status {
-            Some(429) => true,   // Too Many Requests
-            Some(418) => true,   // Binance IP ban / rate limit
+            Some(429) => true, // Too Many Requests
+            Some(418) => true, // Binance uses 418 for IP auto-ban on rate limit violation
             Some(500) => true,   // Internal Server Error
             Some(502) => true,   // Bad Gateway
             Some(503) => true,   // Service Unavailable
