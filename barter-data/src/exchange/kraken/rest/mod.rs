@@ -47,7 +47,11 @@ impl HttpParser for KrakenHttpParser {
     type OutputError = DataError;
 
     fn parse_api_error(&self, _status: StatusCode, error: Self::ApiError) -> Self::OutputError {
-        DataError::Socket(format!("Kraken API error: {}", error.error.join("; ")))
+        DataError::ExchangeApi {
+            exchange: "kraken".into(),
+            code: String::new(),
+            message: error.error.join("; "),
+        }
     }
 }
 
@@ -188,7 +192,11 @@ impl KrakenRestClient {
         if !response.error.is_empty() {
             let msg = response.error.join("; ");
             warn!(errors = %msg, "Kraken API returned errors");
-            return Err(DataError::Socket(format!("Kraken API error: {}", msg)));
+            return Err(DataError::ExchangeApi {
+                exchange: "kraken".into(),
+                code: String::new(),
+                message: format!("Kraken API error: {}", msg),
+            });
         }
 
         let (raw_klines, last) = response.parse_klines()?;
@@ -197,7 +205,7 @@ impl KrakenRestClient {
             .into_iter()
             .map(Candle::try_from)
             .collect::<Result<Vec<_>, _>>()
-            .map_err(DataError::Socket)?;
+            .map_err(DataError::DataParse)?;
 
         debug!(count = candles.len(), ?last, "fetched Kraken OHLC batch");
 
@@ -249,7 +257,11 @@ impl KrakenRestClient {
         if !response.error.is_empty() {
             let msg = response.error.join("; ");
             warn!(errors = %msg, "Kraken API returned errors");
-            return Err(DataError::Socket(format!("Kraken API error: {}", msg)));
+            return Err(DataError::ExchangeApi {
+                exchange: "kraken".into(),
+                code: String::new(),
+                message: format!("Kraken API error: {}", msg),
+            });
         }
 
         let (raw_trades, last) = response.parse_trades()?;
@@ -258,7 +270,7 @@ impl KrakenRestClient {
             .into_iter()
             .map(RestTrade::try_from)
             .collect::<Result<Vec<_>, _>>()
-            .map_err(DataError::Socket)?;
+            .map_err(DataError::DataParse)?;
 
         debug!(count = trades.len(), ?last, "fetched Kraken trades batch");
 
@@ -442,7 +454,7 @@ impl TradeFetcher for KrakenRestClient {
             let since = match request.start {
                 Some(dt) => {
                     let nanos = dt.timestamp_nanos_opt().ok_or_else(|| {
-                        DataError::Socket(format!("timestamp out of nanosecond range: {}", dt))
+                        DataError::DataParse(format!("timestamp out of nanosecond range: {}", dt))
                     })?;
                     Some(nanos.to_string())
                 }
@@ -494,7 +506,7 @@ impl TradeFetcher for KrakenRestClient {
         Box::pin({let since = request.start.map(|dt| {
             dt.timestamp_nanos_opt()
                 .ok_or_else(|| {
-                    DataError::Socket(format!("timestamp out of nanosecond range: {}", dt))
+                    DataError::DataParse(format!("timestamp out of nanosecond range: {}", dt))
                 })
                 .map(|n| n.to_string())
         });

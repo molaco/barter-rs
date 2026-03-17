@@ -178,7 +178,11 @@ async fn download_bytes_resumable(
             let response = request
                 .send()
                 .await
-                .map_err(|e| DataError::Socket(format!("HTTP request failed for {url}: {e}")))?;
+                .map_err(|e| DataError::Http {
+                    status: None,
+                    url: url.clone(),
+                    message: format!("request failed: {e}"),
+                })?;
 
             let status = response.status();
             if status == reqwest::StatusCode::NOT_FOUND {
@@ -189,11 +193,19 @@ async fn download_bytes_resumable(
             if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
                 tracing::debug!(url = %url, "got 416, restarting download from scratch");
                 partial.lock().unwrap().clear();
-                return Err(DataError::Socket(format!("HTTP 416 for {url}, restarting")));
+                return Err(DataError::Http {
+                    status: Some(416),
+                    url: url.clone(),
+                    message: "Range Not Satisfiable".into(),
+                });
             }
 
             if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
-                return Err(DataError::Socket(format!("HTTP {status} for {url}")));
+                return Err(DataError::Http {
+                    status: Some(status.as_u16()),
+                    url: url.clone(),
+                    message: format!("HTTP {status}"),
+                });
             }
 
             if status == reqwest::StatusCode::OK && existing_len > 0 {
@@ -208,8 +220,10 @@ async fn download_bytes_resumable(
             // Stream the response body, accumulating into partial buffer.
             let mut byte_stream = response.bytes_stream();
             while let Some(chunk_result) = byte_stream.next().await {
-                let chunk = chunk_result.map_err(|e| {
-                    DataError::Socket(format!("failed to read response body for {url}: {e}"))
+                let chunk = chunk_result.map_err(|e| DataError::Http {
+                    status: None,
+                    url: url.clone(),
+                    message: format!("body read failed: {e}"),
                 })?;
                 partial.lock().unwrap().extend_from_slice(&chunk);
             }
@@ -235,7 +249,7 @@ async fn download_checksum(
         None => Ok(None),
         Some(data) => {
             let content = String::from_utf8(data)
-                .map_err(|e| DataError::Socket(format!("checksum file is not UTF-8: {e}")))?;
+                .map_err(|e| DataError::DataParse(format!("checksum file is not UTF-8: {e}")))?;
             let checksum = parse_binance_checksum(&content)?;
             Ok(Some(checksum))
         }
@@ -253,21 +267,21 @@ fn marker_path_for_url(cache_dir: &std::path::Path, url: &str) -> PathBuf {
 fn extract_zip_csv(zip_bytes: &[u8]) -> Result<Vec<u8>, DataError> {
     let cursor = Cursor::new(zip_bytes);
     let mut archive = zip::ZipArchive::new(cursor)
-        .map_err(|e| DataError::Socket(format!("failed to open ZIP archive: {e}")))?;
+        .map_err(|e| DataError::BulkArchive(format!("failed to open ZIP archive: {e}")))?;
 
     if archive.is_empty() {
-        return Err(DataError::Socket(
+        return Err(DataError::BulkArchive(
             "ZIP archive contains no files".to_string(),
         ));
     }
 
     let mut file = archive
         .by_index(0)
-        .map_err(|e| DataError::Socket(format!("failed to read first ZIP entry: {e}")))?;
+        .map_err(|e| DataError::BulkArchive(format!("failed to read first ZIP entry: {e}")))?;
 
     let mut buf = Vec::new();
     std::io::Read::read_to_end(&mut file, &mut buf)
-        .map_err(|e| DataError::Socket(format!("failed to decompress ZIP entry: {e}")))?;
+        .map_err(|e| DataError::BulkArchive(format!("failed to decompress ZIP entry: {e}")))?;
 
     Ok(buf)
 }
@@ -492,10 +506,18 @@ pub async fn list_available_dates(
             .get(&url)
             .send()
             .await
-            .map_err(|e| DataError::Socket(format!("S3 listing request failed: {e}")))?
+            .map_err(|e| DataError::Http {
+                status: None,
+                url: url.clone(),
+                message: format!("S3 listing failed: {e}"),
+            })?
             .text()
             .await
-            .map_err(|e| DataError::Socket(format!("S3 listing read body failed: {e}")))?;
+            .map_err(|e| DataError::Http {
+                status: None,
+                url: url.clone(),
+                message: format!("S3 listing body read failed: {e}"),
+            })?;
 
         let (page_dates, is_truncated, next_marker) = parse_s3_listing_xml(&body, symbol)?;
         dates.extend(page_dates);
@@ -548,7 +570,7 @@ fn parse_s3_listing_xml(
             Ok(Event::Text(ref e)) => {
                 let text = e
                     .unescape()
-                    .map_err(|err| DataError::Socket(format!("S3 XML unescape error: {err}")))?;
+                    .map_err(|err| DataError::DataParse(format!("S3 XML unescape error: {err}")))?;
                 match current_element.as_str() {
                     "Key" => {
                         if let Some(date) = extract_date_from_key(&text, &suffix_pattern) {
@@ -572,7 +594,7 @@ fn parse_s3_listing_xml(
             }
             Ok(Event::Eof) => break,
             Err(e) => {
-                return Err(DataError::Socket(format!("S3 XML parse error: {e}")));
+                return Err(DataError::DataParse(format!("S3 XML parse error: {e}")));
             }
             _ => {}
         }

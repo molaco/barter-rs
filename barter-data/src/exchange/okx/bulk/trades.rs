@@ -21,28 +21,28 @@ impl TryFrom<OkxBulkTrade> for RestTrade {
 
     fn try_from(trade: OkxBulkTrade) -> Result<Self, Self::Error> {
         let millis = trade.created_time.parse::<i64>().map_err(|e| {
-            DataError::Socket(format!(
+            DataError::DataParse(format!(
                 "invalid OKX bulk timestamp '{}': {e}",
                 trade.created_time
             ))
         })?;
 
         let time = DateTime::from_timestamp_millis(millis).ok_or_else(|| {
-            DataError::Socket(format!("invalid OKX bulk timestamp millis: {millis}"))
+            DataError::DataParse(format!("invalid OKX bulk timestamp millis: {millis}"))
         })?;
 
         let side = match trade.side.to_lowercase().as_str() {
             "buy" => Side::Buy,
             "sell" => Side::Sell,
-            other => return Err(DataError::Socket(format!("unknown OKX bulk side: {other}"))),
+            other => return Err(DataError::DataParse(format!("unknown OKX bulk side: {other}"))),
         };
 
         let price = trade.price.parse::<f64>().map_err(|e| {
-            DataError::Socket(format!("invalid OKX bulk price '{}': {e}", trade.price))
+            DataError::DataParse(format!("invalid OKX bulk price '{}': {e}", trade.price))
         })?;
 
         let amount = trade.size.parse::<f64>().map_err(|e| {
-            DataError::Socket(format!("invalid OKX bulk size '{}': {e}", trade.size))
+            DataError::DataParse(format!("invalid OKX bulk size '{}': {e}", trade.size))
         })?;
 
         Ok(RestTrade {
@@ -64,7 +64,7 @@ pub fn parse_trades(csv_data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
     let mut trades = Vec::new();
     for result in reader.deserialize::<OkxBulkTrade>() {
         let raw =
-            result.map_err(|e| DataError::Socket(format!("OKX bulk CSV parse error: {e}")))?;
+            result.map_err(|e| DataError::DataParse(format!("OKX bulk CSV parse error: {e}")))?;
         trades.push(RestTrade::try_from(raw)?);
     }
 

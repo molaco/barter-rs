@@ -14,9 +14,10 @@ pub fn verify_sha256(data: &[u8], expected: &str) -> Result<(), DataError> {
     if actual == expected.to_lowercase() {
         Ok(())
     } else {
-        Err(DataError::Socket(format!(
-            "checksum mismatch: expected {expected}, got {actual}"
-        )))
+        Err(DataError::ChecksumMismatch {
+            expected: expected.to_lowercase(),
+            actual,
+        })
     }
 }
 
@@ -35,10 +36,10 @@ pub fn parse_binance_checksum(content: &str) -> Result<String, DataError> {
     let checksum = content
         .split_whitespace()
         .next()
-        .ok_or_else(|| DataError::Socket("empty checksum file".to_string()))?;
+        .ok_or_else(|| DataError::DataParse("empty checksum file".into()))?;
 
     if checksum.len() != 64 {
-        return Err(DataError::Socket(format!(
+        return Err(DataError::DataParse(format!(
             "invalid checksum length: expected 64 hex chars, got {}",
             checksum.len()
         )));

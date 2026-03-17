@@ -47,10 +47,11 @@ impl HttpParser for BybitHttpParser {
     type OutputError = DataError;
 
     fn parse_api_error(&self, _status: StatusCode, error: Self::ApiError) -> Self::OutputError {
-        DataError::Socket(format!(
-            "Bybit API error (code {}): {}",
-            error.ret_code, error.ret_msg
-        ))
+        DataError::ExchangeApi {
+            exchange: "bybit".into(),
+            code: error.ret_code.to_string(),
+            message: error.ret_msg,
+        }
     }
 }
 
@@ -250,12 +251,16 @@ where
 
             // Check for Bybit API-level error (non-zero retCode)
             if response.ret_code != 0 {
-                let msg = format!(
-                    "Bybit API error (code {}): {}",
-                    response.ret_code, response.ret_msg
+                warn!(
+                    ret_code = response.ret_code,
+                    ret_msg = %response.ret_msg,
+                    "klines fetch returned error"
                 );
-                warn!(%msg, "klines fetch returned error");
-                return Err(DataError::Socket(msg));
+                return Err(DataError::ExchangeApi {
+                    exchange: "bybit".into(),
+                    code: response.ret_code.to_string(),
+                    message: response.ret_msg,
+                });
             }
 
             // Extract raw klines from nested response and reverse
@@ -267,7 +272,7 @@ where
                 .into_iter()
                 .map(Candle::try_from)
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::Socket)?;
+                .map_err(DataError::DataParse)?;
 
             debug!(count = candles.len(), "fetched klines batch");
 
@@ -417,12 +422,16 @@ where
 
             // Check for API-level errors
             if response.ret_code != 0 {
-                let msg = format!(
-                    "Bybit API error (code {}): {}",
-                    response.ret_code, response.ret_msg
+                warn!(
+                    ret_code = response.ret_code,
+                    ret_msg = %response.ret_msg,
+                    "trades fetch returned error"
                 );
-                warn!(%msg, "trades fetch returned error");
-                return Err(DataError::Socket(msg));
+                return Err(DataError::ExchangeApi {
+                    exchange: "bybit".into(),
+                    code: response.ret_code.to_string(),
+                    message: response.ret_msg,
+                });
             }
 
             // Extract raw trades from nested response and reverse
@@ -434,7 +443,7 @@ where
                 .into_iter()
                 .map(RestTrade::try_from)
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::Socket)?;
+                .map_err(DataError::DataParse)?;
 
             debug!(count = rest_trades.len(), "fetched trades batch");
 

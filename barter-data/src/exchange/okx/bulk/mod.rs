@@ -59,7 +59,11 @@ impl OkxBulkClient {
                 async move {
                     let resp =
                         client.get(&url).send().await.map_err(|e| {
-                            DataError::Socket(format!("OKX bulk request failed: {e}"))
+                            DataError::Http {
+                                status: None,
+                                url: url.clone(),
+                                message: format!("OKX bulk request failed: {e}"),
+                            }
                         })?;
 
                     let status = resp.status();
@@ -69,13 +73,19 @@ impl OkxBulkClient {
                     }
 
                     if !status.is_success() {
-                        return Err(DataError::Socket(format!(
-                            "OKX bulk HTTP {status} for {url}"
-                        )));
+                        return Err(DataError::Http {
+                            status: Some(status.as_u16()),
+                            url: url.clone(),
+                            message: format!("OKX bulk HTTP {status} for {url}"),
+                        });
                     }
 
                     let bytes = resp.bytes().await.map_err(|e| {
-                        DataError::Socket(format!("OKX bulk read body failed: {e}"))
+                        DataError::Http {
+                            status: None,
+                            url: url.clone(),
+                            message: format!("OKX bulk read body failed: {e}"),
+                        }
                     })?;
 
                     Ok(Some(bytes))
@@ -91,7 +101,7 @@ impl OkxBulkClient {
         // Extract ZIP and read first file
         let cursor = std::io::Cursor::new(&bytes);
         let mut archive = zip::ZipArchive::new(cursor)
-            .map_err(|e| DataError::Socket(format!("OKX bulk ZIP open failed: {e}")))?;
+            .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP open failed: {e}")))?;
 
         if archive.len() == 0 {
             tracing::warn!("OKX bulk ZIP archive is empty for {market} on {date}");
@@ -101,9 +111,9 @@ impl OkxBulkClient {
         let mut csv_data = Vec::new();
         archive
             .by_index(0)
-            .map_err(|e| DataError::Socket(format!("OKX bulk ZIP read failed: {e}")))?
+            .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP read failed: {e}")))?
             .read_to_end(&mut csv_data)
-            .map_err(|e| DataError::Socket(format!("OKX bulk ZIP extract failed: {e}")))?;
+            .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP extract failed: {e}")))?;
 
         let trades = trades::parse_trades(&csv_data)?;
         Ok(Some(trades))
@@ -139,7 +149,11 @@ pub async fn download_monthly_trades(
                 .get(&url)
                 .send()
                 .await
-                .map_err(|e| DataError::Socket(format!("OKX monthly request failed: {e}")))?;
+                .map_err(|e| DataError::Http {
+                    status: None,
+                    url: url.clone(),
+                    message: format!("OKX monthly request failed: {e}"),
+                })?;
 
             let status = resp.status();
 
@@ -148,15 +162,21 @@ pub async fn download_monthly_trades(
             }
 
             if !status.is_success() {
-                return Err(DataError::Socket(format!(
-                    "OKX monthly HTTP {status} for {url}"
-                )));
+                return Err(DataError::Http {
+                    status: Some(status.as_u16()),
+                    url: url.clone(),
+                    message: format!("OKX monthly HTTP {status} for {url}"),
+                });
             }
 
             let bytes = resp
                 .bytes()
                 .await
-                .map_err(|e| DataError::Socket(format!("OKX monthly read body failed: {e}")))?;
+                .map_err(|e| DataError::Http {
+                    status: None,
+                    url: url.clone(),
+                    message: format!("OKX monthly read body failed: {e}"),
+                })?;
 
             Ok(Some(bytes))
         }
@@ -170,7 +190,7 @@ pub async fn download_monthly_trades(
 
     let cursor = std::io::Cursor::new(&bytes);
     let mut archive = zip::ZipArchive::new(cursor)
-        .map_err(|e| DataError::Socket(format!("OKX monthly ZIP open failed: {e}")))?;
+        .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP open failed: {e}")))?;
 
     if archive.len() == 0 {
         tracing::warn!("OKX monthly ZIP archive is empty for {instrument_id} {year}-{month:02}");
@@ -180,9 +200,9 @@ pub async fn download_monthly_trades(
     let mut csv_data = Vec::new();
     archive
         .by_index(0)
-        .map_err(|e| DataError::Socket(format!("OKX monthly ZIP read failed: {e}")))?
+        .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP read failed: {e}")))?
         .read_to_end(&mut csv_data)
-        .map_err(|e| DataError::Socket(format!("OKX monthly ZIP extract failed: {e}")))?;
+        .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP extract failed: {e}")))?;
 
     let trades = trades::parse_trades(&csv_data)?;
     Ok(Some(trades))

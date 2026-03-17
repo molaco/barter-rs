@@ -40,10 +40,11 @@ impl HttpParser for HyperliquidHttpParser {
     type OutputError = DataError;
 
     fn parse_api_error(&self, status: StatusCode, error: Self::ApiError) -> Self::OutputError {
-        DataError::Socket(format!(
-            "Hyperliquid API error (HTTP {}): {}",
-            status, error.error
-        ))
+        DataError::ExchangeApi {
+            exchange: "hyperliquid".into(),
+            code: status.to_string(),
+            message: error.error,
+        }
     }
 }
 
@@ -236,7 +237,7 @@ impl KlineFetcher for HyperliquidRestClient {
                 .into_iter()
                 .map(|raw| raw.try_into_candle())
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::Socket)?;
+                .map_err(DataError::DataParse)?;
 
             debug!(count = candles.len(), "fetched klines batch");
 

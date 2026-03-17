@@ -45,10 +45,11 @@ impl HttpParser for BinanceHttpParser {
     type OutputError = DataError;
 
     fn parse_api_error(&self, _status: StatusCode, error: Self::ApiError) -> Self::OutputError {
-        DataError::Socket(format!(
-            "Binance API error (code {}): {}",
-            error.code, error.msg
-        ))
+        DataError::ExchangeApi {
+            exchange: "binance".into(),
+            code: error.code.to_string(),
+            message: error.msg,
+        }
     }
 }
 
@@ -249,7 +250,7 @@ where
                 .into_iter()
                 .map(Candle::try_from)
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::Socket)?;
+                .map_err(DataError::DataParse)?;
 
             debug!(count = candles.len(), "fetched klines batch");
 
@@ -415,7 +416,7 @@ where
                 .into_iter()
                 .map(RestTrade::try_from)
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::Socket)?;
+                .map_err(DataError::DataParse)?;
 
             debug!(count = rest_trades.len(), "fetched trades batch");
 
@@ -560,7 +561,7 @@ where
                         .into_iter()
                         .map(RestTrade::try_from)
                         .collect::<Result<Vec<_>, _>>()
-                        .map_err(DataError::Socket);
+                        .map_err(DataError::DataParse);
 
                     match batch {
                         Ok(trades) => {

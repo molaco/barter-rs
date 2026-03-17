@@ -61,9 +61,10 @@ pub fn coinbase_interval(interval: Interval) -> Result<&'static str, DataError> 
         Interval::H2 => Ok("TWO_HOURS"),
         Interval::H6 => Ok("SIX_HOURS"),
         Interval::D1 => Ok("ONE_DAY"),
-        unsupported => Err(DataError::Socket(format!(
-            "Coinbase does not support interval: {unsupported}"
-        ))),
+        unsupported => Err(DataError::UnsupportedInterval {
+            exchange: "coinbase".into(),
+            interval: unsupported.to_string(),
+        }),
     }
 }
 

@@ -44,10 +44,11 @@ impl HttpParser for CoinbaseHttpParser {
     type OutputError = DataError;
 
     fn parse_api_error(&self, _status: StatusCode, error: Self::ApiError) -> Self::OutputError {
-        DataError::Socket(format!(
-            "Coinbase API error ({}): {}",
-            error.error, error.message
-        ))
+        DataError::ExchangeApi {
+            exchange: "coinbase".into(),
+            code: error.error,
+            message: error.message,
+        }
     }
 }
 
@@ -223,7 +224,7 @@ impl KlineFetcher for CoinbaseRestClient {
                 .into_iter()
                 .map(|raw| raw.into_candle(interval))
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::Socket)?;
+                .map_err(DataError::DataParse)?;
 
             // Coinbase returns newest-first; reverse to oldest-first
             candles.reverse();
@@ -382,7 +383,7 @@ impl TradeFetcher for CoinbaseRestClient {
                 .into_iter()
                 .map(RestTrade::try_from)
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::Socket)?;
+                .map_err(DataError::DataParse)?;
 
             // Filter to [start, end] range if specified
             let trades: Vec<RestTrade> = trades

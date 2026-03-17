@@ -38,7 +38,7 @@ impl KrakenTradesResponse {
     /// may differ from the requested pair (e.g., `"XXBTZUSD"` vs `"XBTUSD"`).
     pub fn parse_trades(&self) -> Result<(Vec<KrakenTradeRaw>, Option<String>), DataError> {
         let obj = self.result.as_object().ok_or_else(|| {
-            DataError::Socket("Kraken Trades result is not an object".to_string())
+            DataError::DataParse("Kraken Trades result is not an object".to_string())
         })?;
 
         let mut last: Option<String> = None;
@@ -51,7 +51,7 @@ impl KrakenTradesResponse {
                 // This is the pair data array
                 let raw: Vec<KrakenTradeRaw> =
                     serde_json::from_value(value.clone()).map_err(|e| {
-                        DataError::Socket(format!(
+                        DataError::DataParse(format!(
                             "failed to deserialize Kraken trades for key '{}': {}",
                             key, e
                         ))

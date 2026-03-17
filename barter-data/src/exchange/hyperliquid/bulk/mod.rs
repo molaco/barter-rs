@@ -114,7 +114,7 @@ impl HyperliquidBulkClient {
                 let response = request
                     .send()
                     .await
-                    .map_err(|e| DataError::Socket(format!("HTTP request failed: {e}")))?;
+                    .map_err(|e| DataError::Http { status: None, url: url.clone(), message: format!("HTTP request failed: {e}") })?;
 
                 let status = response.status();
                 if status == reqwest::StatusCode::NOT_FOUND {
@@ -125,11 +125,11 @@ impl HyperliquidBulkClient {
                 if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
                     tracing::debug!(url = %url, "got 416, restarting download from scratch");
                     partial.lock().unwrap().clear();
-                    return Err(DataError::Socket(format!("HTTP 416 for {url}, restarting")));
+                    return Err(DataError::Http { status: Some(416), url: url.clone(), message: "Range Not Satisfiable".into() });
                 }
 
                 if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
-                    return Err(DataError::Socket(format!("HTTP {status} fetching {url}")));
+                    return Err(DataError::Http { status: Some(status.as_u16()), url: url.clone(), message: format!("HTTP {status}") });
                 }
 
                 // If server returned 200 instead of 206, discard partial and accept full body.
@@ -146,7 +146,7 @@ impl HyperliquidBulkClient {
                 let mut byte_stream = response.bytes_stream();
                 while let Some(chunk_result) = byte_stream.next().await {
                     let chunk = chunk_result
-                        .map_err(|e| DataError::Socket(format!("failed to read response: {e}")))?;
+                        .map_err(|e| DataError::Http { status: None, url: url.clone(), message: format!("body read failed: {e}") })?;
                     partial.lock().unwrap().extend_from_slice(&chunk);
                 }
 
@@ -159,11 +159,11 @@ impl HyperliquidBulkClient {
                         lz4_flex::frame::FrameDecoder::new(compressed.as_slice());
                     let mut buf = Vec::new();
                     std::io::Read::read_to_end(&mut decoder, &mut buf)
-                        .map_err(|e| DataError::Socket(format!("LZ4 decompression failed: {e}")))?;
+                        .map_err(|e| DataError::BulkArchive(format!("LZ4 decompression failed: {e}")))?;
                     Ok::<_, DataError>(buf)
                 })
                 .await
-                .map_err(|e| DataError::Socket(format!("LZ4 task panicked: {e}")))??;
+                .map_err(|e| DataError::BulkArchive(format!("LZ4 task panicked: {e}")))??;
 
                 Ok(Some(decompressed))
             }

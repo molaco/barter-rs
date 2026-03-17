@@ -26,23 +26,23 @@ impl TryFrom<HyperliquidFillEvent> for RestTrade {
 
     fn try_from(fill: HyperliquidFillEvent) -> Result<Self, Self::Error> {
         let time = DateTime::from_timestamp_millis(fill.time as i64)
-            .ok_or_else(|| DataError::Socket(format!("invalid fill timestamp: {}", fill.time)))?;
+            .ok_or_else(|| DataError::DataParse(format!("invalid fill timestamp: {}", fill.time)))?;
 
         let price: f64 = fill
             .px
             .parse()
-            .map_err(|e| DataError::Socket(format!("invalid fill price '{}': {e}", fill.px)))?;
+            .map_err(|e| DataError::DataParse(format!("invalid fill price '{}': {e}", fill.px)))?;
 
         let amount: f64 = fill
             .sz
             .parse()
-            .map_err(|e| DataError::Socket(format!("invalid fill size '{}': {e}", fill.sz)))?;
+            .map_err(|e| DataError::DataParse(format!("invalid fill size '{}': {e}", fill.sz)))?;
 
         let side = match fill.side.as_str() {
             "B" => Side::Buy,
             "A" | "S" => Side::Sell,
             other => {
-                return Err(DataError::Socket(format!("unknown fill side '{other}'")));
+                return Err(DataError::DataParse(format!("unknown fill side '{other}'")));
             }
         };
 
@@ -65,7 +65,7 @@ impl TryFrom<HyperliquidFillEvent> for RestTrade {
 /// Lines that fail to parse in either format are logged and skipped.
 pub fn parse_fills(json_data: &[u8], market: &str) -> Result<Vec<RestTrade>, DataError> {
     let text = std::str::from_utf8(json_data)
-        .map_err(|e| DataError::Socket(format!("invalid UTF-8 in fill data: {e}")))?;
+        .map_err(|e| DataError::DataParse(format!("invalid UTF-8 in fill data: {e}")))?;
 
     let mut trades = Vec::new();
 
@@ -111,7 +111,7 @@ pub fn parse_fills(json_data: &[u8], market: &str) -> Result<Vec<RestTrade>, Dat
 /// the same hourly file multiple times for different coins.
 pub fn parse_fills_multi(json_data: &[u8]) -> Result<HashMap<String, Vec<RestTrade>>, DataError> {
     let text = std::str::from_utf8(json_data)
-        .map_err(|e| DataError::Socket(format!("invalid UTF-8 in fill data: {e}")))?;
+        .map_err(|e| DataError::DataParse(format!("invalid UTF-8 in fill data: {e}")))?;
 
     let mut result: HashMap<String, Vec<RestTrade>> = HashMap::new();
 

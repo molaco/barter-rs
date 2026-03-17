@@ -58,9 +58,10 @@ pub fn bitmex_interval(interval: Interval) -> Result<&'static str, DataError> {
         Interval::M5 => Ok("5m"),
         Interval::H1 => Ok("1h"),
         Interval::D1 => Ok("1d"),
-        unsupported => Err(DataError::Socket(format!(
-            "BitMEX does not support interval: {unsupported}"
-        ))),
+        unsupported => Err(DataError::UnsupportedInterval {
+            exchange: "bitmex".into(),
+            interval: unsupported.to_string(),
+        }),
     }
 }
 

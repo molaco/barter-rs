@@ -73,24 +73,30 @@ pub fn kraken_interval(interval: Interval) -> Result<u32, DataError> {
         Interval::H4 => Ok(240),
         Interval::D1 => Ok(1440),
         Interval::W1 => Ok(10080),
-        Interval::M3 => Err(DataError::Socket(
-            "Kraken does not support 3m interval".to_string(),
-        )),
-        Interval::H2 => Err(DataError::Socket(
-            "Kraken does not support 2h interval".to_string(),
-        )),
-        Interval::H6 => Err(DataError::Socket(
-            "Kraken does not support 6h interval".to_string(),
-        )),
-        Interval::H12 => Err(DataError::Socket(
-            "Kraken does not support 12h interval".to_string(),
-        )),
-        Interval::D3 => Err(DataError::Socket(
-            "Kraken does not support 3d interval".to_string(),
-        )),
-        Interval::Month1 => Err(DataError::Socket(
-            "Kraken does not support 1M interval".to_string(),
-        )),
+        Interval::M3 => Err(DataError::UnsupportedInterval {
+            exchange: "kraken".into(),
+            interval: "3m".into(),
+        }),
+        Interval::H2 => Err(DataError::UnsupportedInterval {
+            exchange: "kraken".into(),
+            interval: "2h".into(),
+        }),
+        Interval::H6 => Err(DataError::UnsupportedInterval {
+            exchange: "kraken".into(),
+            interval: "6h".into(),
+        }),
+        Interval::H12 => Err(DataError::UnsupportedInterval {
+            exchange: "kraken".into(),
+            interval: "12h".into(),
+        }),
+        Interval::D3 => Err(DataError::UnsupportedInterval {
+            exchange: "kraken".into(),
+            interval: "3d".into(),
+        }),
+        Interval::Month1 => Err(DataError::UnsupportedInterval {
+            exchange: "kraken".into(),
+            interval: "1M".into(),
+        }),
     }
 }
 

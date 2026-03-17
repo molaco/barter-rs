@@ -45,16 +45,16 @@ pub fn convert_trade(
     };
 
     let time = DateTime::from_timestamp_millis(ts_ms as i64).ok_or_else(|| {
-        DataError::Socket(format!("invalid trade timestamp: {}", record.transact_time))
+        DataError::DataParse(format!("invalid trade timestamp: {}", record.transact_time))
     })?;
 
     let price: f64 = record
         .price
         .parse()
-        .map_err(|e| DataError::Socket(format!("invalid trade price '{}': {e}", record.price)))?;
+        .map_err(|e| DataError::DataParse(format!("invalid trade price '{}': {e}", record.price)))?;
 
     let amount: f64 = record.quantity.parse().map_err(|e| {
-        DataError::Socket(format!("invalid trade quantity '{}': {e}", record.quantity))
+        DataError::DataParse(format!("invalid trade quantity '{}': {e}", record.quantity))
     })?;
 
     let side = if record.is_buyer_maker {
@@ -86,7 +86,7 @@ pub fn parse_trades(
     let mut trades = Vec::new();
     for result in reader.deserialize::<BinanceBulkAggTrade>() {
         let record = result
-            .map_err(|e| DataError::Socket(format!("failed to parse aggTrade CSV row: {e}")))?;
+            .map_err(|e| DataError::DataParse(format!("failed to parse aggTrade CSV row: {e}")))?;
         trades.push(convert_trade(record, may_use_microsecond_timestamps)?);
     }
 

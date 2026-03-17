@@ -29,22 +29,22 @@ impl TryFrom<KrakenBulkTrade> for RestTrade {
         let nanos = ((record.time.fract().abs()) * 1_000_000_000.0) as u32;
 
         let time = DateTime::from_timestamp(secs, nanos).ok_or_else(|| {
-            DataError::Socket(format!("invalid trade timestamp: {}", record.time))
+            DataError::DataParse(format!("invalid trade timestamp: {}", record.time))
         })?;
 
         let price: f64 = record.price.parse().map_err(|e| {
-            DataError::Socket(format!("invalid trade price '{}': {e}", record.price))
+            DataError::DataParse(format!("invalid trade price '{}': {e}", record.price))
         })?;
 
         let amount: f64 = record.volume.parse().map_err(|e| {
-            DataError::Socket(format!("invalid trade volume '{}': {e}", record.volume))
+            DataError::DataParse(format!("invalid trade volume '{}': {e}", record.volume))
         })?;
 
         let side = match record.buy_sell.as_str() {
             "b" => Side::Buy,
             "s" => Side::Sell,
             other => {
-                return Err(DataError::Socket(format!("unknown trade side '{other}'")));
+                return Err(DataError::DataParse(format!("unknown trade side '{other}'")));
             }
         };
 
@@ -70,7 +70,7 @@ pub fn parse_trades(csv_data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
     let mut trades = Vec::new();
     for result in reader.deserialize::<KrakenBulkTrade>() {
         let record = result
-            .map_err(|e| DataError::Socket(format!("failed to parse Kraken trade CSV row: {e}")))?;
+            .map_err(|e| DataError::DataParse(format!("failed to parse Kraken trade CSV row: {e}")))?;
         trades.push(RestTrade::try_from(record)?);
     }
 

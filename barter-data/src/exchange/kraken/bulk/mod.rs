@@ -22,14 +22,14 @@ impl KrakenArchiveParser {
     /// and parses all trade records from it.
     pub fn parse_zip_trades(zip_path: &Path, pair: &str) -> Result<Vec<RestTrade>, DataError> {
         let file = std::fs::File::open(zip_path).map_err(|e| {
-            DataError::Socket(format!(
+            DataError::Io(format!(
                 "failed to open ZIP file '{}': {e}",
                 zip_path.display()
             ))
         })?;
 
         let mut archive = zip::ZipArchive::new(file).map_err(|e| {
-            DataError::Socket(format!(
+            DataError::Io(format!(
                 "failed to read ZIP archive '{}': {e}",
                 zip_path.display()
             ))
@@ -46,7 +46,7 @@ impl KrakenArchiveParser {
                     .unwrap_or(false)
             })
             .ok_or_else(|| {
-                DataError::Socket(format!(
+                DataError::BulkArchive(format!(
                     "no CSV file found for pair '{pair}' in '{}'",
                     zip_path.display()
                 ))
@@ -54,11 +54,11 @@ impl KrakenArchiveParser {
 
         let mut csv_file = archive
             .by_index(csv_index)
-            .map_err(|e| DataError::Socket(format!("failed to read ZIP entry: {e}")))?;
+            .map_err(|e| DataError::BulkArchive(format!("failed to read ZIP entry: {e}")))?;
 
         let mut csv_data = Vec::new();
         std::io::Read::read_to_end(&mut csv_file, &mut csv_data)
-            .map_err(|e| DataError::Socket(format!("failed to read CSV data from ZIP: {e}")))?;
+            .map_err(|e| DataError::BulkArchive(format!("failed to read CSV data from ZIP: {e}")))?;
 
         parse_trades(&csv_data)
     }

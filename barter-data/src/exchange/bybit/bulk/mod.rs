@@ -124,7 +124,11 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
             async move {
                 let resp =
                     client.get(&url).send().await.map_err(|e| {
-                        DataError::Socket(format!("Bybit bulk request failed: {e}"))
+                        DataError::Http {
+                            status: None,
+                            url: url.clone(),
+                            message: format!("Bybit bulk request failed: {e}"),
+                        }
                     })?;
 
                 let status = resp.status();
@@ -134,9 +138,11 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
                 }
 
                 if !status.is_success() {
-                    return Err(DataError::Socket(format!(
-                        "Bybit bulk HTTP {status} for {url}"
-                    )));
+                    return Err(DataError::Http {
+                        status: Some(status.as_u16()),
+                        url: url.clone(),
+                        message: format!("Bybit bulk HTTP {status}"),
+                    });
                 }
 
                 Ok(Some(resp))
@@ -166,7 +172,7 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
         // (which expects &[u8]) can be reused unchanged.
         let mut csv_buf = Vec::new();
         while let Some(line) = lines.next_line().await.map_err(|e: std::io::Error| {
-            DataError::Socket(format!("Bybit bulk streaming decompress failed: {e}"))
+            DataError::BulkArchive(format!("Bybit bulk streaming decompress failed: {e}"))
         })? {
             csv_buf.extend_from_slice(line.as_bytes());
             csv_buf.push(b'\n');

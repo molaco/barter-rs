@@ -38,7 +38,7 @@ impl KrakenOhlcResponse {
         let obj = self
             .result
             .as_object()
-            .ok_or_else(|| DataError::Socket("Kraken OHLC result is not an object".to_string()))?;
+            .ok_or_else(|| DataError::DataParse("Kraken OHLC result is not an object".to_string()))?;
 
         let mut last: Option<i64> = None;
         let mut klines: Option<Vec<KrakenKlineRaw>> = None;
@@ -50,7 +50,7 @@ impl KrakenOhlcResponse {
                 // This is the pair data array
                 let raw: Vec<KrakenKlineRaw> =
                     serde_json::from_value(value.clone()).map_err(|e| {
-                        DataError::Socket(format!(
+                        DataError::DataParse(format!(
                             "failed to deserialize Kraken OHLC data for key '{}': {}",
                             key, e
                         ))

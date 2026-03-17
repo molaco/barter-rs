@@ -32,25 +32,25 @@ impl TryFrom<BybitBulkTrade> for RestTrade {
     fn try_from(trade: BybitBulkTrade) -> Result<Self, Self::Error> {
         let millis = (trade.timestamp * 1000.0) as i64;
         let time = DateTime::from_timestamp_millis(millis).ok_or_else(|| {
-            DataError::Socket(format!("invalid Bybit bulk timestamp: {}", trade.timestamp))
+            DataError::DataParse(format!("invalid Bybit bulk timestamp: {}", trade.timestamp))
         })?;
 
         let side = match trade.side.as_str() {
             "Buy" => Side::Buy,
             "Sell" => Side::Sell,
             other => {
-                return Err(DataError::Socket(format!(
+                return Err(DataError::DataParse(format!(
                     "unknown Bybit bulk side: {other}"
                 )));
             }
         };
 
         let price = trade.price.parse::<f64>().map_err(|e| {
-            DataError::Socket(format!("invalid Bybit bulk price '{}': {e}", trade.price))
+            DataError::DataParse(format!("invalid Bybit bulk price '{}': {e}", trade.price))
         })?;
 
         let amount = trade.size.parse::<f64>().map_err(|e| {
-            DataError::Socket(format!("invalid Bybit bulk size '{}': {e}", trade.size))
+            DataError::DataParse(format!("invalid Bybit bulk size '{}': {e}", trade.size))
         })?;
 
         Ok(RestTrade {
@@ -83,25 +83,25 @@ impl TryFrom<BybitSpotBulkTrade> for RestTrade {
 
     fn try_from(trade: BybitSpotBulkTrade) -> Result<Self, Self::Error> {
         let time = DateTime::from_timestamp_millis(trade.timestamp).ok_or_else(|| {
-            DataError::Socket(format!("invalid Bybit spot timestamp: {}", trade.timestamp))
+            DataError::DataParse(format!("invalid Bybit spot timestamp: {}", trade.timestamp))
         })?;
 
         let side = match trade.side.as_str() {
             "buy" | "Buy" => Side::Buy,
             "sell" | "Sell" => Side::Sell,
             other => {
-                return Err(DataError::Socket(format!(
+                return Err(DataError::DataParse(format!(
                     "unknown Bybit spot side: {other}"
                 )));
             }
         };
 
         let price = trade.price.parse::<f64>().map_err(|e| {
-            DataError::Socket(format!("invalid Bybit spot price '{}': {e}", trade.price))
+            DataError::DataParse(format!("invalid Bybit spot price '{}': {e}", trade.price))
         })?;
 
         let amount = trade.volume.parse::<f64>().map_err(|e| {
-            DataError::Socket(format!("invalid Bybit spot volume '{}': {e}", trade.volume))
+            DataError::DataParse(format!("invalid Bybit spot volume '{}': {e}", trade.volume))
         })?;
 
         Ok(RestTrade {
@@ -123,7 +123,7 @@ pub fn parse_spot_trades(csv_data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
     let mut trades = Vec::new();
     for result in reader.deserialize::<BybitSpotBulkTrade>() {
         let raw =
-            result.map_err(|e| DataError::Socket(format!("Bybit spot CSV parse error: {e}")))?;
+            result.map_err(|e| DataError::DataParse(format!("Bybit spot CSV parse error: {e}")))?;
         trades.push(RestTrade::try_from(raw)?);
     }
 
@@ -139,7 +139,7 @@ pub fn parse_trades(csv_data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
     let mut trades = Vec::new();
     for result in reader.deserialize::<BybitBulkTrade>() {
         let raw =
-            result.map_err(|e| DataError::Socket(format!("Bybit bulk CSV parse error: {e}")))?;
+            result.map_err(|e| DataError::DataParse(format!("Bybit bulk CSV parse error: {e}")))?;
         trades.push(RestTrade::try_from(raw)?);
     }
 

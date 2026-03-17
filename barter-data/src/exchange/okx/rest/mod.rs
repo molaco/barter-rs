@@ -46,10 +46,11 @@ impl HttpParser for OkxHttpParser {
     type OutputError = DataError;
 
     fn parse_api_error(&self, _status: StatusCode, error: Self::ApiError) -> Self::OutputError {
-        DataError::Socket(format!(
-            "OKX API error (code {}): {}",
-            error.code, error.msg
-        ))
+        DataError::ExchangeApi {
+            exchange: "okx".into(),
+            code: error.code,
+            message: error.msg,
+        }
     }
 }
 
@@ -170,9 +171,12 @@ impl OkxRestClient {
 
         // Check for OKX-level error (non-zero code)
         if response.code != "0" {
-            let msg = format!("OKX API error (code {}): {}", response.code, response.msg);
-            warn!(%msg, "trades fetch returned error");
-            return Err(DataError::Socket(msg));
+            warn!(code = %response.code, msg = %response.msg, "trades fetch returned error");
+            return Err(DataError::ExchangeApi {
+                exchange: "okx".into(),
+                code: response.code,
+                message: response.msg,
+            });
         }
 
         Ok(response.data)
@@ -270,9 +274,12 @@ impl KlineFetcher for OkxRestClient {
 
             // Check for OKX-level error (non-zero code)
             if response.code != "0" {
-                let msg = format!("OKX API error (code {}): {}", response.code, response.msg);
-                warn!(msg, "OKX returned error response");
-                return Err(DataError::Socket(msg));
+                warn!(code = %response.code, msg = %response.msg, "OKX returned error response");
+                return Err(DataError::ExchangeApi {
+                    exchange: "okx".into(),
+                    code: response.code,
+                    message: response.msg,
+                });
             }
 
             // OKX returns data newest-first; reverse to oldest-first
@@ -283,7 +290,7 @@ impl KlineFetcher for OkxRestClient {
                 .into_iter()
                 .map(|raw| raw.try_into_candle(interval))
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::Socket)?;
+                .map_err(DataError::DataParse)?;
 
             debug!(count = candles.len(), "fetched klines batch");
 
@@ -480,7 +487,7 @@ impl TradeFetcher for OkxRestClient {
                 .into_iter()
                 .map(RestTrade::try_from)
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::Socket)?;
+                .map_err(DataError::DataParse)?;
 
             // Filter to [start, end] if specified
             let filtered = filter_trades_by_time(rest_trades, request_start, request_end);
@@ -539,10 +546,11 @@ impl TradeFetcher for OkxRestClient {
                 );
                 state.done = true;
                 return Some((
-                    Err(DataError::Socket(format!(
-                        "OKX trades pagination exceeded max page limit ({}) for {}",
-                        MAX_TRADE_PAGES, state.market,
-                    ))),
+                    Err(DataError::PaginationLimit {
+                        exchange: "okx".into(),
+                        market: state.market.clone(),
+                        limit: MAX_TRADE_PAGES as usize,
+                    }),
                     state,
                 ));
             }
@@ -598,7 +606,7 @@ impl TradeFetcher for OkxRestClient {
                     Err(e) => {
                         state.done = true;
                         return Some((
-                            Err(DataError::Socket(format!(
+                            Err(DataError::DataParse(format!(
                                 "failed to parse trade timestamp '{}': {}",
                                 oldest.ts, e
                             ))),
@@ -622,7 +630,7 @@ impl TradeFetcher for OkxRestClient {
                 Ok(trades) => trades,
                 Err(e) => {
                     state.done = true;
-                    return Some((Err(DataError::Socket(e)), state));
+                    return Some((Err(DataError::DataParse(e)), state));
                 }
             };
 

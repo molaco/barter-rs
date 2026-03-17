@@ -87,9 +87,10 @@ pub fn bitfinex_interval(interval: Interval) -> Result<&'static str, DataError> 
         Interval::D1 => Ok("1D"),
         Interval::W1 => Ok("1W"),
         Interval::Month1 => Ok("1M"),
-        unsupported => Err(DataError::Socket(format!(
-            "Bitfinex does not support interval: {unsupported}"
-        ))),
+        unsupported => Err(DataError::UnsupportedInterval {
+            exchange: "bitfinex".into(),
+            interval: unsupported.to_string(),
+        }),
     }
 }
 

@@ -62,21 +62,39 @@ where
 /// client errors (bad request, invalid symbol, etc).
 pub fn is_retriable_data_error(error: &DataError) -> bool {
     match error {
+        DataError::Http { status, message, .. } => match status {
+            Some(429) => true,   // Too Many Requests
+            Some(418) => true,   // Binance IP ban / rate limit
+            Some(500) => true,   // Internal Server Error
+            Some(502) => true,   // Bad Gateway
+            Some(503) => true,   // Service Unavailable
+            Some(504) => true,   // Gateway Timeout
+            Some(416) => true,   // Range Not Satisfiable (retry from scratch)
+            None => {
+                // Connection-level failures (no HTTP response received)
+                let msg = message.to_lowercase();
+                msg.contains("timeout")
+                    || msg.contains("connection")
+                    || msg.contains("reset by peer")
+                    || msg.contains("broken pipe")
+                    || msg.contains("error sending request")
+            }
+            _ => false,
+        },
+        DataError::ExchangeApi { .. } => false,
+        DataError::DataParse(_) => false,
+        DataError::BulkArchive(_) => false,
+        DataError::ChecksumMismatch { .. } => false,
+        DataError::UnsupportedInterval { .. } => false,
+        DataError::Io(_) => false,
+        DataError::PaginationLimit { .. } => false,
+        // Legacy socket errors from WS layer
         DataError::Socket(msg) => {
-            let lower = msg.to_lowercase();
-            lower.contains("timeout")
-                || lower.contains("429")
-                || lower.contains("418")
-                || lower.contains("rate")
-                || lower.contains("too many requests")
-                || lower.contains("500")
-                || lower.contains("502")
-                || lower.contains("503")
-                || lower.contains("504")
-                || lower.contains("error sending request")
-                || lower.contains("connection")
-                || lower.contains("reset by peer")
-                || lower.contains("broken pipe")
+            let msg = msg.to_lowercase();
+            msg.contains("timeout")
+                || msg.contains("connection")
+                || msg.contains("reset by peer")
+                || msg.contains("broken pipe")
         }
         _ => false,
     }
@@ -187,67 +205,151 @@ mod tests {
     }
 
     #[test]
-    fn test_is_retriable_data_error_timeout() {
-        let err = DataError::Socket("connection timeout".to_string());
+    fn test_retriable_http_429() {
+        let err = DataError::Http { status: Some(429), url: "test".into(), message: "rate limit".into() };
         assert!(is_retriable_data_error(&err));
     }
 
     #[test]
-    fn test_is_retriable_data_error_rate_limit_429() {
-        let err = DataError::Socket("HTTP 429 Too Many Requests".to_string());
+    fn test_retriable_http_418() {
+        let err = DataError::Http { status: Some(418), url: "test".into(), message: "IP banned".into() };
         assert!(is_retriable_data_error(&err));
     }
 
     #[test]
-    fn test_is_retriable_data_error_rate_limit_418() {
-        let err = DataError::Socket("HTTP 418 IP banned".to_string());
-        assert!(is_retriable_data_error(&err));
-    }
-
-    #[test]
-    fn test_is_retriable_data_error_rate_word() {
-        let err = DataError::Socket("rate limit exceeded".to_string());
-        assert!(is_retriable_data_error(&err));
-    }
-
-    #[test]
-    fn test_is_retriable_data_error_server_errors() {
-        for code in &["500", "502", "503", "504"] {
-            let err = DataError::Socket(format!("HTTP {} Internal Server Error", code));
+    fn test_retriable_http_5xx() {
+        for code in [500u16, 502, 503, 504] {
+            let err = DataError::Http { status: Some(code), url: "test".into(), message: "server error".into() };
             assert!(
                 is_retriable_data_error(&err),
-                "Expected retriable for {}",
+                "Expected retriable for HTTP {}",
                 code
             );
         }
     }
 
     #[test]
-    fn test_is_retriable_data_error_connection_errors() {
-        let cases = vec![
-            "HTTP error: error sending request for url (https://example.com)",
-            "connection reset by peer",
-            "broken pipe",
-            "connection refused",
-        ];
-        for msg in cases {
-            let err = DataError::Socket(msg.to_string());
-            assert!(
-                is_retriable_data_error(&err),
-                "Expected retriable for {:?}",
-                msg
-            );
-        }
+    fn test_retriable_http_416() {
+        let err = DataError::Http { status: Some(416), url: "test".into(), message: "range not satisfiable".into() };
+        assert!(is_retriable_data_error(&err));
     }
 
     #[test]
-    fn test_is_retriable_data_error_non_retriable_socket() {
-        let err = DataError::Socket("HTTP 400 Bad Request".to_string());
+    fn test_not_retriable_http_400() {
+        let err = DataError::Http { status: Some(400), url: "test".into(), message: "bad request".into() };
         assert!(!is_retriable_data_error(&err));
     }
 
     #[test]
-    fn test_is_retriable_data_error_non_socket_variant() {
+    fn test_not_retriable_http_401() {
+        let err = DataError::Http { status: Some(401), url: "test".into(), message: "unauthorized".into() };
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_http_403() {
+        let err = DataError::Http { status: Some(403), url: "test".into(), message: "forbidden".into() };
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_http_404() {
+        let err = DataError::Http { status: Some(404), url: "test".into(), message: "not found".into() };
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_retriable_connection_failure() {
+        let err = DataError::Http { status: None, url: "test".into(), message: "connection reset by peer".into() };
+        assert!(is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_retriable_connection_timeout() {
+        let err = DataError::Http { status: None, url: "test".into(), message: "request timeout".into() };
+        assert!(is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_retriable_connection_broken_pipe() {
+        let err = DataError::Http { status: None, url: "test".into(), message: "broken pipe".into() };
+        assert!(is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_retriable_connection_error_sending_request() {
+        let err = DataError::Http { status: None, url: "test".into(), message: "error sending request for url".into() };
+        assert!(is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_connection_unknown_message() {
+        let err = DataError::Http { status: None, url: "test".into(), message: "some unknown error".into() };
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_parse() {
+        let err = DataError::DataParse("invalid timestamp".into());
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_exchange_api() {
+        let err = DataError::ExchangeApi { exchange: "okx".into(), code: "51001".into(), message: "not found".into() };
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_bulk_archive() {
+        let err = DataError::BulkArchive("corrupt zip".into());
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_checksum_mismatch() {
+        let err = DataError::ChecksumMismatch { expected: "abc".into(), actual: "def".into() };
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_unsupported_interval() {
+        let err = DataError::UnsupportedInterval { exchange: "binance".into(), interval: "3m".into() };
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_io() {
+        let err = DataError::Io("disk full".into());
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_pagination_limit() {
+        let err = DataError::PaginationLimit { exchange: "binance".into(), market: "btcusdt".into(), limit: 1000 };
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_retriable_socket_timeout() {
+        let err = DataError::Socket("connection timeout".to_string());
+        assert!(is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_retriable_socket_connection() {
+        let err = DataError::Socket("connection refused".to_string());
+        assert!(is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_socket_other() {
+        let err = DataError::Socket("unknown ws error".to_string());
+        assert!(!is_retriable_data_error(&err));
+    }
+
+    #[test]
+    fn test_not_retriable_other_variant() {
         let err = DataError::SubscriptionsEmpty;
         assert!(!is_retriable_data_error(&err));
     }

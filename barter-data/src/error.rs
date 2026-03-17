@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// All errors generated in `barter-data`.
+#[non_exhaustive]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deserialize, Serialize, Error)]
 pub enum DataError {
     #[error("failed to index market data Subscriptions: {0}")]
@@ -63,6 +64,56 @@ pub enum DataError {
         prev_last_update_id: u64,
         first_update_id: u64,
     },
+
+    /// HTTP transport error (request send failure, body read failure, non-2xx status).
+    /// `status` is `Some` when an HTTP response was received; `None` for
+    /// connection-level failures where no response arrived.
+    /// `url` captures which endpoint failed.
+    #[error("HTTP error (status={status:?}) for {url}: {message}")]
+    Http {
+        status: Option<u16>,
+        url: String,
+        message: String,
+    },
+
+    /// Exchange API returned a structured error response (HTTP 200 with error payload).
+    #[error("{exchange} API error (code {code}): {message}")]
+    ExchangeApi {
+        exchange: String,
+        code: String,
+        message: String,
+    },
+
+    /// Data parsing failure (CSV, JSON, timestamp, numeric conversion).
+    #[error("data parse error: {0}")]
+    DataParse(String),
+
+    /// Archive decompression or extraction failure (ZIP, LZ4, gzip).
+    #[error("bulk archive error: {0}")]
+    BulkArchive(String),
+
+    /// SHA-256 checksum mismatch on a downloaded archive.
+    #[error("checksum mismatch: expected {expected}, actual {actual}")]
+    ChecksumMismatch { expected: String, actual: String },
+
+    /// Exchange does not support the requested interval.
+    #[error("{exchange} does not support interval: {interval}")]
+    UnsupportedInterval {
+        exchange: String,
+        interval: String,
+    },
+
+    /// Local filesystem I/O error (distinct from archive decompression).
+    #[error("I/O error: {0}")]
+    Io(String),
+
+    /// Pagination safety limit exceeded.
+    #[error("{exchange} pagination limit exceeded ({limit}) for {market}")]
+    PaginationLimit {
+        exchange: String,
+        market: String,
+        limit: usize,
+    },
 }
 
 impl DataError {
@@ -78,7 +129,32 @@ impl DataError {
 
 impl From<SocketError> for DataError {
     fn from(value: SocketError) -> Self {
-        Self::Socket(value.to_string())
+        match value {
+            SocketError::Http(e) => DataError::Http {
+                status: None,
+                url: String::new(),
+                message: format!("HTTP error: {e}"),
+            },
+            SocketError::HttpTimeout(e) => DataError::Http {
+                status: None,
+                url: String::new(),
+                message: format!("request timeout: {e}"),
+            },
+            SocketError::HttpResponse(status, body) => DataError::Http {
+                status: Some(status.as_u16()),
+                url: String::new(),
+                message: body,
+            },
+            SocketError::Deserialise { error, .. } => DataError::DataParse(error.to_string()),
+            SocketError::DeserialiseBinary { error, .. } => {
+                DataError::DataParse(error.to_string())
+            }
+            SocketError::DeserialiseProtobuf { error, .. } => {
+                DataError::DataParse(error.to_string())
+            }
+            SocketError::Serialise(e) => DataError::DataParse(e.to_string()),
+            other => DataError::Socket(other.to_string()),
+        }
     }
 }
 

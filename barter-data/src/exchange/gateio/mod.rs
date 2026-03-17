@@ -71,9 +71,10 @@ pub fn gateio_interval(interval: Interval) -> Result<&'static str, DataError> {
         Interval::D1 => Ok("1d"),
         Interval::W1 => Ok("7d"),
         Interval::Month1 => Ok("30d"),
-        unsupported => Err(DataError::Socket(format!(
-            "GateIO does not support interval: {unsupported}"
-        ))),
+        unsupported => Err(DataError::UnsupportedInterval {
+            exchange: "gateio".into(),
+            interval: unsupported.to_string(),
+        }),
     }
 }
 
