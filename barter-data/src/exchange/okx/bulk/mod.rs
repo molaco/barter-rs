@@ -78,31 +78,40 @@ impl OkxBulkClient {
             }
         })?;
 
-        // Extract ZIP and read first file
-        let cursor = std::io::Cursor::new(&bytes);
-        let mut archive = zip::ZipArchive::new(cursor)
-            .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP open failed: {e}")))?;
+        // Extract ZIP on blocking thread pool to avoid stalling the async executor.
+        let csv_data = tokio::task::spawn_blocking(move || {
+            let cursor = std::io::Cursor::new(bytes);
+            let mut archive = zip::ZipArchive::new(cursor)
+                .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP open failed: {e}")))?;
 
-        if archive.len() == 0 {
+            if archive.len() == 0 {
+                return Ok(Vec::new());
+            }
+
+            let file = archive
+                .by_index(0)
+                .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP read failed: {e}")))?;
+
+            if file.size() > MAX_DECOMPRESSED_SIZE {
+                return Err(DataError::BulkArchive(format!(
+                    "OKX ZIP entry too large: {} bytes (max {MAX_DECOMPRESSED_SIZE} bytes)",
+                    file.size(),
+                )));
+            }
+
+            let mut csv_data = Vec::with_capacity(file.size() as usize);
+            { file }
+                .read_to_end(&mut csv_data)
+                .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP extract failed: {e}")))?;
+            Ok::<_, DataError>(csv_data)
+        })
+        .await
+        .map_err(|e| DataError::BulkArchive(format!("ZIP task panicked: {e}")))??;
+
+        if csv_data.is_empty() {
             tracing::warn!("OKX bulk ZIP archive is empty for {market} on {date}");
             return Ok(Some(Vec::new()));
         }
-
-        let file = archive
-            .by_index(0)
-            .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP read failed: {e}")))?;
-
-        if file.size() > MAX_DECOMPRESSED_SIZE {
-            return Err(DataError::BulkArchive(format!(
-                "OKX ZIP entry too large: {} bytes (max {MAX_DECOMPRESSED_SIZE} bytes)",
-                file.size(),
-            )));
-        }
-
-        let mut csv_data = Vec::with_capacity(file.size() as usize);
-        { file }
-            .read_to_end(&mut csv_data)
-            .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP extract failed: {e}")))?;
 
         let trades = trades::parse_trades(&csv_data)?;
         Ok(Some(trades))
@@ -159,30 +168,40 @@ pub async fn download_monthly_trades(
             message: format!("OKX monthly read body failed: {e}"),
         })?;
 
-    let cursor = std::io::Cursor::new(&bytes);
-    let mut archive = zip::ZipArchive::new(cursor)
-        .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP open failed: {e}")))?;
+    // Extract ZIP on blocking thread pool.
+    let csv_data = tokio::task::spawn_blocking(move || {
+        let cursor = std::io::Cursor::new(bytes);
+        let mut archive = zip::ZipArchive::new(cursor)
+            .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP open failed: {e}")))?;
 
-    if archive.len() == 0 {
+        if archive.len() == 0 {
+            return Ok(Vec::new());
+        }
+
+        let file = archive
+            .by_index(0)
+            .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP read failed: {e}")))?;
+
+        if file.size() > MAX_DECOMPRESSED_SIZE {
+            return Err(DataError::BulkArchive(format!(
+                "OKX monthly ZIP entry too large: {} bytes (max {MAX_DECOMPRESSED_SIZE} bytes)",
+                file.size(),
+            )));
+        }
+
+        let mut csv_data = Vec::with_capacity(file.size() as usize);
+        { file }
+            .read_to_end(&mut csv_data)
+            .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP extract failed: {e}")))?;
+        Ok::<_, DataError>(csv_data)
+    })
+    .await
+    .map_err(|e| DataError::BulkArchive(format!("ZIP task panicked: {e}")))??;
+
+    if csv_data.is_empty() {
         tracing::warn!("OKX monthly ZIP archive is empty for {instrument_id} {year}-{month:02}");
         return Ok(Some(Vec::new()));
     }
-
-    let file = archive
-        .by_index(0)
-        .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP read failed: {e}")))?;
-
-    if file.size() > MAX_DECOMPRESSED_SIZE {
-        return Err(DataError::BulkArchive(format!(
-            "OKX monthly ZIP entry too large: {} bytes (max {MAX_DECOMPRESSED_SIZE} bytes)",
-            file.size(),
-        )));
-    }
-
-    let mut csv_data = Vec::with_capacity(file.size() as usize);
-    { file }
-        .read_to_end(&mut csv_data)
-        .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP extract failed: {e}")))?;
 
     let trades = trades::parse_trades(&csv_data)?;
     Ok(Some(trades))

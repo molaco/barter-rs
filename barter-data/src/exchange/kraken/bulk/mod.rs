@@ -75,23 +75,30 @@ impl KrakenArchiveParser {
 
     /// Stream batches of trades from a local Kraken archive ZIP file.
     ///
-    /// Reads and parses the entire CSV synchronously, then yields batches
-    /// of `batch_size` trades as stream items.
-    pub fn stream_trades(
+    /// Reads and parses the entire CSV on a blocking thread, then yields
+    /// batches of `batch_size` trades as stream items.
+    pub async fn stream_trades(
         zip_path: &Path,
         pair: &str,
         batch_size: usize,
     ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
-        let result = Self::parse_zip_trades(zip_path, pair);
+        let path = zip_path.to_path_buf();
+        let pair = pair.to_string();
+        let result = tokio::task::spawn_blocking(move || {
+            Self::parse_zip_trades(&path, &pair)
+        })
+        .await
+        .map_err(|e| DataError::BulkArchive(format!("ZIP task panicked: {e}")));
 
         match result {
-            Ok(trades) => {
+            Ok(Ok(trades)) => {
                 let batches: Vec<Result<Vec<RestTrade>, DataError>> = trades
                     .chunks(batch_size.max(1))
                     .map(|chunk| Ok(chunk.to_vec()))
                     .collect();
                 futures::stream::iter(batches)
             }
+            Ok(Err(e)) => futures::stream::iter(vec![Err(e)]),
             Err(e) => futures::stream::iter(vec![Err(e)]),
         }
     }
@@ -170,16 +177,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_trades_batching() {
-        use futures::StreamExt;
-
         let csv = b"42000.00000,0.10000000,1704067200.0,b,m,,100\n\
                      42001.00000,0.20000000,1704067201.0,s,l,,101\n\
                      42002.00000,0.30000000,1704067202.0,b,m,,102\n";
         let path = create_test_zip("XBTUSD", csv);
 
-        let batches: Vec<_> = KrakenArchiveParser::stream_trades(&path, "XBTUSD", 2)
-            .collect()
-            .await;
+        let stream = KrakenArchiveParser::stream_trades(&path, "XBTUSD", 2).await;
+        let batches: Vec<_> = futures::StreamExt::collect(stream).await;
 
         let _ = std::fs::remove_file(&path);
         assert_eq!(batches.len(), 2);
