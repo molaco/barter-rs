@@ -3,7 +3,6 @@ use crate::{
     rest::{
         KlineFetcher, KlineRequest,
     },
-    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
@@ -78,7 +77,6 @@ const HYPERLIQUID_REST_BASE_URL: &str = "https://api.hyperliquid.xyz";
 pub struct HyperliquidRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, HyperliquidHttpParser>>,
     pub rate_limiter: Arc<HyperliquidRateLimiter>,
-    pub retry: RetryPolicy,
 }
 
 impl fmt::Debug for HyperliquidRestClient {
@@ -117,7 +115,6 @@ impl HyperliquidRestClient {
         Self {
             client: Arc::new(client),
             rate_limiter: Arc::new(rate_limiter),
-            retry: RetryPolicy::default(),
         }
     }
 
@@ -154,9 +151,9 @@ impl KlineFetcher for HyperliquidRestClient {
     /// Fetch a single batch of klines from the Hyperliquid REST API.
     ///
     /// Builds a [`GetHyperliquidKlines`](klines::GetHyperliquidKlines) POST
-    /// request from the provided [`KlineRequest`], waits for the rate limiter,
-    /// executes the request with exponential-backoff retry, and converts raw
-    /// DTOs into [`Candle`]s.
+    /// request from the provided [`KlineRequest`], executes the request, and
+    /// converts raw DTOs into [`Candle`]s. This is a single-attempt call;
+    /// retry logic is handled by the collector.
     ///
     /// Hyperliquid returns data oldest-first, so no reversal is needed.
     fn fetch_klines(
@@ -195,21 +192,8 @@ impl KlineFetcher for HyperliquidRestClient {
                 },
             };
 
-            this.wait_for_rate_limit().await;
-
             let raw_klines: Vec<klines::HyperliquidKlineRaw> =
-                match retry_with_backoff(&this.retry, is_retriable_data_error, || {
-                    let req = get_klines_request.clone();
-                    let client = this.client.clone();
-                    async move {
-                        client
-                            .execute(req)
-                            .await
-                            .map(|(response, _metric)| response)
-                    }
-                })
-                .await
-                {
+                match this.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
                     Ok(klines) => klines,
                     Err(error) => {
                         warn!(?error, "klines fetch failed");

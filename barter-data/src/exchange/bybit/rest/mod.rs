@@ -4,7 +4,6 @@ use crate::{
     rest::{
         KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
     },
-    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
@@ -184,9 +183,9 @@ where
     /// Fetch a single batch of klines from the Bybit REST API.
     ///
     /// Builds a [`GetBybitKlines`](klines::GetBybitKlines) request from the provided
-    /// [`KlineRequest`], waits for the rate limiter, executes the request with
-    /// exponential-backoff retry, reverses the results (Bybit returns newest-first),
-    /// and converts raw DTOs into [`Candle`]s.
+    /// [`KlineRequest`], executes the request, reverses the results (Bybit returns
+    /// newest-first), and converts raw DTOs into [`Candle`]s. This is a single-attempt
+    /// call; retry logic is handled by the collector.
     fn fetch_klines(
         &self,
         request: KlineRequest,
@@ -213,21 +212,8 @@ where
                 },
             };
 
-            this.wait_for_rate_limit().await;
-
             let response: klines::BybitKlinesResponse =
-                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
-                    let req = get_klines_request.clone();
-                    let client = this.client.clone();
-                    async move {
-                        client
-                            .execute(req)
-                            .await
-                            .map(|(response, _metric)| response)
-                    }
-                })
-                .await
-                {
+                match this.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
                     Ok(resp) => resp,
                     Err(error) => {
                         warn!(?error, "klines fetch failed");
@@ -275,10 +261,10 @@ where
     /// Fetch a single batch of recent trades from the Bybit REST API.
     ///
     /// Builds a [`GetBybitTrades`](trades::GetBybitTrades) request from the provided
-    /// [`TradeRequest`], waits for the rate limiter, executes the request with
-    /// exponential-backoff retry, checks the `retCode` for API-level errors,
-    /// reverses the results (Bybit returns newest-first), and converts raw
-    /// DTOs into [`RestTrade`]s.
+    /// [`TradeRequest`], executes the request, checks the `retCode` for API-level
+    /// errors, reverses the results (Bybit returns newest-first), and converts raw
+    /// DTOs into [`RestTrade`]s. This is a single-attempt call; retry logic is handled
+    /// by the collector.
     fn fetch_trades(
         &self,
         request: TradeRequest,
@@ -308,21 +294,8 @@ where
                 },
             };
 
-            this.wait_for_rate_limit().await;
-
             let response: trades::BybitTradesResponse =
-                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
-                    let req = get_trades_request.clone();
-                    let client = this.client.clone();
-                    async move {
-                        client
-                            .execute(req)
-                            .await
-                            .map(|(response, _metric)| response)
-                    }
-                })
-                .await
-                {
+                match this.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
                     Ok(resp) => resp,
                     Err(error) => {
                         warn!(?error, "trades fetch failed");

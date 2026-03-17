@@ -3,7 +3,6 @@ use crate::{
     rest::{
         ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
     },
-    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
@@ -147,8 +146,8 @@ impl KlineFetcher for CoinbaseRestClient {
     /// Fetch a single batch of klines from the Coinbase REST API.
     ///
     /// Builds a [`GetCoinbaseKlines`](klines::GetCoinbaseKlines) request from the provided
-    /// [`KlineRequest`], waits for the rate limiter, executes the request with
-    /// exponential-backoff retry, and converts raw DTOs into [`Candle`]s.
+    /// [`KlineRequest`], executes the request, and converts raw DTOs into [`Candle`]s.
+    /// This is a single-attempt call; retry logic is handled by the collector.
     ///
     /// The Coinbase API returns candles newest-first, so the result is
     /// reversed to oldest-first before returning.
@@ -182,21 +181,8 @@ impl KlineFetcher for CoinbaseRestClient {
                 },
             };
 
-            this.wait_for_rate_limit().await;
-
             let response: klines::CoinbaseKlinesResponse =
-                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
-                    let req = get_klines_request.clone();
-                    let client = this.client.clone();
-                    async move {
-                        client
-                            .execute(req)
-                            .await
-                            .map(|(response, _metric)| response)
-                    }
-                })
-                .await
-                {
+                match this.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
                     Ok(resp) => resp,
                     Err(error) => {
                         warn!(?error, "klines fetch failed");
@@ -227,9 +213,9 @@ impl TradeFetcher for CoinbaseRestClient {
     /// Fetch a single batch of trades from the Coinbase REST API.
     ///
     /// Builds a [`GetCoinbaseTrades`](trades::GetCoinbaseTrades) request from the provided
-    /// [`TradeRequest`], waits for the rate limiter, executes the request with
-    /// exponential-backoff retry, reverses the results (Coinbase returns newest-first),
-    /// and converts raw DTOs into [`RestTrade`]s.
+    /// [`TradeRequest`], executes the request, reverses the results (Coinbase returns
+    /// newest-first), and converts raw DTOs into [`RestTrade`]s. This is a single-attempt
+    /// call; retry logic is handled by the collector.
     fn fetch_trades(
         &self,
         request: TradeRequest,
@@ -260,21 +246,8 @@ impl TradeFetcher for CoinbaseRestClient {
                 },
             };
 
-            this.wait_for_rate_limit().await;
-
             let response: trades::CoinbaseTradesResponse =
-                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
-                    let req = get_trades_request.clone();
-                    let client = this.client.clone();
-                    async move {
-                        client
-                            .execute(req)
-                            .await
-                            .map(|(response, _metric)| response)
-                    }
-                })
-                .await
-                {
+                match this.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
                     Ok(resp) => resp,
                     Err(error) => {
                         warn!(?error, "trades fetch failed");

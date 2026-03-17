@@ -3,7 +3,6 @@ pub mod trades;
 use crate::{
     bulk::{BulkConfig, BulkDayTradeFetcher, BulkTradeRequest, date_range},
     error::DataError,
-    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     trade::RestTrade,
 };
 use chrono::{Datelike, NaiveDate};
@@ -18,7 +17,6 @@ use std::{future::Future, io::Read, pin::Pin};
 pub struct OkxBulkClient {
     pub client: reqwest::Client,
     pub config: BulkConfig,
-    pub retry: RetryPolicy,
 }
 
 impl OkxBulkClient {
@@ -26,7 +24,6 @@ impl OkxBulkClient {
         Self {
             client: reqwest::Client::new(),
             config: BulkConfig::default(),
-            retry: RetryPolicy::default(),
         }
     }
 
@@ -34,7 +31,6 @@ impl OkxBulkClient {
         Self {
             client: reqwest::Client::new(),
             config,
-            retry: RetryPolicy::default(),
         }
     }
 
@@ -49,54 +45,36 @@ impl OkxBulkClient {
             "https://www.okx.com/cdn/okex/traderecords/trades/daily/{date_folder}/{market}-trades-{date_file}.zip"
         );
 
-        let client = self.client.clone();
-        let url_clone = url.clone();
-
-        let response =
-            retry_with_backoff(&self.retry, is_retriable_data_error, || {
-                let client = client.clone();
-                let url = url_clone.clone();
-                async move {
-                    let resp =
-                        client.get(&url).send().await.map_err(|e| {
-                            DataError::Http {
-                                status: None,
-                                url: url.clone(),
-                                message: format!("OKX bulk request failed: {e}"),
-                            }
-                        })?;
-
-                    let status = resp.status();
-
-                    if status == reqwest::StatusCode::NOT_FOUND {
-                        return Ok(None);
-                    }
-
-                    if !status.is_success() {
-                        return Err(DataError::Http {
-                            status: Some(status.as_u16()),
-                            url: url.clone(),
-                            message: format!("OKX bulk HTTP {status} for {url}"),
-                        });
-                    }
-
-                    let bytes = resp.bytes().await.map_err(|e| {
-                        DataError::Http {
-                            status: None,
-                            url: url.clone(),
-                            message: format!("OKX bulk read body failed: {e}"),
-                        }
-                    })?;
-
-                    Ok(Some(bytes))
+        let resp =
+            self.client.get(&url).send().await.map_err(|e| {
+                DataError::Http {
+                    status: None,
+                    url: url.clone(),
+                    message: format!("OKX bulk request failed: {e}"),
                 }
-            })
-            .await?;
+            })?;
 
-        let bytes = match response {
-            Some(b) => b,
-            None => return Ok(None),
-        };
+        let status = resp.status();
+
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        if !status.is_success() {
+            return Err(DataError::Http {
+                status: Some(status.as_u16()),
+                url: url.clone(),
+                message: format!("OKX bulk HTTP {status} for {url}"),
+            });
+        }
+
+        let bytes = resp.bytes().await.map_err(|e| {
+            DataError::Http {
+                status: None,
+                url: url.clone(),
+                message: format!("OKX bulk read body failed: {e}"),
+            }
+        })?;
 
         // Extract ZIP and read first file
         let cursor = std::io::Cursor::new(&bytes);
@@ -129,7 +107,6 @@ impl OkxBulkClient {
 /// The ZIP contains CSV files with the same format as the daily archives.
 pub async fn download_monthly_trades(
     client: &reqwest::Client,
-    retry: &RetryPolicy,
     instrument_id: &str,
     year: i32,
     month: u32,
@@ -138,55 +115,38 @@ pub async fn download_monthly_trades(
         "https://static.okx.com/cdn/okex/traderecords/trades/monthly/{instrument_id}/{instrument_id}-trades-{year}-{month:02}.zip",
     );
 
-    let client_clone = client.clone();
-    let url_clone = url.clone();
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| DataError::Http {
+            status: None,
+            url: url.clone(),
+            message: format!("OKX monthly request failed: {e}"),
+        })?;
 
-    let response = retry_with_backoff(retry, is_retriable_data_error, || {
-        let client = client_clone.clone();
-        let url = url_clone.clone();
-        async move {
-            let resp = client
-                .get(&url)
-                .send()
-                .await
-                .map_err(|e| DataError::Http {
-                    status: None,
-                    url: url.clone(),
-                    message: format!("OKX monthly request failed: {e}"),
-                })?;
+    let status = resp.status();
 
-            let status = resp.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
 
-            if status == reqwest::StatusCode::NOT_FOUND {
-                return Ok(None);
-            }
+    if !status.is_success() {
+        return Err(DataError::Http {
+            status: Some(status.as_u16()),
+            url: url.clone(),
+            message: format!("OKX monthly HTTP {status} for {url}"),
+        });
+    }
 
-            if !status.is_success() {
-                return Err(DataError::Http {
-                    status: Some(status.as_u16()),
-                    url: url.clone(),
-                    message: format!("OKX monthly HTTP {status} for {url}"),
-                });
-            }
-
-            let bytes = resp
-                .bytes()
-                .await
-                .map_err(|e| DataError::Http {
-                    status: None,
-                    url: url.clone(),
-                    message: format!("OKX monthly read body failed: {e}"),
-                })?;
-
-            Ok(Some(bytes))
-        }
-    })
-    .await?;
-
-    let bytes = match response {
-        Some(b) => b,
-        None => return Ok(None),
-    };
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| DataError::Http {
+            status: None,
+            url: url.clone(),
+            message: format!("OKX monthly read body failed: {e}"),
+        })?;
 
     let cursor = std::io::Cursor::new(&bytes);
     let mut archive = zip::ZipArchive::new(cursor)
@@ -310,14 +270,12 @@ impl OkxBulkClient {
         let concurrency = self.config.concurrency;
         let client = self.client.clone();
         let config = self.config.clone();
-        let retry = self.retry.clone();
 
         Box::pin(stream::iter(dates)
             .map(move |date| {
                 let bulk_client = OkxBulkClient {
                     client: client.clone(),
                     config: config.clone(),
-                    retry: retry.clone(),
                 };
                 let market = request.market.clone();
                 async move { bulk_client.download_and_parse_trades(&market, date).await }

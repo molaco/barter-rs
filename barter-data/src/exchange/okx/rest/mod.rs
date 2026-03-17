@@ -3,7 +3,6 @@ use crate::{
     rest::{
         ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
     },
-    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
@@ -134,33 +133,21 @@ impl OkxRestClient {
         self.rate_limiter.until_ready().await;
     }
 
-    /// Execute an OKX trades request with rate limiting, retry, and error checking.
+    /// Execute an OKX trades request with error checking.
     ///
     /// Returns the raw [`OkxRestTrade`](trades::OkxRestTrade) DTOs in the order
     /// returned by the API (newest-first). Callers are responsible for reversal,
     /// conversion, and filtering.
     ///
     /// This is the shared implementation used by [`TradeFetcher::fetch_trades`]
-    /// to avoid duplicating HTTP execution logic.
+    /// to avoid duplicating HTTP execution logic. This is a single-attempt call;
+    /// retry logic is handled by the collector.
     async fn fetch_trades_raw(
         &self,
         request: trades::GetOkxTrades,
     ) -> Result<Vec<trades::OkxRestTrade>, DataError> {
-        self.wait_for_rate_limit().await;
-
         let response: trades::OkxTradesResponse =
-            match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
-                let req = request.clone();
-                let client = self.client.clone();
-                async move {
-                    client
-                        .execute(req)
-                        .await
-                        .map(|(response, _metric)| response)
-                }
-            })
-            .await
-            {
+            match self.client.execute(request).await.map(|(response, _metric)| response) {
                 Ok(resp) => resp,
                 Err(error) => {
                     warn!(?error, "trades fetch failed");
@@ -229,9 +216,9 @@ impl KlineFetcher for OkxRestClient {
     /// Fetch a single batch of klines from the OKX REST API.
     ///
     /// Builds a [`GetOkxKlines`](klines::GetOkxKlines) request from the
-    /// provided [`KlineRequest`], waits for the rate limiter, executes the
-    /// request with exponential-backoff retry, reverses the result (OKX returns
-    /// newest-first), and converts raw DTOs into [`Candle`]s.
+    /// provided [`KlineRequest`], executes the request, reverses the result
+    /// (OKX returns newest-first), and converts raw DTOs into [`Candle`]s.
+    /// This is a single-attempt call; retry logic is handled by the collector.
     fn fetch_klines(
         &self,
         request: KlineRequest,
@@ -259,21 +246,8 @@ impl KlineFetcher for OkxRestClient {
 
             let interval = request.interval;
 
-            this.wait_for_rate_limit().await;
-
             let response: klines::OkxKlinesResponse =
-                match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
-                    let req = get_klines_request.clone();
-                    let client = this.client.clone();
-                    async move {
-                        client
-                            .execute(req)
-                            .await
-                            .map(|(response, _metric)| response)
-                    }
-                })
-                .await
-                {
+                match this.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
                     Ok(resp) => resp,
                     Err(error) => {
                         warn!(?error, "klines fetch failed");

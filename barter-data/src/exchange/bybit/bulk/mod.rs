@@ -3,7 +3,6 @@ pub mod trades;
 use crate::{
     bulk::{BulkConfig, BulkDayTradeFetcher, BulkTradeRequest, date_range},
     error::DataError,
-    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     trade::RestTrade,
 };
 use async_compression::tokio::bufread::GzipDecoder;
@@ -62,7 +61,6 @@ impl BybitBulkServer for BybitServerPerpetualsUsd {
 pub struct BybitBulkClient<Server> {
     pub client: reqwest::Client,
     pub config: BulkConfig,
-    pub retry: RetryPolicy,
     _server: PhantomData<Server>,
 }
 
@@ -78,7 +76,6 @@ impl<Server> BybitBulkClient<Server> {
         Self {
             client: Self::build_client(),
             config: BulkConfig::default(),
-            retry: RetryPolicy::default(),
             _server: PhantomData,
         }
     }
@@ -87,7 +84,6 @@ impl<Server> BybitBulkClient<Server> {
         Self {
             client: Self::build_client(),
             config,
-            retry: RetryPolicy::default(),
             _server: PhantomData,
         }
     }
@@ -115,45 +111,30 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
         let url =
             format!("https://public.bybit.com/{prefix}/{market}/{market}{sep}{date_str}.csv.gz");
 
-        let client = self.client.clone();
-        let url_clone = url.clone();
-
-        let response = retry_with_backoff(&self.retry, is_retriable_data_error, || {
-            let client = client.clone();
-            let url = url_clone.clone();
-            async move {
-                let resp =
-                    client.get(&url).send().await.map_err(|e| {
-                        DataError::Http {
-                            status: None,
-                            url: url.clone(),
-                            message: format!("Bybit bulk request failed: {e}"),
-                        }
-                    })?;
-
-                let status = resp.status();
-
-                if status == reqwest::StatusCode::NOT_FOUND {
-                    return Ok(None);
+        let resp =
+            self.client.get(&url).send().await.map_err(|e| {
+                DataError::Http {
+                    status: None,
+                    url: url.clone(),
+                    message: format!("Bybit bulk request failed: {e}"),
                 }
+            })?;
 
-                if !status.is_success() {
-                    return Err(DataError::Http {
-                        status: Some(status.as_u16()),
-                        url: url.clone(),
-                        message: format!("Bybit bulk HTTP {status}"),
-                    });
-                }
+        let status = resp.status();
 
-                Ok(Some(resp))
-            }
-        })
-        .await?;
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
 
-        let response = match response {
-            Some(r) => r,
-            None => return Ok(None),
-        };
+        if !status.is_success() {
+            return Err(DataError::Http {
+                status: Some(status.as_u16()),
+                url: url.clone(),
+                message: format!("Bybit bulk HTTP {status}"),
+            });
+        }
+
+        let response = resp;
 
         // Stream the response body through async gzip decoder.
         // This avoids loading the entire compressed file into memory before
@@ -208,14 +189,12 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
         let concurrency = self.config.concurrency;
         let client = self.client.clone();
         let config = self.config.clone();
-        let retry = self.retry.clone();
 
         Box::pin(stream::iter(dates)
             .map(move |date| {
                 let client = BybitBulkClient::<Server> {
                     client: client.clone(),
                     config: config.clone(),
-                    retry: retry.clone(),
                     _server: PhantomData,
                 };
                 let market = request.market.clone();

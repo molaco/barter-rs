@@ -3,7 +3,6 @@ use crate::{
     rest::{
         ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
     },
-    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
@@ -147,7 +146,8 @@ impl KrakenRestClient {
     /// `last` pagination cursor from the Kraken response.
     ///
     /// This internal method provides access to the raw cursor for use in
-    /// pagination.
+    /// pagination. This is a single-attempt call; retry logic is handled by
+    /// the collector.
     async fn fetch_raw(
         &self,
         market: &str,
@@ -164,21 +164,8 @@ impl KrakenRestClient {
             },
         };
 
-        self.wait_for_rate_limit().await;
-
         let response: klines::KrakenOhlcResponse =
-            match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
-                let req = request.clone();
-                let client = self.client.clone();
-                async move {
-                    client
-                        .execute(req)
-                        .await
-                        .map(|(response, _metric)| response)
-                }
-            })
-            .await
-            {
+            match self.client.execute(request).await.map(|(response, _metric)| response) {
                 Ok(resp) => resp,
                 Err(error) => {
                     warn!(?error, "Kraken OHLC fetch failed");
@@ -214,7 +201,8 @@ impl KrakenRestClient {
     /// the `last` pagination cursor from the Kraken response.
     ///
     /// This internal method provides access to the raw cursor for use in
-    /// pagination.
+    /// pagination. This is a single-attempt call; retry logic is handled by
+    /// the collector.
     async fn fetch_trades_raw(
         &self,
         market: &str,
@@ -229,21 +217,8 @@ impl KrakenRestClient {
             },
         };
 
-        self.wait_for_rate_limit().await;
-
         let response: trades::KrakenTradesResponse =
-            match retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
-                let req = request.clone();
-                let client = self.client.clone();
-                async move {
-                    client
-                        .execute(req)
-                        .await
-                        .map(|(response, _metric)| response)
-                }
-            })
-            .await
-            {
+            match self.client.execute(request).await.map(|(response, _metric)| response) {
                 Ok(resp) => resp,
                 Err(error) => {
                     warn!(?error, "Kraken trades fetch failed");
