@@ -190,19 +190,15 @@ mod tests {
     #[test]
     fn test_okx_bulk_client_default() {
         let client = OkxBulkClient::default();
-        assert_eq!(client.config.concurrency, 4);
         assert!(client.config.verify_checksum);
     }
 
     #[test]
     fn test_okx_bulk_client_with_config() {
         let config = BulkConfig {
-            concurrency: 16,
             verify_checksum: false,
-            cache_dir: None,
         };
         let client = OkxBulkClient::with_config(config);
-        assert_eq!(client.config.concurrency, 16);
         assert!(!client.config.verify_checksum);
     }
 

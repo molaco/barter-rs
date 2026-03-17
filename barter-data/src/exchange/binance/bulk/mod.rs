@@ -4,7 +4,7 @@ pub mod trades;
 use crate::{
     bulk::{
         BulkConfig, BulkDayKlineFetcher, BulkDayTradeFetcher,
-        checksum::{parse_binance_checksum, should_skip, verify_sha256, write_verified_marker},
+        checksum::{parse_binance_checksum, verify_sha256},
     },
     error::DataError,
     exchange::binance::{
@@ -16,7 +16,7 @@ use crate::{
 };
 use chrono::NaiveDate;
 use futures::StreamExt;
-use std::{future::Future, io::Cursor, marker::PhantomData, path::PathBuf, pin::Pin};
+use std::{future::Future, io::Cursor, marker::PhantomData, pin::Pin};
 
 /// Trait for Binance bulk archive server variants.
 ///
@@ -77,7 +77,6 @@ impl BulkArchiveServer for BinanceServerFuturesCoin {
 pub struct BinanceBulkClient<Server> {
     pub client: reqwest::Client,
     pub config: BulkConfig,
-    pub retry: RetryPolicy,
     _server: PhantomData<Server>,
 }
 
@@ -86,7 +85,6 @@ impl<Server> BinanceBulkClient<Server> {
         Self {
             client: reqwest::Client::new(),
             config: BulkConfig::default(),
-            retry: RetryPolicy::default(),
             _server: PhantomData,
         }
     }
@@ -95,7 +93,6 @@ impl<Server> BinanceBulkClient<Server> {
         Self {
             client: reqwest::Client::new(),
             config,
-            retry: RetryPolicy::default(),
             _server: PhantomData,
         }
     }
@@ -255,13 +252,6 @@ async fn download_checksum(
     }
 }
 
-/// Build the `.verified` marker path for a given archive URL and cache directory.
-fn marker_path_for_url(cache_dir: &std::path::Path, url: &str) -> PathBuf {
-    // Extract filename from the URL (last path segment).
-    let filename = url.rsplit('/').next().unwrap_or("unknown");
-    cache_dir.join(format!("{filename}.verified"))
-}
-
 /// Extract the first file from a ZIP archive into raw bytes.
 fn extract_zip_csv(zip_bytes: &[u8]) -> Result<Vec<u8>, DataError> {
     let cursor = Cursor::new(zip_bytes);
@@ -289,18 +279,17 @@ fn extract_zip_csv(zip_bytes: &[u8]) -> Result<Vec<u8>, DataError> {
 // Download-and-parse orchestration
 // ---------------------------------------------------------------------------
 
-/// Download, verify (with optional marker-file skip), and parse trades
-/// for a single date. Returns `Ok(None)` on 404.
+/// Download, verify, and parse trades for a single date.
+/// Returns `Ok(None)` on 404.
 async fn download_and_parse_trades<Server: BulkArchiveServer>(
     client: &reqwest::Client,
     config: &BulkConfig,
-    retry: &RetryPolicy,
     market: &str,
     date: NaiveDate,
 ) -> Result<Option<Vec<RestTrade>>, DataError> {
     let url = agg_trades_url(Server::market_segment(), market, date);
 
-    let zip_bytes = match download_and_verify(client, config, retry, &url).await? {
+    let zip_bytes = match download_and_verify(client, config, &url).await? {
         Some(b) => b,
         None => return Ok(None),
     };
@@ -315,19 +304,18 @@ async fn download_and_parse_trades<Server: BulkArchiveServer>(
     Ok(Some(trades))
 }
 
-/// Download, verify (with optional marker-file skip), and parse klines
-/// for a single date. Returns `Ok(None)` on 404.
+/// Download, verify, and parse klines for a single date.
+/// Returns `Ok(None)` on 404.
 async fn download_and_parse_klines<Server: BulkArchiveServer>(
     client: &reqwest::Client,
     config: &BulkConfig,
-    retry: &RetryPolicy,
     market: &str,
     interval: &str,
     date: NaiveDate,
 ) -> Result<Option<Vec<Candle>>, DataError> {
     let url = klines_url(Server::market_segment(), market, interval, date);
 
-    let zip_bytes = match download_and_verify(client, config, retry, &url).await? {
+    let zip_bytes = match download_and_verify(client, config, &url).await? {
         Some(b) => b,
         None => return Ok(None),
     };
@@ -338,58 +326,24 @@ async fn download_and_parse_klines<Server: BulkArchiveServer>(
     Ok(Some(candles))
 }
 
-/// Download a ZIP archive with resumable retry, verify its SHA-256 checksum,
-/// and optionally read/write `.verified` marker files for cache-based skipping.
+/// Download a ZIP archive with resumable retry and verify its SHA-256 checksum.
 ///
 /// Returns `Ok(None)` on 404.
 async fn download_and_verify(
     client: &reqwest::Client,
     config: &BulkConfig,
-    retry: &RetryPolicy,
     url: &str,
 ) -> Result<Option<Vec<u8>>, DataError> {
-    // If we have a cache dir and checksum verification is enabled, try marker skip.
-    if config.verify_checksum {
-        if let Some(ref cache_dir) = config.cache_dir {
-            let marker = marker_path_for_url(cache_dir, url);
+    let retry = RetryPolicy::default();
 
-            // Fetch expected checksum to check marker validity.
-            if let Some(expected) = download_checksum(client, retry, url).await? {
-                if should_skip(&marker, &expected) {
-                    tracing::debug!(
-                        url = %url,
-                        marker = %marker.display(),
-                        "skipping download: valid .verified marker found"
-                    );
-                    // Still need to download for parsing; marker only confirms integrity.
-                    // For a full skip we would need cached file storage, but the marker
-                    // at least lets the caller know the data was previously verified.
-                    // Fall through to download, but we can skip re-verification below.
-                }
-            }
-        }
-    }
-
-    let zip_bytes = match download_bytes_resumable(client, retry, url).await? {
+    let zip_bytes = match download_bytes_resumable(client, &retry, url).await? {
         Some(b) => b,
         None => return Ok(None),
     };
 
     if config.verify_checksum {
-        if let Some(expected) = download_checksum(client, retry, url).await? {
+        if let Some(expected) = download_checksum(client, &retry, url).await? {
             verify_sha256(&zip_bytes, &expected)?;
-
-            // Write marker on successful verification.
-            if let Some(ref cache_dir) = config.cache_dir {
-                let marker = marker_path_for_url(cache_dir, url);
-                let filename = url.rsplit('/').next().unwrap_or("unknown");
-                write_verified_marker(&marker, &expected, filename);
-                tracing::debug!(
-                    url = %url,
-                    marker = %marker.display(),
-                    "wrote .verified marker after successful checksum"
-                );
-            }
         }
     }
 
@@ -406,7 +360,7 @@ impl<Server: BulkArchiveServer> BulkDayTradeFetcher for BinanceBulkClient<Server
         market: &'a str,
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
-        Box::pin(download_and_parse_trades::<Server>(&self.client, &self.config, &self.retry, market, date))
+        Box::pin(download_and_parse_trades::<Server>(&self.client, &self.config, market, date))
     }
 }
 
@@ -418,7 +372,7 @@ impl<Server: BulkArchiveServer> BulkDayKlineFetcher for BinanceBulkClient<Server
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<Candle>>, DataError>> + Send + 'a>> {
         let bi = binance_interval(interval);
-        Box::pin(download_and_parse_klines::<Server>(&self.client, &self.config, &self.retry, market, bi, date))
+        Box::pin(download_and_parse_klines::<Server>(&self.client, &self.config, market, bi, date))
     }
 }
 
@@ -639,19 +593,15 @@ mod tests {
     #[test]
     fn test_bulk_client_default() {
         let client: BinanceBulkClient<BinanceServerSpot> = BinanceBulkClient::default();
-        assert_eq!(client.config.concurrency, 4);
         assert!(client.config.verify_checksum);
     }
 
     #[test]
     fn test_bulk_client_with_config() {
         let config = BulkConfig {
-            concurrency: 8,
             verify_checksum: false,
-            cache_dir: None,
         };
         let client: BinanceBulkClient<BinanceServerSpot> = BinanceBulkClient::with_config(config);
-        assert_eq!(client.config.concurrency, 8);
         assert!(!client.config.verify_checksum);
     }
 

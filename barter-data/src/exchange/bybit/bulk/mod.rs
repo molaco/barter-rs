@@ -185,19 +185,15 @@ mod tests {
     #[test]
     fn test_bybit_bulk_client_default() {
         let client = BybitBulkClient::<BybitServerSpot>::default();
-        assert_eq!(client.config.concurrency, 4);
         assert!(client.config.verify_checksum);
     }
 
     #[test]
     fn test_bybit_bulk_client_with_config() {
         let config = BulkConfig {
-            concurrency: 8,
             verify_checksum: false,
-            cache_dir: None,
         };
         let client = BybitBulkClient::<BybitServerPerpetualsUsd>::with_config(config);
-        assert_eq!(client.config.concurrency, 8);
         assert!(!client.config.verify_checksum);
     }
 

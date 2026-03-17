@@ -27,7 +27,6 @@ const S3_REGION: &str = "ap-northeast-1";
 pub struct HyperliquidBulkClient {
     pub client: reqwest::Client,
     pub config: BulkConfig,
-    pub retry: RetryPolicy,
     credentials: Option<AwsCredentials>,
 }
 
@@ -47,7 +46,6 @@ impl HyperliquidBulkClient {
         Self {
             client,
             config: BulkConfig::default(),
-            retry: RetryPolicy::default(),
             credentials,
         }
     }
@@ -78,7 +76,7 @@ impl HyperliquidBulkClient {
         // Partial byte accumulator shared across retry attempts.
         let partial = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
 
-        retry_with_backoff(&self.retry, is_retriable_data_error, || {
+        retry_with_backoff(&RetryPolicy::default(), is_retriable_data_error, || {
             let url = url.clone();
             let client = self.client.clone();
             let credentials = credentials.clone();
@@ -263,19 +261,15 @@ mod tests {
     #[test]
     fn test_default_client() {
         let client = HyperliquidBulkClient::new();
-        assert_eq!(client.config.concurrency, 4);
         assert!(client.config.verify_checksum);
     }
 
     #[test]
     fn test_with_config() {
         let config = BulkConfig {
-            concurrency: 8,
             verify_checksum: false,
-            cache_dir: None,
         };
         let client = HyperliquidBulkClient::with_config(config);
-        assert_eq!(client.config.concurrency, 8);
         assert!(!client.config.verify_checksum);
     }
 
