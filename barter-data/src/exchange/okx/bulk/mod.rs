@@ -15,6 +15,7 @@ const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
 ///
 /// Downloads daily ZIP-compressed CSV trade archives from
 /// `https://www.okx.com/cdn/okex/traderecords/trades/daily/{YYYYMMDD}/{instrument}-trades-{YYYY-MM-DD}.zip`.
+#[non_exhaustive]
 #[derive(Debug)]
 pub struct OkxBulkClient {
     pub client: reqwest::Client,

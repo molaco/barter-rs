@@ -11,6 +11,7 @@ pub use crate::exchange::coinbase::coinbase_interval;
 /// ```json
 /// { "candles": [ { "start": "1672502400", ... }, ... ] }
 /// ```
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct CoinbaseKlinesResponse {
     pub candles: Vec<CoinbaseKlineRaw>,

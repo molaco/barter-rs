@@ -29,6 +29,7 @@ pub mod trades;
 /// ```
 ///
 /// Note that `code` is a `String` (not an integer) in the OKX API.
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct OkxApiError {
     pub code: String,
@@ -65,6 +66,7 @@ const OKX_REST_BASE_URL: &str = "https://www.okx.com";
 /// - `/api/v5/market/history-candles`: 20 req/2sec = 10 req/sec = 600 req/min
 ///
 /// We use the more conservative limit (600 req/min) to be safe.
+#[non_exhaustive]
 #[derive(Clone)]
 pub struct OkxRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, OkxHttpParser>>,

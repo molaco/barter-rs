@@ -57,6 +57,7 @@ impl BybitBulkServer for BybitServerPerpetualsUsd {
 ///
 /// Uses streaming gzip decompression via `async_compression` to avoid loading
 /// the entire compressed file into memory before decompressing.
+#[non_exhaustive]
 #[derive(Debug)]
 pub struct BybitBulkClient<Server> {
     pub client: reqwest::Client,

@@ -282,6 +282,7 @@ impl<Clock, GlobalData, InstrumentData, ExecutionTxs, Strategy, Risk>
                 .update_from_account(event)
                 .map(UpdateFromAccountOutput::PositionExit)
                 .unwrap_or(UpdateFromAccountOutput::None),
+            _ => UpdateFromAccountOutput::None,
         }
     }
 
@@ -311,6 +312,7 @@ impl<Clock, GlobalData, InstrumentData, ExecutionTxs, Strategy, Risk>
                 self.state.update_from_market(event);
                 UpdateFromMarketOutput::None
             }
+            _ => UpdateFromMarketOutput::None,
         }
     }
 

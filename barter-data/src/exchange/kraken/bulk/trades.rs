@@ -7,6 +7,7 @@ use serde::Deserialize;
 ///
 /// **CSV format:** No header, 7 columns:
 /// `price, volume, time, buy_sell, market_limit, misc, trade_id`
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct KrakenBulkTrade {
     pub price: String,

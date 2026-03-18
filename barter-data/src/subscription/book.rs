@@ -121,6 +121,7 @@ impl std::fmt::Display for OrderBooksL3 {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[non_exhaustive]
 pub enum OrderBookEvent {
     Snapshot(OrderBook),
     Update(OrderBook),

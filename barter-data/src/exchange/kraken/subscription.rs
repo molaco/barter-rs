@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum KrakenSubResponse {
     Subscribed {
         #[serde(alias = "channelID")]

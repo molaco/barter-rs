@@ -84,6 +84,7 @@ impl<'de> serde::Deserialize<'de> for BitfinexCandle {
 ///
 /// See docs: <https://docs.bitfinex.com/reference/ws-public-candles>
 #[derive(Clone, PartialEq, PartialOrd, Debug, Serialize)]
+#[non_exhaustive]
 pub enum BitfinexCandlePayload {
     Heartbeat,
     Candle(BitfinexCandle),

@@ -121,6 +121,7 @@ impl<InstrumentKey> MarketEvent<InstrumentKey, DataKind> {
 ///   make ergonomic [`Streams`](crate::streams::Streams) containing many
 ///   [`MarketEvent<T>`](MarketEvent) kinds.
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize, From)]
+#[non_exhaustive]
 pub enum DataKind {
     Trade(PublicTrade),
     OrderBookL1(OrderBookL1),

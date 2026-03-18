@@ -50,6 +50,7 @@ pub struct BybitPayload<T> {
 /// Bybit payload kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum BybitPayloadKind {
     Snapshot,
     Delta,

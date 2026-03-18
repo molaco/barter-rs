@@ -42,6 +42,7 @@ pub struct BitfinexMessage {
 ///
 /// See docs: <https://docs.bitfinex.com/docs/ws-general>
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug, Serialize)]
+#[non_exhaustive]
 pub enum BitfinexPayload {
     Heartbeat,
     Trade(BitfinexTrade),

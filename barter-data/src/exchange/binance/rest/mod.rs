@@ -27,6 +27,7 @@ pub mod trades;
 /// ```json
 /// { "code": -1121, "msg": "Invalid symbol." }
 /// ```
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct BinanceApiError {
     pub code: i64,
@@ -58,6 +59,7 @@ impl HttpParser for BinanceHttpParser {
 ///
 /// Includes a rate limiter configured for Binance weight-based limits
 /// (6000 weight per minute, ~5 weight per klines request = 1200 req/min).
+#[non_exhaustive]
 #[derive(Clone)]
 pub struct BinanceRestClient<Server> {
     pub client: Arc<RestClient<'static, PublicNoHeaders, BinanceHttpParser>>,

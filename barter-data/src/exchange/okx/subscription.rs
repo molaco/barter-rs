@@ -42,6 +42,7 @@ impl Serialize for ExchangeSub<OkxChannel, OkxMarket> {
 /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-subscribe>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 #[serde(tag = "event", rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum OkxSubResponse {
     #[serde(rename = "subscribe")]
     Subscribed,

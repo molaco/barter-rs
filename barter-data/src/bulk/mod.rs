@@ -34,10 +34,17 @@ pub struct BulkKlineRequest {
 }
 
 /// Configuration for bulk downloads.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct BulkConfig {
     /// Whether to verify checksums when available.
     pub verify_checksum: bool,
+}
+
+impl BulkConfig {
+    pub fn new(verify_checksum: bool) -> Self {
+        Self { verify_checksum }
+    }
 }
 
 impl Default for BulkConfig {

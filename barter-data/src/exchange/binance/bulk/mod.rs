@@ -73,6 +73,7 @@ impl BulkArchiveServer for BinanceServerFuturesCoin {
 }
 
 /// Binance bulk archive download client, generic over server variant.
+#[non_exhaustive]
 #[derive(Debug)]
 pub struct BinanceBulkClient<Server> {
     pub client: reqwest::Client,

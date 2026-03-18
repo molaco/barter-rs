@@ -135,6 +135,7 @@ where
                 AccountStreamEvent::Item(event) => {
                     self.replica_engine_state_mut().update_from_account(&event);
                 }
+                _ => {}
             },
             EngineEvent::Market(event) => match event {
                 MarketStreamEvent::Reconnecting(exchange) => {
@@ -145,6 +146,7 @@ where
                 MarketStreamEvent::Item(event) => {
                     self.replica_engine_state_mut().update_from_market(&event);
                 }
+                _ => {}
             },
         }
     }

@@ -21,6 +21,7 @@ pub use crate::exchange::kraken::kraken_interval;
 /// The `result` object contains a dynamic key for the pair data and a `last`
 /// cursor for pagination. We deserialize `result` as a raw
 /// [`serde_json::Value`] and parse it manually.
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct KrakenOhlcResponse {
     pub error: Vec<String>,

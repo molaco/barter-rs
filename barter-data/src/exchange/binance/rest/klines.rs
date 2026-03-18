@@ -56,6 +56,7 @@ impl RestRequest for GetKlines {
 ///
 /// This struct uses a custom [`Deserialize`] implementation with a sequence
 /// visitor to parse each positional element.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct BinanceKlineRaw {
     pub open_time: i64,

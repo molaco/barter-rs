@@ -15,6 +15,7 @@ use std::fmt::Debug;
 /// Separates instrument data extraction (instrument-specific, exchange-agnostic)
 /// from market string formatting (exchange-specific, instrument-agnostic).
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum MarketInput<'a> {
     /// Derived from [`MarketDataInstrument`] or [`Keyed<K, MarketDataInstrument>`].
     Components {

@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 /// }
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 #[serde(tag = "event", rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum BitfinexPlatformEvent {
     #[serde(rename = "info")]
     PlatformStatus(BitfinexPlatformStatus),
@@ -110,6 +111,7 @@ pub struct BitfinexPlatformStatus {
 ///
 /// See docs: <https://docs.bitfinex.com/docs/ws-general#info-messages>
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
+#[non_exhaustive]
 pub enum Status {
     Maintenance,
     Operative,

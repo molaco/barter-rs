@@ -23,6 +23,7 @@ const S3_REGION: &str = "ap-northeast-1";
 /// Downloads hourly LZ4-compressed JSON fill data from the public S3 bucket.
 /// Requires the `x-amz-request-payer: requester` header (requester-pays bucket).
 /// AWS credentials are loaded from environment variables for SigV4 signing.
+#[non_exhaustive]
 #[derive(Debug)]
 pub struct HyperliquidBulkClient {
     pub client: reqwest::Client,

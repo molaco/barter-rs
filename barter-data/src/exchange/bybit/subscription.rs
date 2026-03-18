@@ -34,6 +34,7 @@ pub struct BybitResponse {
 #[derive(
     Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default, Deserialize, Serialize,
 )]
+#[non_exhaustive]
 pub enum BybitReturnMessage {
     #[serde(alias = "")]
     #[default]

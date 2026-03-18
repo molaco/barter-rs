@@ -12,6 +12,7 @@ use serde::{Deserialize, Deserializer, de};
 /// Same fields minus `is_best_match`.
 ///
 /// Use `flexible(true)` on the CSV reader so both 7-column and 8-column rows parse correctly.
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct BinanceBulkAggTrade {
     pub agg_trade_id: u64,

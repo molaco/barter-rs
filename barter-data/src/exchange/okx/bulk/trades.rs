@@ -6,6 +6,7 @@ use serde::Deserialize;
 /// A single trade row from OKX's bulk CSV archive.
 ///
 /// CSV columns: `instrument_name, trade_id, side, price, size, created_time`
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct OkxBulkTrade {
     pub instrument_name: String,

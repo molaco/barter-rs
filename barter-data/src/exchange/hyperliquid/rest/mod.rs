@@ -23,6 +23,7 @@ pub mod klines;
 ///
 /// Hyperliquid returns errors as plain text or simple JSON. This captures the
 /// common case where the API returns a string error message.
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct HyperliquidApiError {
     #[serde(default)]
@@ -63,6 +64,7 @@ const HYPERLIQUID_REST_BASE_URL: &str = "https://api.hyperliquid.xyz";
 /// requests to `/info` with a JSON body rather than GET with query
 /// parameters. The [`RestClient`] framework supports this via the
 /// [`RestRequest::body()`] and [`RestRequest::method()`] trait methods.
+#[non_exhaustive]
 #[derive(Clone)]
 pub struct HyperliquidRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, HyperliquidHttpParser>>,

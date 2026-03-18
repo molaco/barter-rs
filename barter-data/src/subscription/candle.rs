@@ -49,6 +49,7 @@ pub struct Candle {
 
 /// Normalised candlestick interval period.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
+#[non_exhaustive]
 pub enum Interval {
     M1,
     M3,

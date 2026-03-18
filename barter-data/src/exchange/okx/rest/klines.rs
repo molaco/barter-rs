@@ -18,6 +18,7 @@ pub use crate::exchange::okx::okx_interval;
 /// ```
 ///
 /// A `code` of `"0"` indicates success. Any other value is an error.
+#[non_exhaustive]
 #[derive(Debug, serde::Deserialize)]
 pub struct OkxKlinesResponse {
     pub code: String,
@@ -32,6 +33,7 @@ pub struct OkxKlinesResponse {
 ///
 /// All elements are strings. This struct uses a custom [`Deserialize`]
 /// implementation with a sequence visitor to parse each positional element.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct OkxKlineRaw {
     /// Candle open time in milliseconds since epoch.

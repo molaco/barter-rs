@@ -26,6 +26,7 @@ pub mod trades;
 /// ```json
 /// { "error": "NOT_FOUND", "message": "product not found" }
 /// ```
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct CoinbaseApiError {
     pub error: String,
@@ -58,6 +59,7 @@ const COINBASE_REST_BASE_URL: &str = "https://api.coinbase.com";
 /// because Coinbase uses a single REST API endpoint for all markets.
 ///
 /// Includes a rate limiter configured for 10 requests per second.
+#[non_exhaustive]
 #[derive(Clone)]
 pub struct CoinbaseRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, CoinbaseHttpParser>>,

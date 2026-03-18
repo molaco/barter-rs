@@ -8,6 +8,7 @@ use std::collections::HashMap;
 ///
 /// Each JSON line in the archive is an array of fill events. Extra fields
 /// beyond what we need are silently ignored (no `deny_unknown_fields`).
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct HyperliquidFillEvent {
     pub coin: String,

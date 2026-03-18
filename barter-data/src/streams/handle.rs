@@ -20,6 +20,7 @@ pub struct SubEntry<Channel, Market, InstrumentKey> {
 
 /// Command sent from a [`TypedHandle`] to the connection task.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Command<Channel, Market, InstrumentKey> {
     Subscribe {
         /// Resolved subscription entries per instrument.

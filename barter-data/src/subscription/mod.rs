@@ -79,6 +79,7 @@ where
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
+#[non_exhaustive]
 pub enum SubKind {
     PublicTrades,
     OrderBooksL1,

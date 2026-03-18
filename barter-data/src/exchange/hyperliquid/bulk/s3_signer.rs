@@ -12,6 +12,7 @@ type HmacSha256 = Hmac<Sha256>;
 const UNSIGNED_PAYLOAD: &str = "UNSIGNED-PAYLOAD";
 
 /// AWS credentials loaded from environment.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct AwsCredentials {
     pub access_key: String,
@@ -83,6 +84,7 @@ impl AwsCredentials {
 }
 
 /// Headers produced by SigV4 signing that must be added to the request.
+#[non_exhaustive]
 #[derive(Debug)]
 pub struct SignedHeaders {
     pub authorization: String,

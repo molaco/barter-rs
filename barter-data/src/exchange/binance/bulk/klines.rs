@@ -9,6 +9,7 @@ use serde::Deserialize;
 ///  taker_buy_base_vol, taker_buy_quote_vol, ignore`
 ///
 /// Spot CSVs have no header row; futures CSVs have a header row.
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct BinanceBulkKline {
     pub open_time: i64,

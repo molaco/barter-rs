@@ -71,6 +71,7 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Deserialize, Serialize)]
 #[serde(untagged, rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum KrakenMessage<T> {
     Data(T),
     Event(KrakenEvent),
@@ -98,6 +99,7 @@ where
 /// See docs: <https://docs.kraken.com/websockets/#message-heartbeat>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 #[serde(tag = "event", rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum KrakenEvent {
     Heartbeat,
     Error(KrakenError),

@@ -27,6 +27,7 @@ pub mod trades;
 /// ```json
 /// { "retCode": 10001, "retMsg": "Invalid symbol." }
 /// ```
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct BybitApiError {
     #[serde(rename = "retCode")]
@@ -69,6 +70,7 @@ pub trait BybitCategory {
 ///
 /// Includes a rate limiter configured for Bybit rate limits
 /// (10 requests per second).
+#[non_exhaustive]
 #[derive(Clone)]
 pub struct BybitRestClient<Server> {
     pub client: Arc<RestClient<'static, PublicNoHeaders, BybitHttpParser>>,

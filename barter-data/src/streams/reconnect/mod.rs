@@ -5,6 +5,7 @@ pub mod stream;
 /// [`ReconnectingStream`](stream::ReconnectingStream) `Event` that communicates either `Stream::Item`, or that the inner
 /// `Stream` is currently reconnecting.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[non_exhaustive]
 pub enum Event<Origin, T> {
     /// [`ReconnectingStream`](stream::ReconnectingStream) has disconnecting and is
     /// attempting to reconnect.

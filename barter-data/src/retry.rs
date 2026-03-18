@@ -4,6 +4,7 @@ use tokio::time::sleep;
 use tracing::warn;
 
 /// Configuration for exponential backoff retry.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct RetryPolicy {
     /// Initial backoff duration.

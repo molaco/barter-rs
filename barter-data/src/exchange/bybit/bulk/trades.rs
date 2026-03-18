@@ -7,6 +7,7 @@ use serde::Deserialize;
 ///
 /// CSV columns: `timestamp, symbol, side, size, price, tickDirection,
 /// trdMatchID, grossValue, homeNotional, foreignNotional`
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct BybitBulkTrade {
     pub timestamp: f64,
@@ -67,6 +68,7 @@ impl TryFrom<BybitBulkTrade> for RestTrade {
 ///
 /// CSV columns: `id, timestamp, price, volume, side, rpi`
 /// Timestamp is in milliseconds (integer). Side is lowercase ("buy"/"sell").
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct BybitSpotBulkTrade {
     pub id: u64,

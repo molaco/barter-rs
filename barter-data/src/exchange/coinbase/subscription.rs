@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum CoinbaseSubResponse {
     #[serde(alias = "subscriptions")]
     Subscribed {

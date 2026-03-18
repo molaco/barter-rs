@@ -30,6 +30,7 @@ const KRAKEN_REST_BASE_URL: &str = "https://api.kraken.com";
 /// ```
 ///
 /// Kraken returns errors as an array of strings in the top-level `error` field.
+#[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct KrakenApiError {
     pub error: Vec<String>,
@@ -58,6 +59,7 @@ impl HttpParser for KrakenHttpParser {
 ///
 /// Includes a rate limiter configured for conservative Kraken limits
 /// (~1 request per second = 60 req/min).
+#[non_exhaustive]
 #[derive(Clone)]
 pub struct KrakenRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, KrakenHttpParser>>,
