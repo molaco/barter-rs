@@ -287,6 +287,10 @@ impl KlineFetcher for OkxRestClient {
 }
 
 impl TradeFetcher for OkxRestClient {
+    fn wait_for_rate_limit(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async { self.rate_limiter.until_ready().await })
+    }
+
     /// Fetch a single batch of historical trades from the OKX REST API.
     ///
     /// Builds a [`GetOkxTrades`](trades::GetOkxTrades) request from the provided
@@ -313,7 +317,9 @@ impl TradeFetcher for OkxRestClient {
             let get_trades_request = trades::GetOkxTrades {
                 params: trades::GetOkxTradesParams {
                     inst_id: request.market,
-                    after: None,
+                    // OKX "after" = return trades older than this trade ID (backward pagination).
+                    // Maps from TradeRequest.initial_cursor for cursor carry-forward.
+                    after: request.initial_cursor,
                     before: None,
                     limit: request.limit,
                 },
