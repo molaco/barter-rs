@@ -51,6 +51,9 @@ pub struct TradeRequest {
     pub end: Option<DateTime<Utc>>,
     /// Optional limit on the number of trades to return per batch.
     pub limit: Option<u32>,
+    /// Optional cursor carried forward from a previous fetch (e.g., a trade ID
+    /// or pagination token) so the exchange can resume from where it left off.
+    pub initial_cursor: Option<String>,
 }
 
 /// Unified rate-limiter type shared across all exchange REST clients.

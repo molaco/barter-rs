@@ -91,6 +91,7 @@ async fn test_fetch_trades_single_batch() {
         start: None,
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -155,6 +156,7 @@ async fn test_fetch_trades_empty_response() {
         start: None,
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
@@ -182,6 +184,7 @@ async fn test_fetch_trades_api_error() {
         start: None,
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let result = client.fetch_trades(request).await;
@@ -220,6 +223,7 @@ async fn test_fetch_trades_oldest_first_after_reversal() {
         start: None,
         end: None,
         limit: None,
+        initial_cursor: None,
     };
 
     let trades = client.fetch_trades(request).await.unwrap();
