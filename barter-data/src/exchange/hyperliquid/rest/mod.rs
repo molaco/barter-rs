@@ -1,7 +1,7 @@
 use crate::{
     error::DataError,
     rest::{
-        KlineFetcher, KlineRequest,
+        ExchangeRateLimiter, KlineFetcher, KlineRequest,
     },
     subscription::candle::{Candle, Interval},
 };
@@ -46,16 +46,6 @@ impl HttpParser for HyperliquidHttpParser {
     }
 }
 
-/// Type alias for the direct (non-keyed) rate limiter used by the Hyperliquid REST client.
-///
-/// Uses an in-memory state with the default clock and no middleware.
-type HyperliquidRateLimiter = governor::RateLimiter<
-    governor::state::NotKeyed,
-    governor::state::InMemoryState,
-    governor::clock::DefaultClock,
-    governor::middleware::NoOpMiddleware,
->;
-
 /// Hyperliquid REST API base URL.
 const HYPERLIQUID_REST_BASE_URL: &str = "https://api.hyperliquid.xyz";
 
@@ -76,14 +66,14 @@ const HYPERLIQUID_REST_BASE_URL: &str = "https://api.hyperliquid.xyz";
 #[derive(Clone)]
 pub struct HyperliquidRestClient {
     pub client: Arc<RestClient<'static, PublicNoHeaders, HyperliquidHttpParser>>,
-    pub rate_limiter: Arc<HyperliquidRateLimiter>,
+    pub rate_limiter: Arc<ExchangeRateLimiter>,
 }
 
 impl fmt::Debug for HyperliquidRestClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HyperliquidRestClient")
             .field("client", &self.client)
-            .field("rate_limiter", &"HyperliquidRateLimiter { .. }")
+            .field("rate_limiter", &"ExchangeRateLimiter { .. }")
             .finish()
     }
 }
@@ -101,6 +91,22 @@ impl HyperliquidRestClient {
     /// Initialises a rate limiter with a quota of 600 requests per minute.
     pub fn new() -> Self {
         Self::with_base_url(HYPERLIQUID_REST_BASE_URL.to_owned())
+    }
+
+    /// Construct a new [`HyperliquidRestClient`] with a caller-provided rate limiter.
+    ///
+    /// This allows sharing a single [`ExchangeRateLimiter`] across multiple
+    /// clients so they draw from the same token bucket.
+    pub fn with_rate_limiter(rate_limiter: Arc<ExchangeRateLimiter>) -> Self {
+        let client = RestClient::new(
+            HYPERLIQUID_REST_BASE_URL.to_owned(),
+            PublicNoHeaders,
+            HyperliquidHttpParser,
+        );
+        Self {
+            client: Arc::new(client),
+            rate_limiter,
+        }
     }
 
     /// Construct a [`HyperliquidRestClient`] with a custom base URL.

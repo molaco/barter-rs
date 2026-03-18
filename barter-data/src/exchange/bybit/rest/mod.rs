@@ -2,7 +2,7 @@ use crate::{
     error::DataError,
     exchange::RestExchangeServer,
     rest::{
-        KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
+        ExchangeRateLimiter, KlineFetcher, KlineRequest, RestTrade, TradeFetcher, TradeRequest,
     },
     subscription::candle::{Candle, Interval},
 };
@@ -52,16 +52,6 @@ impl HttpParser for BybitHttpParser {
     }
 }
 
-/// Type alias for the direct (non-keyed) rate limiter used by the Bybit REST client.
-///
-/// Uses an in-memory state with the default clock and no middleware.
-type BybitRateLimiter = governor::RateLimiter<
-    governor::state::NotKeyed,
-    governor::state::InMemoryState,
-    governor::clock::DefaultClock,
-    governor::middleware::NoOpMiddleware,
->;
-
 /// Trait providing the Bybit-specific `category` parameter for REST requests.
 ///
 /// Bybit requires a `category` query parameter ("spot" or "linear") to
@@ -82,7 +72,7 @@ pub trait BybitCategory {
 #[derive(Clone)]
 pub struct BybitRestClient<Server> {
     pub client: Arc<RestClient<'static, PublicNoHeaders, BybitHttpParser>>,
-    pub rate_limiter: Arc<BybitRateLimiter>,
+    pub rate_limiter: Arc<ExchangeRateLimiter>,
     _server: PhantomData<Server>,
 }
 
@@ -90,7 +80,7 @@ impl<Server> fmt::Debug for BybitRestClient<Server> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BybitRestClient")
             .field("client", &self.client)
-            .field("rate_limiter", &"BybitRateLimiter { .. }")
+            .field("rate_limiter", &"ExchangeRateLimiter { .. }")
             .finish()
     }
 }
@@ -126,6 +116,23 @@ where
         Self {
             client: Arc::new(client),
             rate_limiter: Arc::new(rate_limiter),
+            _server: PhantomData,
+        }
+    }
+
+    /// Construct a new [`BybitRestClient`] with a caller-provided rate limiter.
+    ///
+    /// This allows sharing a single [`ExchangeRateLimiter`] across multiple
+    /// clients so they draw from the same token bucket.
+    pub fn with_rate_limiter(rate_limiter: Arc<ExchangeRateLimiter>) -> Self {
+        let client = RestClient::new(
+            Server::rest_base_url().to_owned(),
+            PublicNoHeaders,
+            BybitHttpParser,
+        );
+        Self {
+            client: Arc::new(client),
+            rate_limiter,
             _server: PhantomData,
         }
     }
