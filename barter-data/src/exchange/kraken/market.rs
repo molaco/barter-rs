@@ -7,7 +7,7 @@ use smol_str::{SmolStr, format_smolstr};
 ///
 /// See docs: <https://docs.kraken.com/websockets/#message-subscribe>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
-pub struct KrakenMarket(pub SmolStr);
+pub struct KrakenMarket(pub(crate) SmolStr);
 
 impl AsRef<str> for KrakenMarket {
     fn as_ref(&self) -> &str {

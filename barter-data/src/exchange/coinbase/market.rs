@@ -7,7 +7,7 @@ use smol_str::{SmolStr, StrExt, format_smolstr};
 ///
 /// See docs: <https://docs.cloud.coinbase.com/exchange/docs/websocket-overview#subscribe>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
-pub struct CoinbaseMarket(pub SmolStr);
+pub struct CoinbaseMarket(pub(crate) SmolStr);
 
 impl AsRef<str> for CoinbaseMarket {
     fn as_ref(&self) -> &str {

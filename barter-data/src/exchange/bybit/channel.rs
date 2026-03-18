@@ -17,7 +17,7 @@ use smol_str::{SmolStr, format_smolstr};
 ///
 /// See docs: <https://bybit-exchange.github.io/docs/v5/ws/connect>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct BybitChannel(pub SmolStr);
+pub struct BybitChannel(pub(crate) SmolStr);
 
 impl BybitChannel {
     /// [`Bybit`] real-time trades channel name.

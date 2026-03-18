@@ -31,9 +31,9 @@ pub mod trades;
 #[derive(Debug, Deserialize)]
 pub struct BybitApiError {
     #[serde(rename = "retCode")]
-    pub ret_code: i64,
+    pub(crate) ret_code: i64,
     #[serde(rename = "retMsg")]
-    pub ret_msg: String,
+    pub(crate) ret_msg: String,
 }
 
 /// HTTP response parser for Bybit REST API responses.
@@ -73,8 +73,8 @@ pub trait BybitCategory {
 #[non_exhaustive]
 #[derive(Clone)]
 pub struct BybitRestClient<Server> {
-    pub client: Arc<RestClient<'static, PublicNoHeaders, BybitHttpParser>>,
-    pub rate_limiter: Arc<ExchangeRateLimiter>,
+    pub(crate) client: Arc<RestClient<'static, PublicNoHeaders, BybitHttpParser>>,
+    pub(crate) rate_limiter: Arc<ExchangeRateLimiter>,
     _server: PhantomData<Server>,
 }
 
@@ -155,6 +155,11 @@ impl<Server> BybitRestClient<Server> {
             rate_limiter: Arc::new(rate_limiter),
             _server: PhantomData,
         }
+    }
+
+    /// Return a reference to the inner HTTP client.
+    pub fn http_client(&self) -> &Arc<RestClient<'static, PublicNoHeaders, BybitHttpParser>> {
+        &self.client
     }
 
     /// Wait until the rate limiter permits the next request.

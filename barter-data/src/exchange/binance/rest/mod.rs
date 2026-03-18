@@ -30,8 +30,8 @@ pub mod trades;
 #[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct BinanceApiError {
-    pub code: i64,
-    pub msg: String,
+    pub(crate) code: i64,
+    pub(crate) msg: String,
 }
 
 /// HTTP response parser for Binance REST API responses.
@@ -62,8 +62,8 @@ impl HttpParser for BinanceHttpParser {
 #[non_exhaustive]
 #[derive(Clone)]
 pub struct BinanceRestClient<Server> {
-    pub client: Arc<RestClient<'static, PublicNoHeaders, BinanceHttpParser>>,
-    pub rate_limiter: Arc<ExchangeRateLimiter>,
+    pub(crate) client: Arc<RestClient<'static, PublicNoHeaders, BinanceHttpParser>>,
+    pub(crate) rate_limiter: Arc<ExchangeRateLimiter>,
     _server: PhantomData<Server>,
 }
 
@@ -148,6 +148,11 @@ impl<Server> BinanceRestClient<Server> {
             rate_limiter: Arc::new(rate_limiter),
             _server: PhantomData,
         }
+    }
+
+    /// Return a reference to the inner HTTP client.
+    pub fn http_client(&self) -> &Arc<RestClient<'static, PublicNoHeaders, BinanceHttpParser>> {
+        &self.client
     }
 
     /// Wait until the rate limiter permits the next request.

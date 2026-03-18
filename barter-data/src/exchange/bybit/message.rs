@@ -70,15 +70,15 @@ where
     match (tokens.next(), tokens.next(), tokens.next(), tokens.next()) {
         (Some("publicTrade"), Some(market), None, None) => Ok(SubscriptionId::from(format!(
             "{}|{market}",
-            BybitChannel::TRADES.0
+            BybitChannel::TRADES.as_ref()
         ))),
         (Some("orderbook"), Some("1"), Some(market), None) => Ok(SubscriptionId::from(format!(
             "{}|{market}",
-            BybitChannel::ORDER_BOOK_L1.0,
+            BybitChannel::ORDER_BOOK_L1.as_ref(),
         ))),
         (Some("orderbook"), Some("50"), Some(market), None) => Ok(SubscriptionId::from(format!(
             "{}|{market}",
-            BybitChannel::ORDER_BOOK_L2.0,
+            BybitChannel::ORDER_BOOK_L2.as_ref(),
         ))),
         (Some("kline"), Some(interval), Some(market), None) => {
             Ok(SubscriptionId::from(format!("kline.{interval}|{market}",)))

@@ -7,7 +7,7 @@ use smol_str::{SmolStr, format_smolstr};
 ///
 /// See docs: <https://docs.bitfinex.com/docs/ws-public>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
-pub struct BitfinexMarket(pub SmolStr);
+pub struct BitfinexMarket(pub(crate) SmolStr);
 
 impl AsRef<str> for BitfinexMarket {
     fn as_ref(&self) -> &str {

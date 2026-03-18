@@ -12,7 +12,7 @@ use smol_str::{SmolStr, format_smolstr};
 ///
 /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-public-channel>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct OkxChannel(pub SmolStr);
+pub struct OkxChannel(pub(crate) SmolStr);
 
 impl OkxChannel {
     /// [`Okx`] real-time trades channel.

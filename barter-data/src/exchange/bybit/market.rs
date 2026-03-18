@@ -7,7 +7,7 @@ use smol_str::{SmolStr, StrExt, format_smolstr};
 ///
 /// See docs: <https://bybit-exchange.github.io/docs/v5/ws/connect>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
-pub struct BybitMarket(pub SmolStr);
+pub struct BybitMarket(pub(crate) SmolStr);
 
 impl AsRef<str> for BybitMarket {
     fn as_ref(&self) -> &str {

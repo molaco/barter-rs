@@ -60,7 +60,7 @@ use crate::{error::DataError, subscription::candle::Interval};
 /// Convert a normalised [`Interval`] to the GateIO API interval string.
 ///
 /// GateIO supports: 10s, 1m, 5m, 15m, 30m, 1h, 4h, 8h, 1d, 7d, 30d.
-pub fn gateio_interval(interval: Interval) -> Result<&'static str, DataError> {
+pub(crate) fn gateio_interval(interval: Interval) -> Result<&'static str, DataError> {
     match interval {
         Interval::M1 => Ok("1m"),
         Interval::M5 => Ok("5m"),

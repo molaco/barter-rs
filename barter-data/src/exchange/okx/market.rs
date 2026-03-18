@@ -17,7 +17,7 @@ use smol_str::{SmolStr, StrExt, format_smolstr};
 ///
 /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-public-channel>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
-pub struct OkxMarket(pub SmolStr);
+pub struct OkxMarket(pub(crate) SmolStr);
 
 impl AsRef<str> for OkxMarket {
     fn as_ref(&self) -> &str {

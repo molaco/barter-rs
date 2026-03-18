@@ -8,7 +8,7 @@ use smol_str::{SmolStr, StrExt, format_smolstr};
 /// See docs: <https://binance-docs.github.io/apidocs/spot/en/#websocket-market-streams>
 /// See docs: <https://binance-docs.github.io/apidocs/futures/en/#websocket-market-streams>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
-pub struct BinanceMarket(pub SmolStr);
+pub struct BinanceMarket(pub(crate) SmolStr);
 
 impl AsRef<str> for BinanceMarket {
     fn as_ref(&self) -> &str {

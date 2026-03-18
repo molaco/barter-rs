@@ -75,7 +75,7 @@ use crate::{error::DataError, subscription::candle::Interval};
 /// Convert a normalised [`Interval`] to the Bitfinex API interval string.
 ///
 /// Bitfinex supports: 1m, 5m, 15m, 30m, 1h, 3h, 6h, 12h, 1D, 1W, 14D, 1M.
-pub fn bitfinex_interval(interval: Interval) -> Result<&'static str, DataError> {
+pub(crate) fn bitfinex_interval(interval: Interval) -> Result<&'static str, DataError> {
     match interval {
         Interval::M1 => Ok("1m"),
         Interval::M5 => Ok("5m"),

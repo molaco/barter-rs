@@ -32,8 +32,8 @@ pub mod trades;
 #[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct OkxApiError {
-    pub code: String,
-    pub msg: String,
+    pub(crate) code: String,
+    pub(crate) msg: String,
 }
 
 /// HTTP response parser for OKX REST API responses.
@@ -69,8 +69,8 @@ const OKX_REST_BASE_URL: &str = "https://www.okx.com";
 #[non_exhaustive]
 #[derive(Clone)]
 pub struct OkxRestClient {
-    pub client: Arc<RestClient<'static, PublicNoHeaders, OkxHttpParser>>,
-    pub rate_limiter: Arc<ExchangeRateLimiter>,
+    pub(crate) client: Arc<RestClient<'static, PublicNoHeaders, OkxHttpParser>>,
+    pub(crate) rate_limiter: Arc<ExchangeRateLimiter>,
 }
 
 impl fmt::Debug for OkxRestClient {
@@ -125,6 +125,11 @@ impl OkxRestClient {
             client: Arc::new(client),
             rate_limiter: Arc::new(rate_limiter),
         }
+    }
+
+    /// Return a reference to the inner HTTP client.
+    pub fn http_client(&self) -> &Arc<RestClient<'static, PublicNoHeaders, OkxHttpParser>> {
+        &self.client
     }
 
     /// Wait until the rate limiter permits the next request.

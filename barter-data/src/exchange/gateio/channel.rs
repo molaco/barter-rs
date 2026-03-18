@@ -13,7 +13,7 @@ use smol_str::{SmolStr, format_smolstr};
 ///
 /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-public-channel>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct GateioChannel(pub SmolStr);
+pub struct GateioChannel(pub(crate) SmolStr);
 
 impl GateioChannel {
     /// Gateio [`MarketDataInstrumentKind::Spot`] real-time trades channel.

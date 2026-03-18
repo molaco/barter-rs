@@ -11,7 +11,7 @@ use smol_str::{SmolStr, format_smolstr};
 ///
 /// See docs: <https://docs.kraken.com/websockets/#message-subscribe>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct KrakenChannel(pub SmolStr);
+pub struct KrakenChannel(pub(crate) SmolStr);
 
 impl KrakenChannel {
     /// [`Kraken`] real-time trades channel name.

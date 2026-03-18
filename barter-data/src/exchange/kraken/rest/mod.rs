@@ -33,7 +33,7 @@ const KRAKEN_REST_BASE_URL: &str = "https://api.kraken.com";
 #[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct KrakenApiError {
-    pub error: Vec<String>,
+    pub(crate) error: Vec<String>,
 }
 
 /// HTTP response parser for Kraken REST API responses.
@@ -62,8 +62,8 @@ impl HttpParser for KrakenHttpParser {
 #[non_exhaustive]
 #[derive(Clone)]
 pub struct KrakenRestClient {
-    pub client: Arc<RestClient<'static, PublicNoHeaders, KrakenHttpParser>>,
-    pub rate_limiter: Arc<ExchangeRateLimiter>,
+    pub(crate) client: Arc<RestClient<'static, PublicNoHeaders, KrakenHttpParser>>,
+    pub(crate) rate_limiter: Arc<ExchangeRateLimiter>,
 }
 
 impl fmt::Debug for KrakenRestClient {
@@ -135,6 +135,11 @@ impl KrakenRestClient {
             client: Arc::new(client),
             rate_limiter: Arc::new(rate_limiter),
         }
+    }
+
+    /// Return a reference to the inner HTTP client.
+    pub fn http_client(&self) -> &Arc<RestClient<'static, PublicNoHeaders, KrakenHttpParser>> {
+        &self.client
     }
 
     /// Wait until the rate limiter permits the next request.

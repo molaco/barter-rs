@@ -52,7 +52,7 @@ use crate::{error::DataError, subscription::candle::Interval};
 /// Convert a normalised [`Interval`] to the BitMEX API interval string.
 ///
 /// BitMEX only supports 4 intervals: 1m, 5m, 1h, 1d.
-pub fn bitmex_interval(interval: Interval) -> Result<&'static str, DataError> {
+pub(crate) fn bitmex_interval(interval: Interval) -> Result<&'static str, DataError> {
     match interval {
         Interval::M1 => Ok("1m"),
         Interval::M5 => Ok("5m"),

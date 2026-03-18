@@ -7,7 +7,7 @@ use smol_str::{SmolStr, StrExt, format_smolstr};
 ///
 /// See docs: <https://www.bitmex.com/app/wsAPI>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
-pub struct BitmexMarket(pub SmolStr);
+pub struct BitmexMarket(pub(crate) SmolStr);
 
 impl AsRef<str> for BitmexMarket {
     fn as_ref(&self) -> &str {

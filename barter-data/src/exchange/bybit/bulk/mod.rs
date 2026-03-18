@@ -60,12 +60,17 @@ impl BybitBulkServer for BybitServerPerpetualsUsd {
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct BybitBulkClient<Server> {
-    pub client: reqwest::Client,
-    pub config: BulkConfig,
+    pub(crate) client: reqwest::Client,
+    pub(crate) config: BulkConfig,
     _server: PhantomData<Server>,
 }
 
 impl<Server> BybitBulkClient<Server> {
+    /// Return a reference to the bulk download configuration.
+    pub fn config(&self) -> &BulkConfig {
+        &self.config
+    }
+
     fn build_client() -> reqwest::Client {
         reqwest::Client::builder()
             .user_agent("Mozilla/5.0")

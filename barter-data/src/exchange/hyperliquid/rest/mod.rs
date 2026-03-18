@@ -27,7 +27,7 @@ pub mod klines;
 #[derive(Debug, Deserialize)]
 pub struct HyperliquidApiError {
     #[serde(default)]
-    pub error: String,
+    pub(crate) error: String,
 }
 
 /// HTTP response parser for Hyperliquid REST API responses.
@@ -67,8 +67,8 @@ const HYPERLIQUID_REST_BASE_URL: &str = "https://api.hyperliquid.xyz";
 #[non_exhaustive]
 #[derive(Clone)]
 pub struct HyperliquidRestClient {
-    pub client: Arc<RestClient<'static, PublicNoHeaders, HyperliquidHttpParser>>,
-    pub rate_limiter: Arc<ExchangeRateLimiter>,
+    pub(crate) client: Arc<RestClient<'static, PublicNoHeaders, HyperliquidHttpParser>>,
+    pub(crate) rate_limiter: Arc<ExchangeRateLimiter>,
 }
 
 impl fmt::Debug for HyperliquidRestClient {
@@ -124,6 +124,11 @@ impl HyperliquidRestClient {
             client: Arc::new(client),
             rate_limiter: Arc::new(rate_limiter),
         }
+    }
+
+    /// Return a reference to the inner HTTP client.
+    pub fn http_client(&self) -> &Arc<RestClient<'static, PublicNoHeaders, HyperliquidHttpParser>> {
+        &self.client
     }
 
     /// Wait until the rate limiter permits the next request.

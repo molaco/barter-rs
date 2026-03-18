@@ -10,7 +10,7 @@ use smol_str::{SmolStr, StrExt, format_smolstr};
 ///
 /// See docs: <https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
-pub struct HyperliquidMarket(pub SmolStr);
+pub struct HyperliquidMarket(pub(crate) SmolStr);
 
 impl AsRef<str> for HyperliquidMarket {
     fn as_ref(&self) -> &str {

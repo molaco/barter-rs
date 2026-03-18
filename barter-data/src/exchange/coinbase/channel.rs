@@ -11,7 +11,7 @@ use smol_str::SmolStr;
 ///
 /// See docs: <https://docs.cloud.coinbase.com/exchange/docs/websocket-overview#subscribe>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct CoinbaseChannel(pub SmolStr);
+pub struct CoinbaseChannel(pub(crate) SmolStr);
 
 impl CoinbaseChannel {
     /// [`Coinbase`] real-time trades channel.

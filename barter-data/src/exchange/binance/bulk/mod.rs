@@ -76,12 +76,17 @@ impl BulkArchiveServer for BinanceServerFuturesCoin {
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct BinanceBulkClient<Server> {
-    pub client: reqwest::Client,
-    pub config: BulkConfig,
+    pub(crate) client: reqwest::Client,
+    pub(crate) config: BulkConfig,
     _server: PhantomData<Server>,
 }
 
 impl<Server> BinanceBulkClient<Server> {
+    /// Return a reference to the bulk download configuration.
+    pub fn config(&self) -> &BulkConfig {
+        &self.config
+    }
+
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::new(),

@@ -11,7 +11,7 @@ use smol_str::SmolStr;
 ///
 /// See docs: <https://docs.bitfinex.com/docs/ws-public>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct BitfinexChannel(pub SmolStr);
+pub struct BitfinexChannel(pub(crate) SmolStr);
 
 impl BitfinexChannel {
     /// [`Bitfinex`] real-time trades channel.

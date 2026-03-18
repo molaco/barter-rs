@@ -26,12 +26,17 @@ const S3_REGION: &str = "ap-northeast-1";
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct HyperliquidBulkClient {
-    pub client: reqwest::Client,
-    pub config: BulkConfig,
+    pub(crate) client: reqwest::Client,
+    pub(crate) config: BulkConfig,
     credentials: Option<AwsCredentials>,
 }
 
 impl HyperliquidBulkClient {
+    /// Return a reference to the bulk download configuration.
+    pub fn config(&self) -> &BulkConfig {
+        &self.config
+    }
+
     pub fn new() -> Self {
         let credentials = AwsCredentials::from_env();
         if credentials.is_none() {

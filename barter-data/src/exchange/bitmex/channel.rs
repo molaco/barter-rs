@@ -12,7 +12,7 @@ use smol_str::{SmolStr, format_smolstr};
 ///
 /// See docs: <https://www.bitmex.com/app/wsAPI>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct BitmexChannel(pub SmolStr);
+pub struct BitmexChannel(pub(crate) SmolStr);
 
 impl BitmexChannel {
     /// [`Bitmex`] real-time trades channel name.

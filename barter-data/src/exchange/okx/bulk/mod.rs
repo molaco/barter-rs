@@ -18,11 +18,16 @@ const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct OkxBulkClient {
-    pub client: reqwest::Client,
-    pub config: BulkConfig,
+    pub(crate) client: reqwest::Client,
+    pub(crate) config: BulkConfig,
 }
 
 impl OkxBulkClient {
+    /// Return a reference to the bulk download configuration.
+    pub fn config(&self) -> &BulkConfig {
+        &self.config
+    }
+
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::new(),

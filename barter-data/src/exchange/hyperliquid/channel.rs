@@ -15,7 +15,7 @@ use smol_str::{SmolStr, format_smolstr};
 ///
 /// See docs: <https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
-pub struct HyperliquidChannel(pub SmolStr);
+pub struct HyperliquidChannel(pub(crate) SmolStr);
 
 impl HyperliquidChannel {
     /// [`Hyperliquid`] real-time trades channel.

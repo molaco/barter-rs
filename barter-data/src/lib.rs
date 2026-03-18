@@ -115,7 +115,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, warn};
 
 /// Type alias for a direct (not keyed) rate limiter used for WebSocket send throttling.
-pub type WsSendRateLimiter = governor::RateLimiter<
+pub(crate) type WsSendRateLimiter = governor::RateLimiter<
     governor::state::NotKeyed,
     governor::state::InMemoryState,
     governor::clock::DefaultClock,
@@ -124,7 +124,7 @@ pub type WsSendRateLimiter = governor::RateLimiter<
 
 /// Create an optional [`WsSendRateLimiter`] from the `(max_requests, per_duration)` tuple
 /// returned by [`Connector::send_rate_limit`](exchange::Connector::send_rate_limit).
-pub fn build_send_rate_limiter(
+pub(crate) fn build_send_rate_limiter(
     config: Option<(u32, std::time::Duration)>,
 ) -> Option<Arc<WsSendRateLimiter>> {
     config.map(|(max_requests, per_duration)| {
@@ -239,7 +239,7 @@ impl<Exchange, Kind> SnapshotFetcher<Exchange, Kind> for NoInitialSnapshots {
     }
 }
 
-pub fn process_buffered_events<Parser, StreamTransformer>(
+pub(crate) fn process_buffered_events<Parser, StreamTransformer>(
     transformer: &mut StreamTransformer,
     events: Vec<Parser::Message>,
 ) -> VecDeque<Result<StreamTransformer::Output, StreamTransformer::Error>>
@@ -269,7 +269,7 @@ where
 /// **Note:**
 /// ExchangeTransformer is operating in a synchronous trait context so we use this separate task
 /// to avoid adding `#[\async_trait\]` to the transformer - this avoids allocations.
-pub async fn distribute_messages_to_exchange(
+pub(crate) async fn distribute_messages_to_exchange(
     exchange: ExchangeId,
     mut ws_sink: WsSink,
     mut ws_sink_rx: mpsc::UnboundedReceiver<WsMessage>,
@@ -302,7 +302,7 @@ pub async fn distribute_messages_to_exchange(
 /// **Notes:**
 ///  - This is only used for those exchanges that require custom application-level pings.
 ///  - This is additional to the protocol-level pings already handled by `tokio_tungstenite`.
-pub async fn schedule_pings_to_exchange(
+pub(crate) async fn schedule_pings_to_exchange(
     exchange: ExchangeId,
     ws_sink_tx: mpsc::UnboundedSender<WsMessage>,
     PingInterval { mut interval, ping }: PingInterval,
@@ -321,7 +321,8 @@ pub async fn schedule_pings_to_exchange(
     }
 }
 
-pub mod test_utils {
+#[cfg(test)]
+mod test_utils {
     use crate::{
         event::{DataKind, MarketEvent},
         subscription::trade::PublicTrade,
