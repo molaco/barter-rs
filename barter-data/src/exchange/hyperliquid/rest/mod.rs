@@ -133,8 +133,12 @@ impl HyperliquidRestClient {
 
     /// Wait until the rate limiter permits the next request.
     ///
-    /// Call this before each REST API request to stay within Hyperliquid
-    /// rate limits. Blocks asynchronously until a permit is available.
+    /// This method is for **standalone/direct usage** — call it before each
+    /// REST API request when driving the client yourself (outside of a
+    /// `barter-collector` pipeline). When using `barter-collector`, rate
+    /// limiting is managed by the collector's orchestration layer.
+    ///
+    /// Blocks asynchronously until a permit is available.
     pub async fn wait_for_rate_limit(&self) {
         debug!("waiting for rate limit permit");
         self.rate_limiter.until_ready().await;
