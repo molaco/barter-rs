@@ -149,6 +149,7 @@ fn init_historic_clock_and_market_stream(
                     "sending historical event to Engine"
                 )
             }
+            _ => {}
         });
 
     (clock, stream)

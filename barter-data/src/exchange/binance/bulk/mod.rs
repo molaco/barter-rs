@@ -420,6 +420,7 @@ async fn download_and_verify(
 // ---------------------------------------------------------------------------
 
 impl<Server: BulkArchiveServer> BulkDayTradeFetcher for BinanceBulkClient<Server> {
+    #[tracing::instrument(skip(self), fields(exchange = "binance", %date))]
     fn fetch_day_trades<'a>(
         &'a self,
         market: &'a str,
@@ -430,6 +431,7 @@ impl<Server: BulkArchiveServer> BulkDayTradeFetcher for BinanceBulkClient<Server
 }
 
 impl<Server: BulkArchiveServer> BulkDayKlineFetcher for BinanceBulkClient<Server> {
+    #[tracing::instrument(skip(self), fields(exchange = "binance", %date, %interval))]
     fn fetch_day_klines<'a>(
         &'a self,
         market: &'a str,

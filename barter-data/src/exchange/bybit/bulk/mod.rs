@@ -182,6 +182,7 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
 }
 
 impl<Server: BybitBulkServer> BulkDayTradeFetcher for BybitBulkClient<Server> {
+    #[tracing::instrument(skip(self), fields(exchange = "bybit", %date))]
     fn fetch_day_trades<'a>(
         &'a self,
         market: &'a str,

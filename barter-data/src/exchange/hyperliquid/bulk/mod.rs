@@ -305,6 +305,7 @@ impl Default for HyperliquidBulkClient {
 }
 
 impl BulkDayTradeFetcher for HyperliquidBulkClient {
+    #[tracing::instrument(skip(self), fields(exchange = "hyperliquid", %date))]
     fn fetch_day_trades<'a>(
         &'a self,
         market: &'a str,

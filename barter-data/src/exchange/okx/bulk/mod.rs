@@ -220,6 +220,7 @@ impl Default for OkxBulkClient {
 }
 
 impl BulkDayTradeFetcher for OkxBulkClient {
+    #[tracing::instrument(skip(self), fields(exchange = "okx", %date))]
     fn fetch_day_trades<'a>(
         &'a self,
         market: &'a str,
