@@ -93,12 +93,7 @@
 //!     }
 //! }
 //! ```
-use crate::{
-    event::MarketEvent,
-    exchange::{Connector, PingInterval},
-    instrument::InstrumentData,
-    subscription::{Subscription, SubscriptionKind},
-};
+use crate::exchange::{Connector, PingInterval};
 use barter_instrument::exchange::ExchangeId;
 use barter_integration::{
     Transformer,
@@ -196,6 +191,47 @@ pub mod rest;
 /// Bulk archive download and parsing for historical data.
 #[cfg(feature = "bulk")]
 pub mod bulk;
+
+// ---------------------------------------------------------------------------
+// Crate-root re-exports — key public types surfaced for ergonomic imports
+// ---------------------------------------------------------------------------
+
+// Error
+pub use error::DataError;
+
+// Events
+pub use event::{DataKind, MarketEvent, MarketIter};
+
+// Subscriptions
+pub use subscription::trade::{PublicTrade, PublicTrades};
+pub use subscription::book::{OrderBookEvent, OrderBookL1, OrderBooksL1, OrderBooksL2, OrderBooksL3};
+pub use subscription::candle::{Candle, Candles, Interval};
+pub use subscription::liquidation::{Liquidation, Liquidations};
+pub use subscription::{SubKind, Subscription, SubscriptionKind};
+
+// Order books
+pub use books::{Level, OrderBook};
+
+// Instruments
+pub use instrument::InstrumentData;
+
+// Streams
+pub use streams::builder::StreamBuilder;
+pub use streams::Streams;
+
+// REST types (feature-gated)
+#[cfg(feature = "rest")]
+pub use rest::{ExchangeRateLimiter, KlineFetcher, KlineRequest, TradeFetcher, TradeRequest};
+#[cfg(feature = "rest")]
+pub use trade::RestTrade;
+
+// Bulk types (feature-gated)
+#[cfg(feature = "bulk")]
+pub use bulk::{BulkConfig, BulkDayKlineFetcher, BulkDayTradeFetcher, BulkKlineRequest, BulkTradeRequest};
+
+// Shared types (available when either REST or bulk is enabled)
+#[cfg(any(feature = "rest", feature = "bulk"))]
+pub use retry::RetryPolicy;
 
 /// Defines a generic identification type for the implementor.
 pub trait Identifier<T> {
