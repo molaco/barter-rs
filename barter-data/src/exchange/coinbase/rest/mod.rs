@@ -12,7 +12,7 @@ use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, future::Future, num::NonZeroU32, pin::Pin, sync::Arc};
-use tracing::{Instrument, debug, warn};
+use tracing::{debug, warn};
 
 /// Coinbase kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
@@ -163,61 +163,52 @@ impl KlineFetcher for CoinbaseRestClient {
     ///
     /// The Coinbase API returns candles newest-first, so the result is
     /// reversed to oldest-first before returning.
-    fn fetch_klines(
+    #[tracing::instrument(skip(self), fields(exchange = "coinbase", market = %request.market, interval = %request.interval))]
+    async fn fetch_klines(
         &self,
         request: KlineRequest,
-    ) -> impl std::future::Future<Output = Result<Vec<Candle>, DataError>> + Send {
-        let this = self.clone();
-        let span = tracing::info_span!(
-            "fetch_klines",
-            exchange = "coinbase",
-            market = %request.market,
-            interval = %request.interval,
+    ) -> Result<Vec<Candle>, DataError> {
+        debug!("building klines request");
+
+        let granularity = klines::coinbase_interval(request.interval)?;
+
+        let path = format!(
+            "/api/v3/brokerage/market/products/{}/candles",
+            request.market
         );
-        async move {
-            debug!("building klines request");
 
-            let granularity = klines::coinbase_interval(request.interval)?;
+        let get_klines_request = klines::GetCoinbaseKlines {
+            path,
+            params: klines::GetCoinbaseKlinesParams {
+                start: request.start.map(|dt| dt.timestamp()),
+                end: request.end.map(|dt| dt.timestamp()),
+                granularity: granularity.to_string(),
+            },
+        };
 
-            let path = format!(
-                "/api/v3/brokerage/market/products/{}/candles",
-                request.market
-            );
-
-            let get_klines_request = klines::GetCoinbaseKlines {
-                path,
-                params: klines::GetCoinbaseKlinesParams {
-                    start: request.start.map(|dt| dt.timestamp()),
-                    end: request.end.map(|dt| dt.timestamp()),
-                    granularity: granularity.to_string(),
-                },
+        let response: klines::CoinbaseKlinesResponse =
+            match self.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
+                Ok(resp) => resp,
+                Err(error) => {
+                    warn!(?error, "klines fetch failed");
+                    return Err(error);
+                }
             };
 
-            let response: klines::CoinbaseKlinesResponse =
-                match this.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
-                    Ok(resp) => resp,
-                    Err(error) => {
-                        warn!(?error, "klines fetch failed");
-                        return Err(error);
-                    }
-                };
+        let interval = request.interval;
+        let mut candles = response
+            .candles
+            .into_iter()
+            .map(|raw| raw.into_candle(interval))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(DataError::DataParse)?;
 
-            let interval = request.interval;
-            let mut candles = response
-                .candles
-                .into_iter()
-                .map(|raw| raw.into_candle(interval))
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::DataParse)?;
+        // Coinbase returns newest-first; reverse to oldest-first
+        candles.reverse();
 
-            // Coinbase returns newest-first; reverse to oldest-first
-            candles.reverse();
+        debug!(count = candles.len(), "fetched klines batch");
 
-            debug!(count = candles.len(), "fetched klines batch");
-
-            Ok(candles)
-        }
-        .instrument(span)
+        Ok(candles)
     }
 }
 
@@ -228,18 +219,13 @@ impl TradeFetcher for CoinbaseRestClient {
     /// [`TradeRequest`], executes the request, reverses the results (Coinbase returns
     /// newest-first), and converts raw DTOs into [`RestTrade`]s. This is a single-attempt
     /// call; retry logic is handled by the collector.
+    #[tracing::instrument(skip(self), fields(exchange = "coinbase", market = %request.market))]
     fn fetch_trades(
         &self,
         request: TradeRequest,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let this = self.clone();
         let start = request.start;
         let end = request.end;
-        let span = tracing::info_span!(
-            "fetch_trades",
-            exchange = "coinbase",
-            market = %request.market,
-        );
         Box::pin(async move {
             debug!("building trades request");
 
@@ -259,7 +245,7 @@ impl TradeFetcher for CoinbaseRestClient {
             };
 
             let response: trades::CoinbaseTradesResponse =
-                match this.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
+                match self.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
                     Ok(resp) => resp,
                     Err(error) => {
                         warn!(?error, "trades fetch failed");
@@ -298,7 +284,6 @@ impl TradeFetcher for CoinbaseRestClient {
             debug!(count = trades.len(), "fetched trades batch");
 
             Ok(trades)
-        }
-        .instrument(span))
+        })
     }
 }

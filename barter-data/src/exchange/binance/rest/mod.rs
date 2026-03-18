@@ -13,7 +13,7 @@ use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, future::Future, marker::PhantomData, num::NonZeroU32, pin::Pin, sync::Arc};
-use tracing::{Instrument, debug, warn};
+use tracing::{debug, warn};
 
 /// Binance kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
@@ -198,51 +198,42 @@ where
     /// [`KlineRequest`], executes the request, and converts raw DTOs into
     /// [`Candle`]s. This is a single-attempt call; retry logic is handled by
     /// the collector.
-    fn fetch_klines(
+    #[tracing::instrument(skip(self), fields(exchange = "binance", market = %request.market, interval = %request.interval))]
+    async fn fetch_klines(
         &self,
         request: KlineRequest,
-    ) -> impl std::future::Future<Output = Result<Vec<Candle>, DataError>> + Send {
-        let this = self.clone();
-        let span = tracing::info_span!(
-            "fetch_klines",
-            exchange = "binance",
-            market = %request.market,
-            interval = %request.interval,
-        );
-        async move {
-            debug!("building klines request");
+    ) -> Result<Vec<Candle>, DataError> {
+        debug!("building klines request");
 
-            let get_klines_request = klines::GetKlines {
-                path: Server::klines_path(),
-                params: klines::GetKlinesParams {
-                    symbol: request.market,
-                    interval: klines::binance_interval(request.interval).to_string(),
-                    start_time: request.start.map(|dt| dt.timestamp_millis()),
-                    end_time: request.end.map(|dt| dt.timestamp_millis()),
-                    limit: request.limit,
-                },
+        let get_klines_request = klines::GetKlines {
+            path: Server::klines_path(),
+            params: klines::GetKlinesParams {
+                symbol: request.market,
+                interval: klines::binance_interval(request.interval).to_string(),
+                start_time: request.start.map(|dt| dt.timestamp_millis()),
+                end_time: request.end.map(|dt| dt.timestamp_millis()),
+                limit: request.limit,
+            },
+        };
+
+        let raw_klines: Vec<klines::BinanceKlineRaw> =
+            match self.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
+                Ok(klines) => klines,
+                Err(error) => {
+                    warn!(?error, "klines fetch failed");
+                    return Err(error);
+                }
             };
 
-            let raw_klines: Vec<klines::BinanceKlineRaw> =
-                match this.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
-                    Ok(klines) => klines,
-                    Err(error) => {
-                        warn!(?error, "klines fetch failed");
-                        return Err(error);
-                    }
-                };
+        let candles = raw_klines
+            .into_iter()
+            .map(Candle::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(DataError::DataParse)?;
 
-            let candles = raw_klines
-                .into_iter()
-                .map(Candle::try_from)
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::DataParse)?;
+        debug!(count = candles.len(), "fetched klines batch");
 
-            debug!(count = candles.len(), "fetched klines batch");
-
-            Ok(candles)
-        }
-        .instrument(span)
+        Ok(candles)
     }
 }
 
@@ -256,16 +247,11 @@ where
     /// [`TradeRequest`], executes the request, and converts raw DTOs into
     /// [`RestTrade`]s. This is a single-attempt call; retry logic is handled by
     /// the collector.
+    #[tracing::instrument(skip(self), fields(exchange = "binance", market = %request.market))]
     fn fetch_trades(
         &self,
         request: TradeRequest,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let this = self.clone();
-        let span = tracing::info_span!(
-            "fetch_trades",
-            exchange = "binance",
-            market = %request.market,
-        );
         Box::pin(async move {
             debug!("building trades request");
 
@@ -281,7 +267,7 @@ where
             };
 
             let raw_trades: Vec<trades::BinanceAggTrade> =
-                match this.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
+                match self.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
                     Ok(trades) => trades,
                     Err(error) => {
                         warn!(?error, "trades fetch failed");
@@ -298,7 +284,6 @@ where
             debug!(count = rest_trades.len(), "fetched trades batch");
 
             Ok(rest_trades)
-        }
-        .instrument(span))
+        })
     }
 }

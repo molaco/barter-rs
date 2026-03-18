@@ -12,7 +12,7 @@ use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, future::Future, num::NonZeroU32, pin::Pin, sync::Arc};
-use tracing::{Instrument, debug, warn};
+use tracing::{debug, warn};
 
 /// Kraken kline/OHLC REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
@@ -284,29 +284,20 @@ impl KlineFetcher for KrakenRestClient {
     /// provided [`KlineRequest`], waits for the rate limiter, executes the
     /// request with exponential-backoff retry, and converts raw DTOs into
     /// [`Candle`]s.
-    fn fetch_klines(
+    #[tracing::instrument(skip(self), fields(exchange = "kraken", market = %request.market, interval = %request.interval))]
+    async fn fetch_klines(
         &self,
         request: KlineRequest,
-    ) -> impl std::future::Future<Output = Result<Vec<Candle>, DataError>> + Send {
-        let this = self.clone();
-        let span = tracing::info_span!(
-            "fetch_klines",
-            exchange = "kraken",
-            market = %request.market,
-            interval = %request.interval,
-        );
-        async move {
-            debug!("building Kraken OHLC request");
+    ) -> Result<Vec<Candle>, DataError> {
+        debug!("building Kraken OHLC request");
 
-            let since = request.start.map(|dt| dt.timestamp());
+        let since = request.start.map(|dt| dt.timestamp());
 
-            let (candles, _last) = this
-                .fetch_raw(&request.market, request.interval, since)
-                .await?;
+        let (candles, _last) = self
+            .fetch_raw(&request.market, request.interval, since)
+            .await?;
 
-            Ok(candles)
-        }
-        .instrument(span)
+        Ok(candles)
     }
 }
 
@@ -321,16 +312,11 @@ impl TradeFetcher for KrakenRestClient {
     /// If `request.start` is provided, it is converted to a nanosecond nonce
     /// string for the Kraken `since` parameter. Results are filtered to the
     /// `[start, end]` range if specified.
+    #[tracing::instrument(skip(self), fields(exchange = "kraken", market = %request.market))]
     fn fetch_trades(
         &self,
         request: TradeRequest,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let this = self.clone();
-        let span = tracing::info_span!(
-            "fetch_trades",
-            exchange = "kraken",
-            market = %request.market,
-        );
         Box::pin(async move {
             debug!("building Kraken trades request");
 
@@ -344,7 +330,7 @@ impl TradeFetcher for KrakenRestClient {
                 None => None,
             };
 
-            let (trades, _last) = this
+            let (trades, _last) = self
                 .fetch_trades_raw(&request.market, since, request.limit)
                 .await?;
 
@@ -367,7 +353,6 @@ impl TradeFetcher for KrakenRestClient {
                 .collect();
 
             Ok(filtered)
-        }
-        .instrument(span))
+        })
     }
 }

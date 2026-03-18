@@ -13,7 +13,7 @@ use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, num::NonZeroU32, sync::Arc};
-use tracing::{Instrument, debug, warn};
+use tracing::{debug, warn};
 
 /// Hyperliquid kline/candlestick REST request, raw DTO, and conversion to
 /// [`Candle`](crate::subscription::candle::Candle).
@@ -173,62 +173,53 @@ impl KlineFetcher for HyperliquidRestClient {
     /// retry logic is handled by the collector.
     ///
     /// Hyperliquid returns data oldest-first, so no reversal is needed.
-    fn fetch_klines(
+    #[tracing::instrument(skip(self), fields(exchange = "hyperliquid", market = %request.market, interval = %request.interval))]
+    async fn fetch_klines(
         &self,
         request: KlineRequest,
-    ) -> impl std::future::Future<Output = Result<Vec<Candle>, DataError>> + Send {
-        let this = self.clone();
-        let span = tracing::info_span!(
-            "fetch_klines",
-            exchange = "hyperliquid",
-            market = %request.market,
-            interval = %request.interval,
-        );
-        async move {
-            debug!("building klines request");
+    ) -> Result<Vec<Candle>, DataError> {
+        debug!("building klines request");
 
-            let interval_str = klines::hyperliquid_interval(request.interval)?;
+        let interval_str = klines::hyperliquid_interval(request.interval)?;
 
-            // Compute default time boundaries if not provided.
-            // Hyperliquid requires both startTime and endTime.
-            let start_ms = request.start.map(|dt| dt.timestamp_millis()).unwrap_or(0);
-            let end_ms = request
-                .end
-                .map(|dt| dt.timestamp_millis())
-                .unwrap_or_else(|| Utc::now().timestamp_millis());
+        // Compute default time boundaries if not provided.
+        // Hyperliquid requires both startTime and endTime.
+        let start_ms = request.start.map(|dt| dt.timestamp_millis()).unwrap_or(0);
+        let end_ms = request
+            .end
+            .map(|dt| dt.timestamp_millis())
+            .unwrap_or_else(|| Utc::now().timestamp_millis());
 
-            let get_klines_request = klines::GetHyperliquidKlines {
-                body: klines::PostHyperliquidKlines {
-                    request_type: "candleSnapshot",
-                    req: klines::HyperliquidKlineReq {
-                        coin: request.market,
-                        interval: interval_str.to_string(),
-                        start_time: start_ms,
-                        end_time: end_ms,
-                    },
+        let get_klines_request = klines::GetHyperliquidKlines {
+            body: klines::PostHyperliquidKlines {
+                request_type: "candleSnapshot",
+                req: klines::HyperliquidKlineReq {
+                    coin: request.market,
+                    interval: interval_str.to_string(),
+                    start_time: start_ms,
+                    end_time: end_ms,
                 },
+            },
+        };
+
+        let raw_klines: Vec<klines::HyperliquidKlineRaw> =
+            match self.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
+                Ok(klines) => klines,
+                Err(error) => {
+                    warn!(?error, "klines fetch failed");
+                    return Err(error);
+                }
             };
 
-            let raw_klines: Vec<klines::HyperliquidKlineRaw> =
-                match this.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
-                    Ok(klines) => klines,
-                    Err(error) => {
-                        warn!(?error, "klines fetch failed");
-                        return Err(error);
-                    }
-                };
+        // Hyperliquid returns data oldest-first, no reversal needed.
+        let candles = raw_klines
+            .into_iter()
+            .map(|raw| raw.try_into_candle())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(DataError::DataParse)?;
 
-            // Hyperliquid returns data oldest-first, no reversal needed.
-            let candles = raw_klines
-                .into_iter()
-                .map(|raw| raw.try_into_candle())
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::DataParse)?;
+        debug!(count = candles.len(), "fetched klines batch");
 
-            debug!(count = candles.len(), "fetched klines batch");
-
-            Ok(candles)
-        }
-        .instrument(span)
+        Ok(candles)
     }
 }

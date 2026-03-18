@@ -144,6 +144,7 @@ where
     ///
     /// Each consumer loop distributes consumed [`MarketStreamResult`] to
     /// the [`Streams`] `HashMap` returned by this method.
+    #[tracing::instrument(skip_all)]
     pub async fn init(
         self,
     ) -> Result<

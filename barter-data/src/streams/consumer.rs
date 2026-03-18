@@ -40,6 +40,7 @@ pub type MarketStreamEvent<InstrumentKey, Kind> =
 ///
 /// Returns an `mpsc::UnboundedReceiver` of market events and a [`TypedHandle`] for
 /// dynamic subscribe/unsubscribe on the live connection.
+#[tracing::instrument(skip_all)]
 pub async fn init_market_stream<Exchange, Instrument, Kind>(
     policy: ReconnectionBackoffPolicy,
     subscriptions: Vec<Subscription<Exchange, Instrument, Kind>>,

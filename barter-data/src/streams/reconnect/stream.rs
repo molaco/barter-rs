@@ -153,6 +153,7 @@ where
 impl<T> ReconnectingStream for T where T: Stream {}
 
 /// Initialise a [`ReconnectingStream`] using the provided initialisation closure.
+#[tracing::instrument(skip_all)]
 pub async fn init_reconnecting_stream<FnInit, St, FnInitError, FnInitFut>(
     init_stream: FnInit,
 ) -> Result<impl Stream<Item = Result<St, FnInitError>>, FnInitError>

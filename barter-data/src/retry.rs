@@ -71,6 +71,7 @@ fn apply_jitter(duration: Duration) -> Duration {
 /// Compute and sleep for the backoff duration for the given attempt number.
 ///
 /// Uses the same exponential backoff with jitter as [`retry_with_backoff`].
+#[tracing::instrument(fields(attempt = attempt, backoff_ms))]
 pub async fn apply_backoff(policy: &RetryPolicy, attempt: u32) {
     let mut backoff = policy.initial_backoff;
     for _ in 1..attempt {
@@ -92,6 +93,7 @@ pub async fn apply_backoff(policy: &RetryPolicy, attempt: u32) {
 ///
 /// The `should_retry` closure determines whether a given error is retriable.
 /// Returns the first success, or the last error after all retries are exhausted.
+#[tracing::instrument(skip(should_retry, operation), fields(max_retries = policy.max_retries))]
 pub async fn retry_with_backoff<F, Fut, T, E>(
     policy: &RetryPolicy,
     should_retry: impl Fn(&E) -> bool,

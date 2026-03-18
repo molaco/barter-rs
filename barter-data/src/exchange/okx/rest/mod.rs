@@ -13,7 +13,7 @@ use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, future::Future, num::NonZeroU32, pin::Pin, sync::Arc};
-use tracing::{Instrument, debug, warn};
+use tracing::{debug, warn};
 
 /// OKX kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
@@ -231,67 +231,58 @@ impl KlineFetcher for OkxRestClient {
     /// provided [`KlineRequest`], executes the request, reverses the result
     /// (OKX returns newest-first), and converts raw DTOs into [`Candle`]s.
     /// This is a single-attempt call; retry logic is handled by the collector.
-    fn fetch_klines(
+    #[tracing::instrument(skip(self), fields(exchange = "okx", market = %request.market, interval = %request.interval))]
+    async fn fetch_klines(
         &self,
         request: KlineRequest,
-    ) -> impl std::future::Future<Output = Result<Vec<Candle>, DataError>> + Send {
-        let this = self.clone();
-        let span = tracing::info_span!(
-            "fetch_klines",
-            exchange = "okx",
-            market = %request.market,
-            interval = %request.interval,
-        );
-        async move {
-            debug!("building klines request");
+    ) -> Result<Vec<Candle>, DataError> {
+        debug!("building klines request");
 
-            let get_klines_request = klines::GetOkxKlines {
-                path: klines::OKX_HISTORY_KLINES_PATH,
-                params: klines::GetOkxKlinesParams {
-                    inst_id: request.market,
-                    bar: klines::okx_interval(request.interval).to_string(),
-                    before: request.start.map(|dt| dt.timestamp_millis()),
-                    after: request.end.map(|dt| dt.timestamp_millis()),
-                    limit: request.limit,
-                },
+        let get_klines_request = klines::GetOkxKlines {
+            path: klines::OKX_HISTORY_KLINES_PATH,
+            params: klines::GetOkxKlinesParams {
+                inst_id: request.market,
+                bar: klines::okx_interval(request.interval).to_string(),
+                before: request.start.map(|dt| dt.timestamp_millis()),
+                after: request.end.map(|dt| dt.timestamp_millis()),
+                limit: request.limit,
+            },
+        };
+
+        let interval = request.interval;
+
+        let response: klines::OkxKlinesResponse =
+            match self.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
+                Ok(resp) => resp,
+                Err(error) => {
+                    warn!(?error, "klines fetch failed");
+                    return Err(error);
+                }
             };
 
-            let interval = request.interval;
-
-            let response: klines::OkxKlinesResponse =
-                match this.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
-                    Ok(resp) => resp,
-                    Err(error) => {
-                        warn!(?error, "klines fetch failed");
-                        return Err(error);
-                    }
-                };
-
-            // Check for OKX-level error (non-zero code)
-            if response.code != "0" {
-                warn!(code = %response.code, msg = %response.msg, "OKX returned error response");
-                return Err(DataError::ExchangeApi {
-                    exchange: "okx".into(),
-                    code: response.code,
-                    message: response.msg,
-                });
-            }
-
-            // OKX returns data newest-first; reverse to oldest-first
-            let mut raw_klines = response.data;
-            raw_klines.reverse();
-
-            let candles = raw_klines
-                .into_iter()
-                .map(|raw| raw.try_into_candle(interval))
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::DataParse)?;
-
-            debug!(count = candles.len(), "fetched klines batch");
-
-            Ok(candles)
+        // Check for OKX-level error (non-zero code)
+        if response.code != "0" {
+            warn!(code = %response.code, msg = %response.msg, "OKX returned error response");
+            return Err(DataError::ExchangeApi {
+                exchange: "okx".into(),
+                code: response.code,
+                message: response.msg,
+            });
         }
-        .instrument(span)
+
+        // OKX returns data newest-first; reverse to oldest-first
+        let mut raw_klines = response.data;
+        raw_klines.reverse();
+
+        let candles = raw_klines
+            .into_iter()
+            .map(|raw| raw.try_into_candle(interval))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(DataError::DataParse)?;
+
+        debug!(count = candles.len(), "fetched klines batch");
+
+        Ok(candles)
     }
 }
 
@@ -307,16 +298,11 @@ impl TradeFetcher for OkxRestClient {
     /// **Note:** OKX's history-trades endpoint uses trade-ID-based cursors, not timestamps.
     /// This method always fetches the most recent trades and filters client-side.
     /// For historical time ranges far in the past, most or all results may be filtered out.
+    #[tracing::instrument(skip(self), fields(exchange = "okx", market = %request.market))]
     fn fetch_trades(
         &self,
         request: TradeRequest,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let this = self.clone();
-        let span = tracing::info_span!(
-            "fetch_trades",
-            exchange = "okx",
-            market = %request.market,
-        );
         Box::pin(async move {
             debug!("building trades request");
 
@@ -334,7 +320,7 @@ impl TradeFetcher for OkxRestClient {
             };
 
             // OKX returns data newest-first; reverse to oldest-first
-            let mut raw_trades = this.fetch_trades_raw(get_trades_request).await?;
+            let mut raw_trades = self.fetch_trades_raw(get_trades_request).await?;
             raw_trades.reverse();
 
             let rest_trades = raw_trades
@@ -349,7 +335,6 @@ impl TradeFetcher for OkxRestClient {
             debug!(count = filtered.len(), "fetched trades batch");
 
             Ok(filtered)
-        }
-        .instrument(span))
+        })
     }
 }

@@ -13,7 +13,7 @@ use governor::Quota;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::{fmt, future::Future, marker::PhantomData, num::NonZeroU32, pin::Pin, sync::Arc};
-use tracing::{Instrument, debug, warn};
+use tracing::{debug, warn};
 
 /// Bybit kline/candlestick REST request, raw DTO, and conversion to [`Candle`](crate::subscription::candle::Candle).
 pub mod klines;
@@ -204,71 +204,62 @@ where
     /// [`KlineRequest`], executes the request, reverses the results (Bybit returns
     /// newest-first), and converts raw DTOs into [`Candle`]s. This is a single-attempt
     /// call; retry logic is handled by the collector.
-    fn fetch_klines(
+    #[tracing::instrument(skip(self), fields(exchange = "bybit", market = %request.market, interval = %request.interval))]
+    async fn fetch_klines(
         &self,
         request: KlineRequest,
-    ) -> impl std::future::Future<Output = Result<Vec<Candle>, DataError>> + Send {
-        let this = self.clone();
-        let span = tracing::info_span!(
-            "fetch_klines",
-            exchange = "bybit",
-            market = %request.market,
-            interval = %request.interval,
-        );
-        async move {
-            debug!("building klines request");
+    ) -> Result<Vec<Candle>, DataError> {
+        debug!("building klines request");
 
-            let get_klines_request = klines::GetBybitKlines {
-                path: Server::klines_path(),
-                params: klines::GetBybitKlinesParams {
-                    category: Server::category().to_string(),
-                    symbol: request.market,
-                    interval: klines::bybit_interval(request.interval).to_string(),
-                    start: request.start.map(|dt| dt.timestamp_millis()),
-                    end: request.end.map(|dt| dt.timestamp_millis()),
-                    limit: request.limit,
-                },
+        let get_klines_request = klines::GetBybitKlines {
+            path: Server::klines_path(),
+            params: klines::GetBybitKlinesParams {
+                category: Server::category().to_string(),
+                symbol: request.market,
+                interval: klines::bybit_interval(request.interval).to_string(),
+                start: request.start.map(|dt| dt.timestamp_millis()),
+                end: request.end.map(|dt| dt.timestamp_millis()),
+                limit: request.limit,
+            },
+        };
+
+        let response: klines::BybitKlinesResponse =
+            match self.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
+                Ok(resp) => resp,
+                Err(error) => {
+                    warn!(?error, "klines fetch failed");
+                    return Err(error);
+                }
             };
 
-            let response: klines::BybitKlinesResponse =
-                match this.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
-                    Ok(resp) => resp,
-                    Err(error) => {
-                        warn!(?error, "klines fetch failed");
-                        return Err(error);
-                    }
-                };
-
-            // Check for Bybit API-level error (non-zero retCode)
-            if response.ret_code != 0 {
-                warn!(
-                    ret_code = response.ret_code,
-                    ret_msg = %response.ret_msg,
-                    "klines fetch returned error"
-                );
-                return Err(DataError::ExchangeApi {
-                    exchange: "bybit".into(),
-                    code: response.ret_code.to_string(),
-                    message: response.ret_msg,
-                });
-            }
-
-            // Extract raw klines from nested response and reverse
-            // (Bybit returns newest-first, we want oldest-first)
-            let mut raw_klines = response.result.list;
-            raw_klines.reverse();
-
-            let candles = raw_klines
-                .into_iter()
-                .map(Candle::try_from)
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(DataError::DataParse)?;
-
-            debug!(count = candles.len(), "fetched klines batch");
-
-            Ok(candles)
+        // Check for Bybit API-level error (non-zero retCode)
+        if response.ret_code != 0 {
+            warn!(
+                ret_code = response.ret_code,
+                ret_msg = %response.ret_msg,
+                "klines fetch returned error"
+            );
+            return Err(DataError::ExchangeApi {
+                exchange: "bybit".into(),
+                code: response.ret_code.to_string(),
+                message: response.ret_msg,
+            });
         }
-        .instrument(span)
+
+        // Extract raw klines from nested response and reverse
+        // (Bybit returns newest-first, we want oldest-first)
+        let mut raw_klines = response.result.list;
+        raw_klines.reverse();
+
+        let candles = raw_klines
+            .into_iter()
+            .map(Candle::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(DataError::DataParse)?;
+
+        debug!(count = candles.len(), "fetched klines batch");
+
+        Ok(candles)
     }
 }
 
@@ -283,16 +274,11 @@ where
     /// errors, reverses the results (Bybit returns newest-first), and converts raw
     /// DTOs into [`RestTrade`]s. This is a single-attempt call; retry logic is handled
     /// by the collector.
+    #[tracing::instrument(skip(self), fields(exchange = "bybit", market = %request.market))]
     fn fetch_trades(
         &self,
         request: TradeRequest,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
-        let this = self.clone();
-        let span = tracing::info_span!(
-            "fetch_trades",
-            exchange = "bybit",
-            market = %request.market,
-        );
         Box::pin(async move {
             debug!("building trades request");
 
@@ -313,7 +299,7 @@ where
             };
 
             let response: trades::BybitTradesResponse =
-                match this.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
+                match self.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
                     Ok(resp) => resp,
                     Err(error) => {
                         warn!(?error, "trades fetch failed");
@@ -349,7 +335,6 @@ where
             debug!(count = rest_trades.len(), "fetched trades batch");
 
             Ok(rest_trades)
-        }
-        .instrument(span))
+        })
     }
 }
