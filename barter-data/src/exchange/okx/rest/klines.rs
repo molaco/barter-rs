@@ -6,30 +6,6 @@ use std::borrow::Cow;
 
 pub use crate::exchange::okx::okx_interval;
 
-/// Return the duration of one candle for the given [`Interval`].
-///
-/// Used to compute `close_time` from `open_time` since OKX does not return
-/// a close timestamp.
-fn interval_duration(interval: Interval) -> TimeDelta {
-    match interval {
-        Interval::M1 => TimeDelta::minutes(1),
-        Interval::M3 => TimeDelta::minutes(3),
-        Interval::M5 => TimeDelta::minutes(5),
-        Interval::M15 => TimeDelta::minutes(15),
-        Interval::M30 => TimeDelta::minutes(30),
-        Interval::H1 => TimeDelta::hours(1),
-        Interval::H2 => TimeDelta::hours(2),
-        Interval::H4 => TimeDelta::hours(4),
-        Interval::H6 => TimeDelta::hours(6),
-        Interval::H12 => TimeDelta::hours(12),
-        Interval::D1 => TimeDelta::days(1),
-        Interval::D3 => TimeDelta::days(3),
-        Interval::W1 => TimeDelta::weeks(1),
-        // Approximate month as 30 days.
-        Interval::Month1 => TimeDelta::days(30),
-    }
-}
-
 /// Wrapper around the OKX REST klines response.
 ///
 /// OKX returns:
@@ -140,7 +116,7 @@ impl<'de> serde::Deserialize<'de> for OkxKlineRaw {
 
 /// Convert an [`OkxKlineRaw`] into a normalised [`Candle`].
 ///
-/// The `close_time` is derived from `open_time + interval_duration - 1ms` since
+/// The `close_time` is derived from `open_time + interval.to_ms() - 1ms` since
 /// OKX does not return a close timestamp. The `interval` field is required for
 /// this computation and must be set before calling this conversion.
 ///
@@ -157,7 +133,7 @@ impl OkxKlineRaw {
         let open_time = DateTime::from_timestamp_millis(ts_ms)
             .ok_or_else(|| format!("invalid ts millis: {}", ts_ms))?;
 
-        let close_time = open_time + interval_duration(interval) - TimeDelta::milliseconds(1);
+        let close_time = open_time + TimeDelta::milliseconds(interval.to_ms()) - TimeDelta::milliseconds(1);
 
         let open = self
             .open
@@ -262,9 +238,6 @@ impl RestRequest for GetOkxKlines {
         Some(&self.params)
     }
 }
-
-/// OKX klines endpoint for recent data (last 1440 data points).
-pub const OKX_KLINES_PATH: &str = "/api/v5/market/candles";
 
 /// OKX klines endpoint for historical data (older than 1440 bars).
 pub const OKX_HISTORY_KLINES_PATH: &str = "/api/v5/market/history-candles";

@@ -6,29 +6,6 @@ use std::borrow::Cow;
 
 pub use crate::exchange::coinbase::coinbase_interval;
 
-/// Return the [`TimeDelta`] duration for a given [`Interval`].
-///
-/// Used to compute `close_time` from `open_time` since the Coinbase API
-/// only returns the candle start time.
-pub fn interval_duration(interval: Interval) -> TimeDelta {
-    match interval {
-        Interval::M1 => TimeDelta::minutes(1),
-        Interval::M3 => TimeDelta::minutes(3),
-        Interval::M5 => TimeDelta::minutes(5),
-        Interval::M15 => TimeDelta::minutes(15),
-        Interval::M30 => TimeDelta::minutes(30),
-        Interval::H1 => TimeDelta::hours(1),
-        Interval::H2 => TimeDelta::hours(2),
-        Interval::H4 => TimeDelta::hours(4),
-        Interval::H6 => TimeDelta::hours(6),
-        Interval::H12 => TimeDelta::hours(12),
-        Interval::D1 => TimeDelta::days(1),
-        Interval::D3 => TimeDelta::days(3),
-        Interval::W1 => TimeDelta::weeks(1),
-        Interval::Month1 => TimeDelta::days(30),
-    }
-}
-
 /// Wrapper around the Coinbase candles response JSON.
 ///
 /// ```json
@@ -55,7 +32,7 @@ pub struct CoinbaseKlineRaw {
 
 impl CoinbaseKlineRaw {
     /// Convert this raw kline into a [`Candle`], computing `close_time`
-    /// from `open_time + interval_duration`.
+    /// from `open_time + interval.to_ms()`.
     pub fn into_candle(self, interval: Interval) -> Result<Candle, String> {
         let start_secs: i64 = self
             .start
@@ -65,7 +42,7 @@ impl CoinbaseKlineRaw {
         let open_time = DateTime::<Utc>::from_timestamp(start_secs, 0)
             .ok_or_else(|| format!("invalid start timestamp: {}", start_secs))?;
 
-        let close_time = open_time + interval_duration(interval);
+        let close_time = open_time + TimeDelta::milliseconds(interval.to_ms());
 
         let open = self
             .open
@@ -170,14 +147,6 @@ mod tests {
         assert!(coinbase_interval(Interval::D3).is_err());
         assert!(coinbase_interval(Interval::W1).is_err());
         assert!(coinbase_interval(Interval::Month1).is_err());
-    }
-
-    #[test]
-    fn test_interval_duration() {
-        assert_eq!(interval_duration(Interval::M1), TimeDelta::minutes(1));
-        assert_eq!(interval_duration(Interval::M5), TimeDelta::minutes(5));
-        assert_eq!(interval_duration(Interval::H1), TimeDelta::hours(1));
-        assert_eq!(interval_duration(Interval::D1), TimeDelta::days(1));
     }
 
     #[test]

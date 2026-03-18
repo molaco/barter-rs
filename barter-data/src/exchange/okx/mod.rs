@@ -82,11 +82,6 @@ pub fn okx_interval(interval: Interval) -> &'static str {
     }
 }
 
-/// [`Okx`] server base url.
-///
-/// See docs: <https://www.okx.com/docs-v5/en/#overview-api-resources-and-support>
-pub const BASE_URL_OKX: &str = "wss://ws.okx.com:8443/ws/v5/public";
-
 /// [`Okx`] server [`PingInterval`] duration.
 ///
 /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-connect>
