@@ -296,6 +296,18 @@ impl HyperliquidBulkClient {
             Ok(None)
         }
     }
+
+    /// Fetch all coins' trades for a single day from the Hyperliquid S3 archive.
+    ///
+    /// Returns `Ok(Some(HashMap<coin, trades>))` on success, `Ok(None)` if the date
+    /// is not available (404), or `Err` on failure. Each S3 hourly file contains all
+    /// coins — this method downloads all 24 hours and groups trades by coin.
+    pub async fn fetch_day_trades_multi(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Option<HashMap<String, Vec<RestTrade>>>, DataError> {
+        self.download_and_parse_trades_multi(date).await
+    }
 }
 
 impl Default for HyperliquidBulkClient {
