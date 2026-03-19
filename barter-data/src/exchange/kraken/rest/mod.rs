@@ -302,6 +302,10 @@ impl KlineFetcher for KrakenRestClient {
 }
 
 impl TradeFetcher for KrakenRestClient {
+    fn wait_for_rate_limit(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async { self.rate_limiter.until_ready().await })
+    }
+
     /// Fetch a single batch of trades from the Kraken REST API.
     ///
     /// Builds a [`GetKrakenTrades`](trades::GetKrakenTrades) request from the

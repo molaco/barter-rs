@@ -213,6 +213,10 @@ impl KlineFetcher for CoinbaseRestClient {
 }
 
 impl TradeFetcher for CoinbaseRestClient {
+    fn wait_for_rate_limit(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async { self.rate_limiter.until_ready().await })
+    }
+
     /// Fetch a single batch of trades from the Coinbase REST API.
     ///
     /// Builds a [`GetCoinbaseTrades`](trades::GetCoinbaseTrades) request from the provided

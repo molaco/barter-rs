@@ -64,7 +64,7 @@ pub struct GetOkxTradesParams {
     /// Pagination cursor: return records with tradeId > this value (newer trades).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub before: Option<String>,
-    /// Max records per request (max 100).
+    /// Max records per request (OKX server-side cap: 100 for history-trades).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
 }

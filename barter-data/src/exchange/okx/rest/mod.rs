@@ -62,10 +62,12 @@ const OKX_REST_BASE_URL: &str = "https://www.okx.com";
 /// REST klines), so this client is not generic over an `ExchangeServer` type.
 ///
 /// Includes a rate limiter configured for OKX limits:
+/// - `/api/v5/market/trades`: 20 req/2sec = 10 req/sec, max 500 records, no pagination
+/// - `/api/v5/market/history-trades`: 20 req/2sec = 10 req/sec, max 100 records, backward cursor pagination
 /// - `/api/v5/market/candles`: 40 req/2sec = 20 req/sec = 1200 req/min
 /// - `/api/v5/market/history-candles`: 20 req/2sec = 10 req/sec = 600 req/min
 ///
-/// We use the more conservative limit (600 req/min) to be safe.
+/// We use 600 req/min (10 req/sec) which matches history-trades and history-candles.
 #[non_exhaustive]
 #[derive(Clone)]
 pub struct OkxRestClient {

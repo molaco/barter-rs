@@ -267,6 +267,10 @@ impl<Server> TradeFetcher for BybitRestClient<Server>
 where
     Server: RestExchangeServer + BybitCategory + Sync + 'static,
 {
+    fn wait_for_rate_limit(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async { self.rate_limiter.until_ready().await })
+    }
+
     /// Fetch a single batch of recent trades from the Bybit REST API.
     ///
     /// Builds a [`GetBybitTrades`](trades::GetBybitTrades) request from the provided

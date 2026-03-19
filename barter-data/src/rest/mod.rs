@@ -99,4 +99,13 @@ pub trait TradeFetcher: Send + Sync {
         &self,
         request: TradeRequest,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>>;
+
+    /// Wait until the exchange-specific rate limiter permits the next request.
+    ///
+    /// Callers should invoke this **before** each [`fetch_trades`](Self::fetch_trades)
+    /// call to respect the exchange's rate limits. The default implementation is a
+    /// no-op for backwards compatibility.
+    fn wait_for_rate_limit(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async {})
+    }
 }

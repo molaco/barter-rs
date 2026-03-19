@@ -241,6 +241,10 @@ impl<Server> TradeFetcher for BinanceRestClient<Server>
 where
     Server: RestExchangeServer + Sync + 'static,
 {
+    fn wait_for_rate_limit(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async { self.rate_limiter.until_ready().await })
+    }
+
     /// Fetch a single batch of aggregate trades from the Binance REST API.
     ///
     /// Builds a [`GetAggTrades`](trades::GetAggTrades) request from the provided

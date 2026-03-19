@@ -155,7 +155,12 @@ pub fn is_retriable_data_error(error: &DataError) -> bool {
             }
             _ => false,
         },
-        DataError::ExchangeApi { .. } => false,
+        DataError::ExchangeApi { code, .. } => {
+            // OKX returns rate-limit errors as 200 OK with code "50011" in the
+            // JSON body (not as HTTP 429), so they arrive as ExchangeApi rather
+            // than Http. Treat them as retriable like HTTP 429.
+            code == "50011"
+        }
         DataError::DataParse(_) => false,
         DataError::BulkArchive(_) => false,
         DataError::ChecksumMismatch { .. } => false,
