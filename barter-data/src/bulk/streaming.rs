@@ -7,7 +7,12 @@ use tokio_stream::StreamExt;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tokio_util::io::StreamReader;
 
+use tokio::sync::mpsc;
+
 use crate::{error::DataError, trade::RestTrade};
+
+/// Default batch size for channel-based streaming parsers.
+pub(crate) const DEFAULT_BATCH_SIZE: usize = 1000;
 
 /// Safety limit: no single day should produce more than 50 million records.
 const MAX_RECORDS: u64 = 50_000_000;
@@ -122,6 +127,112 @@ where
         .map_err(|e| DataError::BulkArchive(format!("failed to skip remaining ZIP entry data: {e}")))?;
 
     Ok(trades)
+}
+
+/// Channel-based CSV parser: deserialise records one at a time, batch them,
+/// and send each batch through the provided `mpsc::Sender`.
+///
+/// Eliminates the `Vec<RestTrade>` return — trades flow to the consumer as
+/// they are parsed. Memory is bounded by `batch_size` regardless of file size.
+///
+/// Returns the total number of records sent.
+pub(crate) async fn parse_csv_into_sender<R, T, F>(
+    reader: R,
+    has_headers: bool,
+    flexible: bool,
+    convert: F,
+    tx: &mpsc::Sender<Vec<RestTrade>>,
+    batch_size: usize,
+) -> Result<u64, DataError>
+where
+    R: AsyncRead + Unpin + Send,
+    T: DeserializeOwned + Send,
+    F: Fn(T) -> Result<RestTrade, DataError>,
+{
+    let mut csv_reader = AsyncReaderBuilder::new()
+        .has_headers(has_headers)
+        .flexible(flexible)
+        .create_deserializer(reader);
+
+    let mut batch = Vec::with_capacity(batch_size);
+    let mut total: u64 = 0;
+    let mut records = csv_reader.deserialize::<T>();
+
+    while let Some(result) = records.next().await {
+        if total >= MAX_RECORDS {
+            return Err(DataError::BulkArchive(format!(
+                "record count exceeds safety limit of {MAX_RECORDS}"
+            )));
+        }
+
+        let record: T =
+            result.map_err(|e| DataError::DataParse(format!("CSV stream parse error: {e}")))?;
+        batch.push(convert(record)?);
+        total += 1;
+
+        if batch.len() >= batch_size {
+            tx.send(std::mem::replace(&mut batch, Vec::with_capacity(batch_size)))
+                .await
+                .map_err(|_| DataError::BulkArchive("receiver dropped".into()))?;
+        }
+    }
+
+    // Flush final partial batch.
+    if !batch.is_empty() {
+        tx.send(batch)
+            .await
+            .map_err(|_| DataError::BulkArchive("receiver dropped".into()))?;
+    }
+
+    Ok(total)
+}
+
+/// Channel-based ZIP+CSV parser: open a ZIP stream, extract the first entry,
+/// pipe it through [`parse_csv_into_sender`].
+///
+/// Same lifecycle as [`parse_zip_csv_stream`] but sends batches through a
+/// channel instead of collecting into a `Vec`.
+///
+/// Returns the total number of records sent.
+pub(crate) async fn parse_zip_csv_into_sender<R, T, F>(
+    reader: R,
+    has_headers: bool,
+    flexible: bool,
+    convert: F,
+    tx: &mpsc::Sender<Vec<RestTrade>>,
+    batch_size: usize,
+) -> Result<u64, DataError>
+where
+    R: AsyncBufRead + Unpin + Send,
+    T: DeserializeOwned + Send,
+    F: Fn(T) -> Result<RestTrade, DataError>,
+{
+    let zip = ZipFileReader::with_tokio(reader);
+
+    let mut entry = match zip.next_with_entry().await {
+        Ok(Some(entry)) => entry,
+        Ok(None) => return Ok(0),
+        Err(e) => {
+            return Err(DataError::BulkArchive(format!(
+                "failed to read ZIP entry: {e}"
+            )))
+        }
+    };
+
+    let total = {
+        let compat_reader = entry.reader_mut().compat();
+        parse_csv_into_sender(compat_reader, has_headers, flexible, convert, tx, batch_size)
+            .await?
+    };
+
+    entry
+        .skip()
+        .await
+        .map_err(|e| {
+            DataError::BulkArchive(format!("failed to skip remaining ZIP entry data: {e}"))
+        })?;
+
+    Ok(total)
 }
 
 #[cfg(test)]
