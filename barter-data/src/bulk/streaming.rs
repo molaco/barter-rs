@@ -24,10 +24,11 @@ pub(crate) fn response_to_async_read(
 }
 
 /// Streaming CSV parser: deserialise records one at a time from any async
-/// reader, convert each to [`RestTrade`], and collect.
+/// reader, convert each to [`RestTrade`], and collect into a `Vec`.
 ///
-/// Peak memory is bounded to one CSV record at a time (plus the reader's
-/// internal buffers), regardless of archive size.
+/// Parsing is streaming — only one CSV record is in flight at a time, so
+/// the intermediate decompressed-bytes buffer is eliminated. The returned
+/// `Vec<RestTrade>` still grows with the number of trades.
 ///
 /// # Type parameters
 /// - `R`: any async reader (e.g. a `GzipDecoder` wrapping a `StreamReader`)
