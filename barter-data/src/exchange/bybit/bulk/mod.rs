@@ -1,16 +1,17 @@
 pub mod trades;
 
 use crate::{
-    bulk::{BulkConfig, BulkDayTradeFetcher},
+    bulk::{
+        streaming::{parse_csv_stream, response_to_async_read},
+        BulkConfig, BulkDayTradeFetcher,
+    },
     error::DataError,
     trade::RestTrade,
 };
 use async_compression::tokio::bufread::GzipDecoder;
 use chrono::NaiveDate;
-use futures::TryStreamExt;
 use std::{future::Future, marker::PhantomData, pin::Pin};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio_util::io::StreamReader;
+use tokio::io::AsyncRead;
 
 use super::{futures::BybitServerPerpetualsUsd, spot::BybitServerSpot};
 
@@ -22,8 +23,15 @@ pub trait BybitBulkServer: Send + Sync + 'static {
     /// Spot uses `"_"` (e.g. `BTCUSDT_2025-12-09.csv.gz`),
     /// perpetuals use no separator (e.g. `BTCUSDT2025-12-09.csv.gz`).
     fn date_separator() -> &'static str;
-    /// Parse CSV data into trades. Spot and perpetuals have different CSV schemas.
+    /// Parse CSV data into trades (sync fallback). Spot and perpetuals have
+    /// different CSV schemas.
     fn parse_csv(data: &[u8]) -> Result<Vec<RestTrade>, DataError>;
+    /// Parse CSV trades from an async reader (streaming). Records are
+    /// deserialized one at a time — peak memory is bounded regardless of
+    /// archive size.
+    fn parse_csv_async(
+        reader: impl AsyncRead + Unpin + Send,
+    ) -> impl Future<Output = Result<Vec<RestTrade>, DataError>> + Send;
 }
 
 impl BybitBulkServer for BybitServerSpot {
@@ -36,6 +44,12 @@ impl BybitBulkServer for BybitServerSpot {
     fn parse_csv(data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
         trades::parse_spot_trades(data)
     }
+    async fn parse_csv_async(
+        reader: impl AsyncRead + Unpin + Send,
+    ) -> Result<Vec<RestTrade>, DataError> {
+        parse_csv_stream::<_, trades::BybitSpotBulkTrade, _>(reader, true, RestTrade::try_from)
+            .await
+    }
 }
 
 impl BybitBulkServer for BybitServerPerpetualsUsd {
@@ -47,6 +61,11 @@ impl BybitBulkServer for BybitServerPerpetualsUsd {
     }
     fn parse_csv(data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
         trades::parse_trades(data)
+    }
+    async fn parse_csv_async(
+        reader: impl AsyncRead + Unpin + Send,
+    ) -> Result<Vec<RestTrade>, DataError> {
+        parse_csv_stream::<_, trades::BybitBulkTrade, _>(reader, true, RestTrade::try_from).await
     }
 }
 
@@ -102,10 +121,11 @@ impl<Server> Default for BybitBulkClient<Server> {
 }
 
 impl<Server: BybitBulkServer> BybitBulkClient<Server> {
-    /// Download and parse trades using streaming gzip decompression.
+    /// Download and parse trades using fully streaming gzip + CSV parsing.
     ///
-    /// The HTTP response body is streamed through `GzipDecoder` line by line,
-    /// avoiding buffering the entire compressed payload in memory.
+    /// The HTTP response body is streamed through `GzipDecoder` and then
+    /// directly into `csv-async`'s async deserializer. Records are parsed
+    /// one at a time — peak memory is bounded regardless of archive size.
     async fn download_and_parse_trades(
         &self,
         market: &str,
@@ -117,14 +137,13 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
         let url =
             format!("https://public.bybit.com/{prefix}/{market}/{market}{sep}{date_str}.csv.gz");
 
-        let resp =
-            self.client.get(&url).send().await.map_err(|e| {
-                DataError::Http {
-                    status: None,
-                    url: url.clone(),
-                    message: format!("Bybit bulk request failed: {e}"),
-                }
-            })?;
+        let resp = self.client.get(&url).send().await.map_err(|e| {
+            DataError::Http {
+                status: None,
+                url: url.clone(),
+                message: format!("Bybit bulk request failed: {e}"),
+            }
+        })?;
 
         let status = resp.status();
 
@@ -140,43 +159,12 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
             });
         }
 
-        let response = resp;
+        // Fully streaming pipeline: HTTP chunks → gzip decompress → CSV parse.
+        // No intermediate Vec<u8> buffer — records flow one at a time.
+        let buf_reader = response_to_async_read(resp);
+        let gzip_reader = GzipDecoder::new(buf_reader);
+        let trades = Server::parse_csv_async(gzip_reader).await?;
 
-        // Stream the response body through async gzip decoder.
-        // This avoids loading the entire compressed file into memory before
-        // decompressing -- the HTTP chunks flow through the gzip decoder as
-        // they arrive over the network.
-        let byte_stream = response
-            .bytes_stream()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
-        let stream_reader = StreamReader::new(byte_stream);
-        let gzip_reader = GzipDecoder::new(BufReader::new(stream_reader));
-        let buf_reader = BufReader::new(gzip_reader);
-        let mut lines = buf_reader.lines();
-
-        // Collect all decompressed lines into a buffer for CSV parsing.
-        // We accumulate into a Vec<u8> so that the existing CSV parser
-        // (which expects &[u8]) can be reused unchanged.
-        const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
-
-        let mut csv_buf = Vec::new();
-        while let Some(line) = lines.next_line().await.map_err(|e: std::io::Error| {
-            DataError::BulkArchive(format!("Bybit bulk streaming decompress failed: {e}"))
-        })? {
-            csv_buf.extend_from_slice(line.as_bytes());
-            csv_buf.push(b'\n');
-            if csv_buf.len() as u64 > MAX_DECOMPRESSED_SIZE {
-                return Err(DataError::BulkArchive(format!(
-                    "Bybit decompressed data too large: >{MAX_DECOMPRESSED_SIZE} bytes",
-                )));
-            }
-        }
-
-        if csv_buf.is_empty() {
-            return Ok(Some(Vec::new()));
-        }
-
-        let trades = Server::parse_csv(&csv_buf)?;
         Ok(Some(trades))
     }
 }
