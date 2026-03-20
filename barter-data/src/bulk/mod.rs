@@ -1,4 +1,5 @@
 pub mod checksum;
+pub(crate) mod streaming;
 
 use crate::{
     error::DataError,
