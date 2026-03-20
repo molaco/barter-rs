@@ -5,7 +5,7 @@ use crate::{
     bulk::{
         BulkConfig, BulkDayKlineFetcher, BulkDayTradeFetcher,
         checksum::{parse_binance_checksum, verify_sha256},
-        streaming::{parse_zip_csv_stream, response_to_async_read},
+        streaming::{parse_zip_csv_into_sender, parse_zip_csv_stream, response_to_async_read, DEFAULT_BATCH_SIZE},
     },
     error::DataError,
     exchange::binance::{
@@ -465,6 +465,60 @@ impl<Server: BulkArchiveServer> BulkDayTradeFetcher for BinanceBulkClient<Server
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
         Box::pin(download_and_parse_trades::<Server>(&self.client, &self.config, market, date))
+    }
+
+    fn stream_day_trades<'a>(
+        &'a self,
+        market: &'a str,
+        date: NaiveDate,
+        tx: &'a tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, DataError>> + Send + 'a>> {
+        static CHECKSUM_SKIP_WARNED: AtomicBool = AtomicBool::new(false);
+
+        let url = agg_trades_url(Server::market_segment(), market, date);
+
+        if self.config.verify_checksum && !CHECKSUM_SKIP_WARNED.swap(true, Ordering::Relaxed) {
+            tracing::warn!(
+                "checksum verification is not supported in streaming mode, skipping for all downloads"
+            );
+        }
+
+        let policy = RetryPolicy::default();
+        Box::pin(async move {
+            retry_with_backoff(&policy, is_retriable_data_error, || async {
+                let resp = self.client.get(&url).send().await.map_err(|e| DataError::Http {
+                    status: None,
+                    url: url.clone(),
+                    message: format!("request failed: {e}"),
+                })?;
+
+                let status = resp.status();
+                if status == reqwest::StatusCode::NOT_FOUND {
+                    return Ok(false);
+                }
+                if !status.is_success() {
+                    return Err(DataError::Http {
+                        status: Some(status.as_u16()),
+                        url: url.clone(),
+                        message: format!("HTTP {status}"),
+                    });
+                }
+
+                let buf_reader = response_to_async_read(resp);
+                parse_zip_csv_into_sender::<_, trades::BinanceBulkAggTrade, _>(
+                    buf_reader,
+                    Server::csv_has_headers(),
+                    true,
+                    |r| trades::convert_trade(r, Server::may_use_microsecond_timestamps()),
+                    tx,
+                    DEFAULT_BATCH_SIZE,
+                )
+                .await?;
+
+                Ok(true)
+            })
+            .await
+        })
     }
 }
 

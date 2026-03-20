@@ -2,7 +2,7 @@ pub mod trades;
 
 use crate::{
     bulk::{
-        streaming::{parse_csv_stream, response_to_async_read},
+        streaming::{parse_csv_into_sender, parse_csv_stream, response_to_async_read, DEFAULT_BATCH_SIZE},
         BulkConfig, BulkDayTradeFetcher,
     },
     error::DataError,
@@ -45,6 +45,34 @@ pub trait BybitBulkServer: Send + Sync + 'static {
             Self::parse_csv(&buf)
         }
     }
+
+    /// Parse CSV trades from an async reader, sending batches through a channel.
+    ///
+    /// Default impl falls back to reading all bytes, calling [`Self::parse_csv`],
+    /// and sending the result as one batch. Override with a streaming
+    /// implementation for bounded memory usage.
+    fn parse_csv_async_into_sender(
+        reader: impl AsyncRead + Unpin + Send,
+        tx: &tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+        _batch_size: usize,
+    ) -> impl Future<Output = Result<u64, DataError>> + Send {
+        async move {
+            use tokio::io::AsyncReadExt;
+            let mut buf = Vec::new();
+            let mut reader = reader;
+            reader.read_to_end(&mut buf).await.map_err(|e| {
+                DataError::BulkArchive(format!("failed to read CSV data: {e}"))
+            })?;
+            let trades = Self::parse_csv(&buf)?;
+            let count = trades.len() as u64;
+            if !trades.is_empty() {
+                tx.send(trades).await.map_err(|_| {
+                    DataError::BulkArchive("receiver dropped".into())
+                })?;
+            }
+            Ok(count)
+        }
+    }
 }
 
 impl BybitBulkServer for BybitServerSpot {
@@ -63,6 +91,14 @@ impl BybitBulkServer for BybitServerSpot {
         parse_csv_stream::<_, trades::BybitSpotBulkTrade, _>(reader, true, false, RestTrade::try_from)
             .await
     }
+    async fn parse_csv_async_into_sender(
+        reader: impl AsyncRead + Unpin + Send,
+        tx: &tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+        batch_size: usize,
+    ) -> Result<u64, DataError> {
+        parse_csv_into_sender::<_, trades::BybitSpotBulkTrade, _>(reader, true, false, RestTrade::try_from, tx, batch_size)
+            .await
+    }
 }
 
 impl BybitBulkServer for BybitServerPerpetualsUsd {
@@ -79,6 +115,14 @@ impl BybitBulkServer for BybitServerPerpetualsUsd {
         reader: impl AsyncRead + Unpin + Send,
     ) -> Result<Vec<RestTrade>, DataError> {
         parse_csv_stream::<_, trades::BybitBulkTrade, _>(reader, true, false, RestTrade::try_from).await
+    }
+    async fn parse_csv_async_into_sender(
+        reader: impl AsyncRead + Unpin + Send,
+        tx: &tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+        batch_size: usize,
+    ) -> Result<u64, DataError> {
+        parse_csv_into_sender::<_, trades::BybitBulkTrade, _>(reader, true, false, RestTrade::try_from, tx, batch_size)
+            .await
     }
 }
 
@@ -180,6 +224,55 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
 
         Ok(Some(trades))
     }
+
+    /// Stream trades for a single day through a channel in batches.
+    ///
+    /// Same HTTP + gzip pipeline as [`download_and_parse_trades`](Self::download_and_parse_trades),
+    /// but sends parsed records through `tx` in batches of `batch_size`
+    /// instead of collecting into a `Vec`.
+    ///
+    /// Returns `Ok(true)` if data was found, `Ok(false)` on 404.
+    async fn stream_and_parse_trades(
+        &self,
+        market: &str,
+        date: NaiveDate,
+        tx: &tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+        batch_size: usize,
+    ) -> Result<bool, DataError> {
+        let prefix = Server::path_prefix();
+        let sep = Server::date_separator();
+        let date_str = date.format("%Y-%m-%d");
+        let url =
+            format!("https://public.bybit.com/{prefix}/{market}/{market}{sep}{date_str}.csv.gz");
+
+        let resp = self.client.get(&url).send().await.map_err(|e| {
+            DataError::Http {
+                status: None,
+                url: url.clone(),
+                message: format!("Bybit bulk request failed: {e}"),
+            }
+        })?;
+
+        let status = resp.status();
+
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+
+        if !status.is_success() {
+            return Err(DataError::Http {
+                status: Some(status.as_u16()),
+                url: url.clone(),
+                message: format!("Bybit bulk HTTP {status}"),
+            });
+        }
+
+        let buf_reader = response_to_async_read(resp);
+        let gzip_reader = GzipDecoder::new(buf_reader);
+        Server::parse_csv_async_into_sender(gzip_reader, tx, batch_size).await?;
+
+        Ok(true)
+    }
 }
 
 impl<Server: BybitBulkServer> BulkDayTradeFetcher for BybitBulkClient<Server> {
@@ -190,6 +283,15 @@ impl<Server: BybitBulkServer> BulkDayTradeFetcher for BybitBulkClient<Server> {
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
         Box::pin(self.download_and_parse_trades(market, date))
+    }
+
+    fn stream_day_trades<'a>(
+        &'a self,
+        market: &'a str,
+        date: NaiveDate,
+        tx: &'a tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, DataError>> + Send + 'a>> {
+        Box::pin(self.stream_and_parse_trades(market, date, tx, DEFAULT_BATCH_SIZE))
     }
 }
 

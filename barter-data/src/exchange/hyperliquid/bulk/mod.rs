@@ -2,7 +2,10 @@ pub mod s3_signer;
 pub mod trades;
 
 use crate::{
-    bulk::{streaming::response_to_async_read, BulkConfig, BulkDayTradeFetcher},
+    bulk::{
+        streaming::{response_to_async_read, DEFAULT_BATCH_SIZE},
+        BulkConfig, BulkDayTradeFetcher,
+    },
     error::DataError,
     retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     trade::RestTrade,
@@ -239,6 +242,85 @@ impl HyperliquidBulkClient {
     ) -> Result<Option<HashMap<String, Vec<RestTrade>>>, DataError> {
         self.download_and_parse_trades_multi(date).await
     }
+
+    /// Stream trades for a single day through a channel in batches.
+    ///
+    /// Downloads all 24 hourly LZ4 files concurrently (same as
+    /// [`download_and_parse_trades`]), but instead of collecting into a single
+    /// `Vec` the trades are sent through `tx` in batches of
+    /// [`DEFAULT_BATCH_SIZE`].
+    ///
+    /// Returns `Ok(true)` if any hour had data, `Ok(false)` if all were 404.
+    async fn stream_and_parse_trades(
+        &self,
+        market: &str,
+        date: NaiveDate,
+        tx: &tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+    ) -> Result<bool, DataError> {
+        let date_str = date.format("%Y%m%d").to_string();
+
+        let futures: Vec<_> = (0..24u8)
+            .map(|hour| {
+                let url = format!("{BASE_URL}/{date_str}/{hour}.lz4");
+                let policy = RetryPolicy::default();
+
+                async move {
+                    retry_with_backoff(&policy, is_retriable_data_error, || async {
+                        let resp =
+                            self.signed_request(&url).send().await.map_err(|e| DataError::Http {
+                                status: None,
+                                url: url.clone(),
+                                message: format!("HTTP request failed: {e}"),
+                            })?;
+
+                        let status = resp.status();
+                        if status == reqwest::StatusCode::NOT_FOUND {
+                            return Ok(false);
+                        }
+                        if !status.is_success() {
+                            return Err(DataError::Http {
+                                status: Some(status.as_u16()),
+                                url: url.clone(),
+                                message: format!("HTTP {status}"),
+                            });
+                        }
+
+                        let buf_reader = response_to_async_read(resp);
+                        let lz4_reader = Lz4Decoder::new(buf_reader);
+                        let mut lines = tokio::io::BufReader::new(lz4_reader).lines();
+
+                        let mut batch = Vec::with_capacity(DEFAULT_BATCH_SIZE);
+                        while let Some(line) = lines.next_line().await.map_err(|e| {
+                            DataError::BulkArchive(format!("LZ4 stream read error: {e}"))
+                        })? {
+                            batch.extend(parse_json_line(&line, market)?);
+                            if batch.len() >= DEFAULT_BATCH_SIZE {
+                                tx.send(std::mem::replace(
+                                    &mut batch,
+                                    Vec::with_capacity(DEFAULT_BATCH_SIZE),
+                                ))
+                                .await
+                                .map_err(|_| {
+                                    DataError::BulkArchive("receiver dropped".into())
+                                })?;
+                            }
+                        }
+                        if !batch.is_empty() {
+                            tx.send(batch).await.map_err(|_| {
+                                DataError::BulkArchive("receiver dropped".into())
+                            })?;
+                        }
+
+                        Ok(true)
+                    })
+                    .await
+                }
+            })
+            .collect();
+
+        let results = futures::future::try_join_all(futures).await?;
+        Ok(results.into_iter().any(|found| found))
+    }
 }
 
 impl Default for HyperliquidBulkClient {
@@ -255,6 +337,16 @@ impl BulkDayTradeFetcher for HyperliquidBulkClient {
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
         Box::pin(self.download_and_parse_trades(market, date))
+    }
+
+    #[tracing::instrument(skip(self, tx), fields(exchange = "hyperliquid", %date))]
+    fn stream_day_trades<'a>(
+        &'a self,
+        market: &'a str,
+        date: NaiveDate,
+        tx: &'a tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, DataError>> + Send + 'a>> {
+        Box::pin(self.stream_and_parse_trades(market, date, tx))
     }
 }
 

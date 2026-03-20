@@ -2,7 +2,7 @@ pub mod trades;
 
 use crate::{
     bulk::{
-        streaming::{parse_zip_csv_stream, response_to_async_read},
+        streaming::{parse_zip_csv_into_sender, parse_zip_csv_stream, response_to_async_read, DEFAULT_BATCH_SIZE},
         BulkConfig, BulkDayTradeFetcher,
     },
     error::DataError,
@@ -89,6 +89,59 @@ impl OkxBulkClient {
 
         Ok(Some(trades))
     }
+
+    /// Stream and parse trades through a channel in batches.
+    ///
+    /// Same as [`download_and_parse_trades`](Self::download_and_parse_trades)
+    /// but sends batches through `tx` instead of collecting into a `Vec`,
+    /// keeping memory bounded regardless of day size.
+    ///
+    /// Returns `Ok(true)` if data was found, `Ok(false)` if 404.
+    async fn stream_and_parse_trades(
+        &self,
+        market: &str,
+        date: NaiveDate,
+        tx: &tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+    ) -> Result<bool, DataError> {
+        let date_folder = date.format("%Y%m%d");
+        let date_file = date.format("%Y-%m-%d");
+        let url = format!(
+            "https://www.okx.com/cdn/okex/traderecords/trades/daily/{date_folder}/{market}-trades-{date_file}.zip"
+        );
+
+        let resp = self.client.get(&url).send().await.map_err(|e| DataError::Http {
+            status: None,
+            url: url.clone(),
+            message: format!("OKX bulk request failed: {e}"),
+        })?;
+
+        let status = resp.status();
+
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+
+        if !status.is_success() {
+            return Err(DataError::Http {
+                status: Some(status.as_u16()),
+                url: url.clone(),
+                message: format!("OKX bulk HTTP {status} for {url}"),
+            });
+        }
+
+        let buf_reader = response_to_async_read(resp);
+        parse_zip_csv_into_sender::<_, trades::OkxBulkTrade, _>(
+            buf_reader,
+            true,  // OKX CSVs have headers
+            false, // no flexible columns needed
+            RestTrade::try_from,
+            tx,
+            DEFAULT_BATCH_SIZE,
+        )
+        .await?;
+
+        Ok(true)
+    }
 }
 
 /// Download and parse trades from an OKX monthly archive using streaming ZIP+CSV.
@@ -158,6 +211,15 @@ impl BulkDayTradeFetcher for OkxBulkClient {
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
         Box::pin(self.download_and_parse_trades(market, date))
+    }
+
+    fn stream_day_trades<'a>(
+        &'a self,
+        market: &'a str,
+        date: NaiveDate,
+        tx: &'a tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, DataError>> + Send + 'a>> {
+        Box::pin(self.stream_and_parse_trades(market, date, tx))
     }
 }
 
