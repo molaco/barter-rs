@@ -1,8 +1,10 @@
+use async_zip::base::read::stream::ZipFileReader;
 use csv_async::AsyncReaderBuilder;
 use futures::TryStreamExt;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncBufRead, AsyncRead, BufReader};
 use tokio_stream::StreamExt;
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tokio_util::io::StreamReader;
 
 use crate::{error::DataError, trade::RestTrade};
@@ -65,6 +67,59 @@ where
             result.map_err(|e| DataError::DataParse(format!("CSV stream parse error: {e}")))?;
         trades.push(convert(record)?);
     }
+
+    Ok(trades)
+}
+
+/// Streaming ZIP+CSV parser: open a ZIP stream, extract the first entry,
+/// pipe it through [`parse_csv_stream`], and return the parsed trades.
+///
+/// Encapsulates the entire `async_zip` type-state lifecycle so callers
+/// don't need to manage the `ZipFileReader` → `ZipEntryReader` transition.
+///
+/// # Type parameters
+/// - `R`: any async buffered reader (e.g. an HTTP response stream)
+/// - `T`: the CSV record type, must impl `DeserializeOwned`
+/// - `F`: conversion closure `T -> Result<RestTrade, DataError>`
+pub(crate) async fn parse_zip_csv_stream<R, T, F>(
+    reader: R,
+    has_headers: bool,
+    flexible: bool,
+    convert: F,
+) -> Result<Vec<RestTrade>, DataError>
+where
+    R: AsyncBufRead + Unpin + Send,
+    T: DeserializeOwned + Send,
+    F: Fn(T) -> Result<RestTrade, DataError>,
+{
+    let zip = ZipFileReader::with_tokio(reader);
+
+    // Get the first entry from the archive.
+    let mut entry = match zip.next_with_entry().await {
+        Ok(Some(entry)) => entry,
+        // Empty archive — not an error. Distinct from 404 (handled by caller)
+        // where the file doesn't exist at all; here the ZIP exists but has no
+        // entries.
+        Ok(None) => return Ok(Vec::new()),
+        Err(e) => {
+            return Err(DataError::BulkArchive(format!(
+                "failed to read ZIP entry: {e}"
+            )))
+        }
+    };
+
+    // Scope the entry reader borrow so it's released before calling done().
+    let trades = {
+        let compat_reader = entry.reader_mut().compat();
+        parse_csv_stream(compat_reader, has_headers, flexible, convert).await?
+    };
+    // compat_reader dropped here, &mut borrow on entry released.
+
+    // Verify EOF was reached and advance past the data descriptor.
+    entry
+        .done()
+        .await
+        .map_err(|e| DataError::BulkArchive(format!("ZIP entry finalization failed: {e}")))?;
 
     Ok(trades)
 }
