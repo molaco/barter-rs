@@ -170,9 +170,9 @@ impl HyperliquidBulkClient {
     ) -> Result<Option<HashMap<String, Vec<RestTrade>>>, DataError> {
         let mut merged: HashMap<String, Vec<RestTrade>> = HashMap::new();
         let mut any_found = false;
+        let date_str = date.format("%Y%m%d");
 
         for hour in 0..24u8 {
-            let date_str = date.format("%Y%m%d");
             let url = format!("{BASE_URL}/{date_str}/{hour}.lz4");
             let policy = RetryPolicy::default();
 
