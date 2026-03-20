@@ -69,40 +69,9 @@ pub fn parse_fills(json_data: &[u8], market: &str) -> Result<Vec<RestTrade>, Dat
         .map_err(|e| DataError::DataParse(format!("invalid UTF-8 in fill data: {e}")))?;
 
     let mut trades = Vec::new();
-
     for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        // Try block format first (most common in hourly archives):
-        // {"events": [["0xaddr", {...fill...}], ...]}
-        if let Ok(block) = serde_json::from_str::<BlockWrapper>(line) {
-            for (_addr, fill) in block.events {
-                if fill.coin == market {
-                    trades.push(RestTrade::try_from(fill)?);
-                }
-            }
-            continue;
-        }
-
-        // Fallback: flat array of fills
-        if let Ok(array) = serde_json::from_str::<Vec<HyperliquidFillEvent>>(line) {
-            for fill in array {
-                if fill.coin == market {
-                    trades.push(RestTrade::try_from(fill)?);
-                }
-            }
-            continue;
-        }
-
-        tracing::warn!(
-            "skipping unparseable fill line: {}",
-            &line[..line.len().min(120)]
-        );
+        trades.extend(parse_json_line(line, market)?);
     }
-
     Ok(trades)
 }
 
@@ -115,41 +84,9 @@ pub fn parse_fills_multi(json_data: &[u8]) -> Result<HashMap<String, Vec<RestTra
         .map_err(|e| DataError::DataParse(format!("invalid UTF-8 in fill data: {e}")))?;
 
     let mut result: HashMap<String, Vec<RestTrade>> = HashMap::new();
-
     for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        if let Ok(block) = serde_json::from_str::<BlockWrapper>(line) {
-            for (_addr, fill) in block.events {
-                let coin = fill.coin.clone();
-                result
-                    .entry(coin)
-                    .or_default()
-                    .push(RestTrade::try_from(fill)?);
-            }
-            continue;
-        }
-
-        if let Ok(array) = serde_json::from_str::<Vec<HyperliquidFillEvent>>(line) {
-            for fill in array {
-                let coin = fill.coin.clone();
-                result
-                    .entry(coin)
-                    .or_default()
-                    .push(RestTrade::try_from(fill)?);
-            }
-            continue;
-        }
-
-        tracing::warn!(
-            "skipping unparseable fill line: {}",
-            &line[..line.len().min(120)]
-        );
+        parse_json_line_multi(line, &mut result)?;
     }
-
     Ok(result)
 }
 
