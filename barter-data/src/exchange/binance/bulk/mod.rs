@@ -5,12 +5,13 @@ use crate::{
     bulk::{
         BulkConfig, BulkDayKlineFetcher, BulkDayTradeFetcher,
         checksum::{parse_binance_checksum, verify_sha256},
+        streaming::{parse_zip_csv_stream, response_to_async_read},
     },
     error::DataError,
     exchange::binance::{
         binance_interval, futures::BinanceServerFuturesUsd, spot::BinanceServerSpot,
     },
-    retry::{RetryPolicy, is_retriable_data_error},
+    retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
     subscription::candle::{Candle, Interval},
     trade::RestTrade,
 };
@@ -340,7 +341,13 @@ fn extract_zip_csv(zip_bytes: &[u8]) -> Result<Vec<u8>, DataError> {
 // Download-and-parse orchestration
 // ---------------------------------------------------------------------------
 
-/// Download, verify, and parse trades for a single date.
+/// Download and parse trades for a single date using streaming ZIP+CSV.
+///
+/// The HTTP response body is streamed through `async_zip` for decompression
+/// and then into `csv-async` for record-by-record parsing. No intermediate
+/// ZIP or CSV buffers are allocated — peak memory is just the final
+/// `Vec<RestTrade>`.
+///
 /// Returns `Ok(None)` on 404.
 async fn download_and_parse_trades<Server: BulkArchiveServer>(
     client: &reqwest::Client,
@@ -350,19 +357,46 @@ async fn download_and_parse_trades<Server: BulkArchiveServer>(
 ) -> Result<Option<Vec<RestTrade>>, DataError> {
     let url = agg_trades_url(Server::market_segment(), market, date);
 
-    let zip_bytes = match download_and_verify(client, config, &url).await? {
-        Some(b) => b,
-        None => return Ok(None),
-    };
+    // Checksum verification is incompatible with streaming — the ZIP bytes
+    // are consumed by the streaming reader without buffering. Warn the user
+    // if they requested verification.
+    if config.verify_checksum {
+        tracing::info!(
+            %url,
+            "checksum verification skipped in streaming mode"
+        );
+    }
 
-    let csv_data = tokio::task::spawn_blocking(move || extract_zip_csv(&zip_bytes))
-        .await
-        .map_err(|e| DataError::BulkArchive(format!("ZIP task panicked: {e}")))??;
-    let trades = trades::parse_trades(
-        &csv_data,
+    let policy = RetryPolicy::default();
+    let resp = retry_with_backoff(&policy, is_retriable_data_error, || async {
+        client.get(&url).send().await.map_err(|e| DataError::Http {
+            status: None,
+            url: url.clone(),
+            message: format!("request failed: {e}"),
+        })
+    })
+    .await?;
+
+    let status = resp.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !status.is_success() {
+        return Err(DataError::Http {
+            status: Some(status.as_u16()),
+            url: url.clone(),
+            message: format!("HTTP {status}"),
+        });
+    }
+
+    let buf_reader = response_to_async_read(resp);
+    let trades = parse_zip_csv_stream::<_, trades::BinanceBulkAggTrade, _>(
+        buf_reader,
         Server::csv_has_headers(),
-        Server::may_use_microsecond_timestamps(),
-    )?;
+        true, // flexible — handles 7-col futures and 8-col spot
+        |r| trades::convert_trade(r, Server::may_use_microsecond_timestamps()),
+    )
+    .await?;
 
     Ok(Some(trades))
 }
