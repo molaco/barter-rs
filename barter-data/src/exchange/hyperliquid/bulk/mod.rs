@@ -163,60 +163,72 @@ impl HyperliquidBulkClient {
         }
     }
 
-    /// Download and parse all 24 hours, returning ALL coins' trades grouped by coin.
+    /// Download and parse a single hour's multi-coin fill data.
+    ///
+    /// Returns `Ok(Some(map))` with trades grouped by coin, `Ok(None)` on 404.
+    /// Retries transient errors. Shared by both `fetch_day_trades_multi` and
+    /// `stream_day_trades_multi`.
+    async fn download_hour_multi(
+        &self,
+        date_str: &str,
+        hour: u8,
+    ) -> Result<Option<HashMap<String, Vec<RestTrade>>>, DataError> {
+        let url = format!("{BASE_URL}/{date_str}/{hour}.lz4");
+        let policy = RetryPolicy::default();
+
+        retry_with_backoff(&policy, is_retriable_data_error, || async {
+            let resp = self.signed_request(&url).send().await.map_err(|e| DataError::Http {
+                status: None,
+                url: url.clone(),
+                message: format!("HTTP request failed: {e}"),
+            })?;
+
+            let status = resp.status();
+            if status == reqwest::StatusCode::NOT_FOUND {
+                return Ok(None);
+            }
+            if !status.is_success() {
+                return Err(DataError::Http {
+                    status: Some(status.as_u16()),
+                    url: url.clone(),
+                    message: format!("HTTP {status}"),
+                });
+            }
+
+            let buf_reader = response_to_async_read(resp);
+            let lz4_reader = Lz4Decoder::new(buf_reader);
+            let mut lines = tokio::io::BufReader::new(lz4_reader).lines();
+
+            let mut local: HashMap<String, Vec<RestTrade>> = HashMap::new();
+            while let Some(line) = lines.next_line().await.map_err(|e| {
+                DataError::BulkArchive(format!("LZ4 stream read error: {e}"))
+            })? {
+                parse_json_line_multi(&line, &mut local)?;
+            }
+
+            Ok(Some(local))
+        })
+        .await
+    }
+
+    /// Fetch all coins' trades for a single day from the Hyperliquid S3 archive.
+    ///
+    /// Returns `Ok(Some(HashMap<coin, trades>))` on success, `Ok(None)` if the date
+    /// is not available (404), or `Err` on failure. Each S3 hourly file contains all
+    /// coins — this method downloads all 24 hours and groups trades by coin.
     ///
     /// Hours are processed sequentially to avoid holding multiple hours'
     /// data in memory simultaneously.
-    async fn download_and_parse_trades_multi(
+    pub async fn fetch_day_trades_multi(
         &self,
         date: NaiveDate,
     ) -> Result<Option<HashMap<String, Vec<RestTrade>>>, DataError> {
         let mut merged: HashMap<String, Vec<RestTrade>> = HashMap::new();
         let mut any_found = false;
-        let date_str = date.format("%Y%m%d");
+        let date_str = date.format("%Y%m%d").to_string();
 
         for hour in 0..24u8 {
-            let url = format!("{BASE_URL}/{date_str}/{hour}.lz4");
-            let policy = RetryPolicy::default();
-
-            // Collect each hour's data into a local map so retries don't
-            // leave partial data in `merged`.
-            let hour_map: Option<HashMap<String, Vec<RestTrade>>> =
-                retry_with_backoff(&policy, is_retriable_data_error, || async {
-                    let resp = self.signed_request(&url).send().await.map_err(|e| DataError::Http {
-                        status: None,
-                        url: url.clone(),
-                        message: format!("HTTP request failed: {e}"),
-                    })?;
-
-                    let status = resp.status();
-                    if status == reqwest::StatusCode::NOT_FOUND {
-                        return Ok(None);
-                    }
-                    if !status.is_success() {
-                        return Err(DataError::Http {
-                            status: Some(status.as_u16()),
-                            url: url.clone(),
-                            message: format!("HTTP {status}"),
-                        });
-                    }
-
-                    let buf_reader = response_to_async_read(resp);
-                    let lz4_reader = Lz4Decoder::new(buf_reader);
-                    let mut lines = tokio::io::BufReader::new(lz4_reader).lines();
-
-                    let mut local: HashMap<String, Vec<RestTrade>> = HashMap::new();
-                    while let Some(line) = lines.next_line().await.map_err(|e| {
-                        DataError::BulkArchive(format!("LZ4 stream read error: {e}"))
-                    })? {
-                        parse_json_line_multi(&line, &mut local)?;
-                    }
-
-                    Ok(Some(local))
-                })
-                .await?;
-
-            if let Some(hour_map) = hour_map {
+            if let Some(hour_map) = self.download_hour_multi(&date_str, hour).await? {
                 any_found = true;
                 for (coin, trades) in hour_map {
                     merged.entry(coin).or_default().extend(trades);
@@ -231,24 +243,11 @@ impl HyperliquidBulkClient {
         }
     }
 
-    /// Fetch all coins' trades for a single day from the Hyperliquid S3 archive.
-    ///
-    /// Returns `Ok(Some(HashMap<coin, trades>))` on success, `Ok(None)` if the date
-    /// is not available (404), or `Err` on failure. Each S3 hourly file contains all
-    /// coins — this method downloads all 24 hours and groups trades by coin.
-    pub async fn fetch_day_trades_multi(
-        &self,
-        date: NaiveDate,
-    ) -> Result<Option<HashMap<String, Vec<RestTrade>>>, DataError> {
-        self.download_and_parse_trades_multi(date).await
-    }
-
     /// Stream all coins' trades for a single day through a channel.
     ///
     /// Each batch is a `(coin, Vec<RestTrade>)` tuple. Hours are processed
-    /// sequentially (same as [`download_and_parse_trades_multi`]) to avoid
-    /// holding multiple hours in memory. Each hour's trades are grouped by
-    /// coin and sent as separate batches.
+    /// sequentially to avoid holding multiple hours in memory. Each hour's
+    /// trades are grouped by coin and sent as separate batches.
     ///
     /// Returns `Ok(true)` if any hour had data, `Ok(false)` if all were 404.
     pub async fn stream_day_trades_multi(
@@ -256,50 +255,11 @@ impl HyperliquidBulkClient {
         date: NaiveDate,
         tx: &tokio::sync::mpsc::Sender<(String, Vec<RestTrade>)>,
     ) -> Result<bool, DataError> {
-        let date_str = date.format("%Y%m%d");
+        let date_str = date.format("%Y%m%d").to_string();
         let mut any_found = false;
 
         for hour in 0..24u8 {
-            let url = format!("{BASE_URL}/{date_str}/{hour}.lz4");
-            let policy = RetryPolicy::default();
-
-            let hour_map: Option<HashMap<String, Vec<RestTrade>>> =
-                retry_with_backoff(&policy, is_retriable_data_error, || async {
-                    let resp =
-                        self.signed_request(&url).send().await.map_err(|e| DataError::Http {
-                            status: None,
-                            url: url.clone(),
-                            message: format!("HTTP request failed: {e}"),
-                        })?;
-
-                    let status = resp.status();
-                    if status == reqwest::StatusCode::NOT_FOUND {
-                        return Ok(None);
-                    }
-                    if !status.is_success() {
-                        return Err(DataError::Http {
-                            status: Some(status.as_u16()),
-                            url: url.clone(),
-                            message: format!("HTTP {status}"),
-                        });
-                    }
-
-                    let buf_reader = response_to_async_read(resp);
-                    let lz4_reader = Lz4Decoder::new(buf_reader);
-                    let mut lines = tokio::io::BufReader::new(lz4_reader).lines();
-
-                    let mut local: HashMap<String, Vec<RestTrade>> = HashMap::new();
-                    while let Some(line) = lines.next_line().await.map_err(|e| {
-                        DataError::BulkArchive(format!("LZ4 stream read error: {e}"))
-                    })? {
-                        parse_json_line_multi(&line, &mut local)?;
-                    }
-
-                    Ok(Some(local))
-                })
-                .await?;
-
-            if let Some(hour_map) = hour_map {
+            if let Some(hour_map) = self.download_hour_multi(&date_str, hour).await? {
                 any_found = true;
                 for (coin, trades) in hour_map {
                     tx.send((coin, trades)).await.map_err(|_| {
