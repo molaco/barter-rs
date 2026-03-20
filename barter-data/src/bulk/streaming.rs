@@ -1,9 +1,9 @@
 use csv_async::AsyncReaderBuilder;
 use futures::TryStreamExt;
 use serde::de::DeserializeOwned;
-use tokio::io::{AsyncRead, BufReader};
+use tokio::io::{AsyncBufRead, AsyncRead, BufReader};
 use tokio_stream::StreamExt;
-use tokio_util::{bytes::Bytes, io::StreamReader};
+use tokio_util::io::StreamReader;
 
 use crate::{error::DataError, trade::RestTrade};
 
@@ -17,8 +17,7 @@ const MAX_RECORDS: u64 = 50_000_000;
 /// beyond tokio's internal `BufReader` window (default 8 KiB).
 pub(crate) fn response_to_async_read(
     response: reqwest::Response,
-) -> BufReader<StreamReader<impl futures::Stream<Item = Result<Bytes, std::io::Error>> + Send, Bytes>>
-{
+) -> impl AsyncBufRead + Send + Unpin {
     let byte_stream = response
         .bytes_stream()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
