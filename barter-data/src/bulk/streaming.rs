@@ -38,6 +38,7 @@ pub(crate) fn response_to_async_read(
 pub(crate) async fn parse_csv_stream<R, T, F>(
     reader: R,
     has_headers: bool,
+    flexible: bool,
     convert: F,
 ) -> Result<Vec<RestTrade>, DataError>
 where
@@ -47,6 +48,7 @@ where
 {
     let mut csv_reader = AsyncReaderBuilder::new()
         .has_headers(has_headers)
+        .flexible(flexible)
         .create_deserializer(reader);
 
     let mut trades = Vec::new();

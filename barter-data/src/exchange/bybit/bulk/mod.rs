@@ -60,7 +60,7 @@ impl BybitBulkServer for BybitServerSpot {
     async fn parse_csv_async(
         reader: impl AsyncRead + Unpin + Send,
     ) -> Result<Vec<RestTrade>, DataError> {
-        parse_csv_stream::<_, trades::BybitSpotBulkTrade, _>(reader, true, RestTrade::try_from)
+        parse_csv_stream::<_, trades::BybitSpotBulkTrade, _>(reader, true, false, RestTrade::try_from)
             .await
     }
 }
@@ -78,7 +78,7 @@ impl BybitBulkServer for BybitServerPerpetualsUsd {
     async fn parse_csv_async(
         reader: impl AsyncRead + Unpin + Send,
     ) -> Result<Vec<RestTrade>, DataError> {
-        parse_csv_stream::<_, trades::BybitBulkTrade, _>(reader, true, RestTrade::try_from).await
+        parse_csv_stream::<_, trades::BybitBulkTrade, _>(reader, true, false, RestTrade::try_from).await
     }
 }
 
