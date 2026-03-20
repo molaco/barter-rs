@@ -162,6 +162,84 @@ struct BlockWrapper {
     events: Vec<(String, HyperliquidFillEvent)>,
 }
 
+/// Parse a single JSON line, filtering fills for one market coin.
+///
+/// Returns trades for the given market, or an empty vec if the line has
+/// no matching fills. Unparseable lines are logged and return an empty vec.
+pub fn parse_json_line(line: &str, market: &str) -> Result<Vec<RestTrade>, DataError> {
+    let line = line.trim();
+    if line.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    if let Ok(block) = serde_json::from_str::<BlockWrapper>(line) {
+        let mut trades = Vec::new();
+        for (_addr, fill) in block.events {
+            if fill.coin == market {
+                trades.push(RestTrade::try_from(fill)?);
+            }
+        }
+        return Ok(trades);
+    }
+
+    if let Ok(array) = serde_json::from_str::<Vec<HyperliquidFillEvent>>(line) {
+        let mut trades = Vec::new();
+        for fill in array {
+            if fill.coin == market {
+                trades.push(RestTrade::try_from(fill)?);
+            }
+        }
+        return Ok(trades);
+    }
+
+    tracing::warn!(
+        "skipping unparseable fill line: {}",
+        &line[..line.len().min(120)]
+    );
+    Ok(Vec::new())
+}
+
+/// Parse a single JSON line, collecting fills for ALL coins.
+///
+/// Unparseable lines are logged and skipped.
+pub fn parse_json_line_multi(
+    line: &str,
+    result: &mut HashMap<String, Vec<RestTrade>>,
+) -> Result<(), DataError> {
+    let line = line.trim();
+    if line.is_empty() {
+        return Ok(());
+    }
+
+    if let Ok(block) = serde_json::from_str::<BlockWrapper>(line) {
+        for (_addr, fill) in block.events {
+            let coin = fill.coin.clone();
+            result
+                .entry(coin)
+                .or_default()
+                .push(RestTrade::try_from(fill)?);
+        }
+        return Ok(());
+    }
+
+    if let Ok(array) = serde_json::from_str::<Vec<HyperliquidFillEvent>>(line) {
+        for fill in array {
+            let coin = fill.coin.clone();
+            result
+                .entry(coin)
+                .or_default()
+                .push(RestTrade::try_from(fill)?);
+        }
+        return Ok(());
+    }
+
+    tracing::warn!(
+        "skipping unparseable fill line: {}",
+        &line[..line.len().min(120)]
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

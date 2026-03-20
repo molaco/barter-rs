@@ -14,7 +14,7 @@ categories = ["accessibility", "simulation"]
 [features]
 default = []
 rest = ["dep:rand"]
-bulk = ["dep:zip", "dep:csv", "dep:csv-async", "dep:async_zip", "dep:lz4_flex", "dep:sha2", "dep:hmac", "dep:hex", "dep:async-compression", "dep:tokio-util", "dep:quick-xml", "dep:rand"]
+bulk = ["dep:zip", "dep:csv", "dep:csv-async", "dep:async_zip", "dep:sha2", "dep:hmac", "dep:hex", "dep:async-compression", "dep:tokio-util", "dep:quick-xml", "dep:rand"]
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
@@ -71,7 +71,6 @@ governor = { workspace = true }
 rand = { workspace = true, optional = true }
 zip = { workspace = true, optional = true }
 csv = { workspace = true, optional = true }
-lz4_flex = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
