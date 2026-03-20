@@ -48,7 +48,6 @@ where
 
     let mut csv_reader = AsyncReaderBuilder::new()
         .has_headers(has_headers)
-        .flexible(true)
         .create_deserializer(reader);
 
     let mut trades = Vec::new();
