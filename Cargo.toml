@@ -80,6 +80,8 @@ csv = { version = "1.3" }
 flate2 = { version = "1.1" }
 lz4_flex = { version = "0.11" }
 tempfile = { version = "3" }
-async-compression = { version = "0.4", features = ["tokio", "gzip"] }
-tokio-util = { version = "0.7", features = ["io"] }
+async-compression = { version = "0.4", features = ["tokio", "gzip", "deflate", "lz4"] }
+tokio-util = { version = "0.7", features = ["io", "compat"] }
+async_zip = { version = "0.0.18", features = ["tokio", "deflate"] }
+csv-async = { version = "1.3", features = ["tokio", "with_serde"] }
 quick-xml = { version = "0.36", features = ["serialize"] }
