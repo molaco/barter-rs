@@ -123,3 +123,84 @@ where
 
     Ok(trades)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Write};
+
+    fn make_test_zip(csv_content: &[u8]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let cursor = Cursor::new(&mut buf);
+            let mut writer = zip::ZipWriter::new(cursor);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            writer.start_file("data.csv", options).unwrap();
+            writer.write_all(csv_content).unwrap();
+            writer.finish().unwrap();
+        }
+        buf
+    }
+
+    #[tokio::test]
+    async fn test_parse_zip_csv_stream_basic() {
+        #[derive(Debug, serde::Deserialize)]
+        struct TestRecord {
+            name: String,
+            value: f64,
+        }
+
+        let csv = b"name,value\nalpha,1.5\nbeta,2.5\n";
+        let zip_bytes = make_test_zip(csv);
+
+        let reader = tokio::io::BufReader::new(&zip_bytes[..]);
+        let trades = parse_zip_csv_stream::<_, TestRecord, _>(
+            reader,
+            true,
+            false,
+            |r: TestRecord| {
+                Ok(RestTrade {
+                    id: r.name,
+                    time: chrono::DateTime::from_timestamp_millis(0).unwrap(),
+                    price: r.value,
+                    amount: 0.0,
+                    side: barter_instrument::Side::Buy,
+                })
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(trades.len(), 2);
+        assert_eq!(trades[0].id, "alpha");
+        assert_eq!(trades[0].price, 1.5);
+        assert_eq!(trades[1].id, "beta");
+        assert_eq!(trades[1].price, 2.5);
+    }
+
+    #[tokio::test]
+    async fn test_parse_zip_csv_stream_empty_csv() {
+        // ZIP with a single CSV entry that has only a header row (no data rows).
+        let csv = b"name,value\n";
+        let zip_bytes = make_test_zip(csv);
+
+        #[derive(Debug, serde::Deserialize)]
+        struct TestRecord {
+            name: String,
+            value: f64,
+        }
+
+        let reader = tokio::io::BufReader::new(&zip_bytes[..]);
+        let trades = parse_zip_csv_stream::<_, TestRecord, _>(
+            reader,
+            true,
+            false,
+            |_| unreachable!("no data rows to convert"),
+        )
+        .await
+        .unwrap();
+
+        assert!(trades.is_empty());
+    }
+}
