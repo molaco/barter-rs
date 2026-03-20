@@ -29,9 +29,22 @@ pub trait BybitBulkServer: Send + Sync + 'static {
     /// Parse CSV trades from an async reader (streaming). Records are
     /// deserialized one at a time — peak memory is bounded regardless of
     /// archive size.
+    ///
+    /// Default impl falls back to reading all bytes and calling [`Self::parse_csv`].
+    /// Override with a streaming implementation for bounded memory usage.
     fn parse_csv_async(
         reader: impl AsyncRead + Unpin + Send,
-    ) -> impl Future<Output = Result<Vec<RestTrade>, DataError>> + Send;
+    ) -> impl Future<Output = Result<Vec<RestTrade>, DataError>> + Send {
+        async move {
+            use tokio::io::AsyncReadExt;
+            let mut buf = Vec::new();
+            let mut reader = reader;
+            reader.read_to_end(&mut buf).await.map_err(|e| {
+                DataError::BulkArchive(format!("failed to read CSV data: {e}"))
+            })?;
+            Self::parse_csv(&buf)
+        }
+    }
 }
 
 impl BybitBulkServer for BybitServerSpot {
