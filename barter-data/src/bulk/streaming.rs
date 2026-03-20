@@ -1,6 +1,8 @@
+use csv_async::AsyncReaderBuilder;
 use futures::TryStreamExt;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncRead, BufReader};
+use tokio_stream::StreamExt;
 use tokio_util::{bytes::Bytes, io::StreamReader};
 
 use crate::{error::DataError, trade::RestTrade};
@@ -44,9 +46,6 @@ where
     T: DeserializeOwned + Send,
     F: Fn(T) -> Result<RestTrade, DataError>,
 {
-    use csv_async::AsyncReaderBuilder;
-    use tokio_stream::StreamExt;
-
     let mut csv_reader = AsyncReaderBuilder::new()
         .has_headers(has_headers)
         .create_deserializer(reader);
