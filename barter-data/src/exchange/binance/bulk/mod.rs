@@ -17,7 +17,13 @@ use crate::{
 };
 use chrono::NaiveDate;
 use futures::StreamExt;
-use std::{future::Future, io::Cursor, marker::PhantomData, pin::Pin};
+use std::{
+    future::Future,
+    io::Cursor,
+    marker::PhantomData,
+    pin::Pin,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 /// Trait for Binance bulk archive server variants.
 ///
@@ -355,10 +361,14 @@ async fn download_and_parse_trades<Server: BulkArchiveServer>(
     market: &str,
     date: NaiveDate,
 ) -> Result<Option<Vec<RestTrade>>, DataError> {
+    static CHECKSUM_SKIP_WARNED: AtomicBool = AtomicBool::new(false);
+
     let url = agg_trades_url(Server::market_segment(), market, date);
 
-    if config.verify_checksum {
-        tracing::info!(%url, "checksum verification skipped in streaming mode");
+    if config.verify_checksum && !CHECKSUM_SKIP_WARNED.swap(true, Ordering::Relaxed) {
+        tracing::warn!(
+            "checksum verification is not supported in streaming mode, skipping for all downloads"
+        );
     }
 
     let policy = RetryPolicy::default();
