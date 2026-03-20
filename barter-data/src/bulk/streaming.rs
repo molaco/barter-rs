@@ -203,4 +203,35 @@ mod tests {
 
         assert!(trades.is_empty());
     }
+
+    /// Compile-time assertion that the future returned by `parse_zip_csv_stream`
+    /// is `Send` (required for `tokio::spawn`). If `async_zip` changes its
+    /// internal types to be `!Send`, this test will fail to compile.
+    #[tokio::test]
+    async fn test_parse_zip_csv_stream_is_send() {
+        #[derive(Debug, serde::Deserialize)]
+        struct Dummy {
+            x: String,
+        }
+
+        let zip_bytes = make_test_zip(b"x\nhello\n");
+
+        // Move zip_bytes into the spawned task so the reader has a 'static
+        // lifetime, satisfying tokio::spawn's Send + 'static bound.
+        let handle = tokio::spawn(async move {
+            let reader = tokio::io::BufReader::new(&zip_bytes[..]);
+            parse_zip_csv_stream::<_, Dummy, _>(reader, true, false, |_| {
+                Ok(RestTrade {
+                    id: String::new(),
+                    time: chrono::DateTime::from_timestamp_millis(0).unwrap(),
+                    price: 0.0,
+                    amount: 0.0,
+                    side: barter_instrument::Side::Buy,
+                })
+            })
+            .await
+        });
+        let result = handle.await.unwrap();
+        assert!(result.is_ok());
+    }
 }
