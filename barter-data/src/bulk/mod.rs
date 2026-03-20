@@ -61,11 +61,41 @@ impl Default for BulkConfig {
 /// Returns `Ok(Some(trades))` on success, `Ok(None)` if the date is not
 /// available (e.g. HTTP 404), or `Err` on failure.
 pub trait BulkDayTradeFetcher: Send + Sync {
+    /// Fetch all trades for a single day, collected into a `Vec`.
     fn fetch_day_trades<'a>(
         &'a self,
         market: &'a str,
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>>;
+
+    /// Stream trades for a single day through a channel in batches.
+    ///
+    /// Returns `Ok(true)` if data was found, `Ok(false)` if 404, `Err` on
+    /// failure. The default implementation calls [`Self::fetch_day_trades`]
+    /// and sends the entire `Vec` as one batch.
+    ///
+    /// Implementations should override this to send smaller batches as
+    /// records are parsed, keeping memory bounded regardless of day size.
+    fn stream_day_trades<'a>(
+        &'a self,
+        market: &'a str,
+        date: NaiveDate,
+        tx: &'a tokio::sync::mpsc::Sender<Vec<RestTrade>>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, DataError>> + Send + 'a>> {
+        Box::pin(async move {
+            match self.fetch_day_trades(market, date).await? {
+                Some(trades) => {
+                    if !trades.is_empty() {
+                        tx.send(trades).await.map_err(|_| {
+                            DataError::BulkArchive("receiver dropped".into())
+                        })?;
+                    }
+                    Ok(true)
+                }
+                None => Ok(false),
+            }
+        })
+    }
 }
 
 /// Fetch a single day's klines from a bulk archive.
