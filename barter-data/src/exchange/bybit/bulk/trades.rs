@@ -66,8 +66,9 @@ impl TryFrom<BybitBulkTrade> for RestTrade {
 
 /// A single trade row from Bybit's spot bulk CSV archive.
 ///
-/// CSV columns: `id, timestamp, price, volume, side, rpi`
+/// CSV columns: `id, timestamp, price, volume, side[, rpi]`
 /// Timestamp is in milliseconds (integer). Side is lowercase ("buy"/"sell").
+/// The `rpi` column was added on 2025-03-13; older archives omit it.
 #[non_exhaustive]
 #[derive(Debug, Deserialize)]
 pub struct BybitSpotBulkTrade {
@@ -77,6 +78,7 @@ pub struct BybitSpotBulkTrade {
     pub volume: String,
     pub side: String,
     #[allow(dead_code)]
+    #[serde(default)]
     pub rpi: i32,
 }
 
