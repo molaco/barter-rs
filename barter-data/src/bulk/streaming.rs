@@ -115,11 +115,11 @@ where
     };
     // compat_reader dropped here, &mut borrow on entry released.
 
-    // Verify EOF was reached and advance past the data descriptor.
+    // Drain any remaining bytes and advance past the data descriptor.
     entry
-        .done()
+        .skip()
         .await
-        .map_err(|e| DataError::BulkArchive(format!("ZIP entry finalization failed: {e}")))?;
+        .map_err(|e| DataError::BulkArchive(format!("failed to skip remaining ZIP entry data: {e}")))?;
 
     Ok(trades)
 }
