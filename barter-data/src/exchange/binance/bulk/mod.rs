@@ -357,48 +357,42 @@ async fn download_and_parse_trades<Server: BulkArchiveServer>(
 ) -> Result<Option<Vec<RestTrade>>, DataError> {
     let url = agg_trades_url(Server::market_segment(), market, date);
 
-    // Checksum verification is incompatible with streaming — the ZIP bytes
-    // are consumed by the streaming reader without buffering. Warn the user
-    // if they requested verification.
     if config.verify_checksum {
-        tracing::info!(
-            %url,
-            "checksum verification skipped in streaming mode"
-        );
+        tracing::info!(%url, "checksum verification skipped in streaming mode");
     }
 
     let policy = RetryPolicy::default();
-    let resp = retry_with_backoff(&policy, is_retriable_data_error, || async {
-        client.get(&url).send().await.map_err(|e| DataError::Http {
+    retry_with_backoff(&policy, is_retriable_data_error, || async {
+        let resp = client.get(&url).send().await.map_err(|e| DataError::Http {
             status: None,
             url: url.clone(),
             message: format!("request failed: {e}"),
-        })
+        })?;
+
+        let status = resp.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !status.is_success() {
+            return Err(DataError::Http {
+                status: Some(status.as_u16()),
+                url: url.clone(),
+                message: format!("HTTP {status}"),
+            });
+        }
+
+        let buf_reader = response_to_async_read(resp);
+        let trades = parse_zip_csv_stream::<_, trades::BinanceBulkAggTrade, _>(
+            buf_reader,
+            Server::csv_has_headers(),
+            true,
+            |r| trades::convert_trade(r, Server::may_use_microsecond_timestamps()),
+        )
+        .await?;
+
+        Ok(Some(trades))
     })
-    .await?;
-
-    let status = resp.status();
-    if status == reqwest::StatusCode::NOT_FOUND {
-        return Ok(None);
-    }
-    if !status.is_success() {
-        return Err(DataError::Http {
-            status: Some(status.as_u16()),
-            url: url.clone(),
-            message: format!("HTTP {status}"),
-        });
-    }
-
-    let buf_reader = response_to_async_read(resp);
-    let trades = parse_zip_csv_stream::<_, trades::BinanceBulkAggTrade, _>(
-        buf_reader,
-        Server::csv_has_headers(),
-        true, // flexible — handles 7-col futures and 8-col spot
-        |r| trades::convert_trade(r, Server::may_use_microsecond_timestamps()),
-    )
-    .await?;
-
-    Ok(Some(trades))
+    .await
 }
 
 /// Download, verify, and parse klines for a single date.
