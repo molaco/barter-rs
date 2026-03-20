@@ -1,15 +1,15 @@
 pub mod trades;
 
 use crate::{
-    bulk::{BulkConfig, BulkDayTradeFetcher},
+    bulk::{
+        streaming::{parse_zip_csv_stream, response_to_async_read},
+        BulkConfig, BulkDayTradeFetcher,
+    },
     error::DataError,
     trade::RestTrade,
 };
 use chrono::NaiveDate;
-use std::{future::Future, io::Read, pin::Pin};
-
-/// Maximum allowed uncompressed archive entry size (2 GiB).
-const MAX_DECOMPRESSED_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+use std::{future::Future, pin::Pin};
 
 /// Bulk archive download client for OKX.
 ///
@@ -42,6 +42,11 @@ impl OkxBulkClient {
         }
     }
 
+    /// Download and parse trades using streaming ZIP+CSV.
+    ///
+    /// The HTTP response body is streamed through `async_zip` for decompression
+    /// and then into `csv-async` for record-by-record parsing. No intermediate
+    /// ZIP or CSV buffers are allocated.
     async fn download_and_parse_trades(
         &self,
         market: &str,
@@ -53,14 +58,11 @@ impl OkxBulkClient {
             "https://www.okx.com/cdn/okex/traderecords/trades/daily/{date_folder}/{market}-trades-{date_file}.zip"
         );
 
-        let resp =
-            self.client.get(&url).send().await.map_err(|e| {
-                DataError::Http {
-                    status: None,
-                    url: url.clone(),
-                    message: format!("OKX bulk request failed: {e}"),
-                }
-            })?;
+        let resp = self.client.get(&url).send().await.map_err(|e| DataError::Http {
+            status: None,
+            url: url.clone(),
+            message: format!("OKX bulk request failed: {e}"),
+        })?;
 
         let status = resp.status();
 
@@ -76,55 +78,20 @@ impl OkxBulkClient {
             });
         }
 
-        let bytes = resp.bytes().await.map_err(|e| {
-            DataError::Http {
-                status: None,
-                url: url.clone(),
-                message: format!("OKX bulk read body failed: {e}"),
-            }
-        })?;
+        let buf_reader = response_to_async_read(resp);
+        let trades = parse_zip_csv_stream::<_, trades::OkxBulkTrade, _>(
+            buf_reader,
+            true,  // OKX CSVs have headers
+            false, // no flexible columns needed
+            RestTrade::try_from,
+        )
+        .await?;
 
-        // Extract ZIP on blocking thread pool to avoid stalling the async executor.
-        let csv_data = tokio::task::spawn_blocking(move || {
-            let cursor = std::io::Cursor::new(bytes);
-            let mut archive = zip::ZipArchive::new(cursor)
-                .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP open failed: {e}")))?;
-
-            if archive.len() == 0 {
-                return Ok(Vec::new());
-            }
-
-            let file = archive
-                .by_index(0)
-                .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP read failed: {e}")))?;
-
-            if file.size() > MAX_DECOMPRESSED_SIZE {
-                return Err(DataError::BulkArchive(format!(
-                    "OKX ZIP entry too large: {} bytes (max {MAX_DECOMPRESSED_SIZE} bytes)",
-                    file.size(),
-                )));
-            }
-
-            let mut csv_data = Vec::with_capacity(file.size() as usize);
-            { file }
-                .read_to_end(&mut csv_data)
-                .map_err(|e| DataError::BulkArchive(format!("OKX bulk ZIP extract failed: {e}")))?;
-            Ok::<_, DataError>(csv_data)
-        })
-        .await
-        .map_err(|e| DataError::BulkArchive(format!("ZIP task panicked: {e}")))??;
-
-        if csv_data.is_empty() {
-            tracing::warn!("OKX bulk ZIP archive is empty for {market} on {date}");
-            return Ok(Some(Vec::new()));
-        }
-
-        let trades = trades::parse_trades(&csv_data)?;
         Ok(Some(trades))
     }
 }
 
-/// Download and parse trades from an OKX monthly archive.
+/// Download and parse trades from an OKX monthly archive using streaming ZIP+CSV.
 ///
 /// Monthly archive URL:
 /// `https://static.okx.com/cdn/okex/traderecords/trades/monthly/{instrument}/{instrument}-trades-{YYYY-MM}.zip`
@@ -165,51 +132,15 @@ pub async fn download_monthly_trades(
         });
     }
 
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| DataError::Http {
-            status: None,
-            url: url.clone(),
-            message: format!("OKX monthly read body failed: {e}"),
-        })?;
+    let buf_reader = response_to_async_read(resp);
+    let trades = parse_zip_csv_stream::<_, trades::OkxBulkTrade, _>(
+        buf_reader,
+        true,
+        false,
+        RestTrade::try_from,
+    )
+    .await?;
 
-    // Extract ZIP on blocking thread pool.
-    let csv_data = tokio::task::spawn_blocking(move || {
-        let cursor = std::io::Cursor::new(bytes);
-        let mut archive = zip::ZipArchive::new(cursor)
-            .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP open failed: {e}")))?;
-
-        if archive.len() == 0 {
-            return Ok(Vec::new());
-        }
-
-        let file = archive
-            .by_index(0)
-            .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP read failed: {e}")))?;
-
-        if file.size() > MAX_DECOMPRESSED_SIZE {
-            return Err(DataError::BulkArchive(format!(
-                "OKX monthly ZIP entry too large: {} bytes (max {MAX_DECOMPRESSED_SIZE} bytes)",
-                file.size(),
-            )));
-        }
-
-        let mut csv_data = Vec::with_capacity(file.size() as usize);
-        { file }
-            .read_to_end(&mut csv_data)
-            .map_err(|e| DataError::BulkArchive(format!("OKX monthly ZIP extract failed: {e}")))?;
-        Ok::<_, DataError>(csv_data)
-    })
-    .await
-    .map_err(|e| DataError::BulkArchive(format!("ZIP task panicked: {e}")))??;
-
-    if csv_data.is_empty() {
-        tracing::warn!("OKX monthly ZIP archive is empty for {instrument_id} {year}-{month:02}");
-        return Ok(Some(Vec::new()));
-    }
-
-    let trades = trades::parse_trades(&csv_data)?;
     Ok(Some(trades))
 }
 
