@@ -55,15 +55,15 @@ where
     let mut records = csv_reader.deserialize::<T>();
 
     while let Some(result) = records.next().await {
-        let record: T =
-            result.map_err(|e| DataError::DataParse(format!("CSV stream parse error: {e}")))?;
-        trades.push(convert(record)?);
-
         if trades.len() as u64 >= MAX_RECORDS {
             return Err(DataError::BulkArchive(format!(
                 "record count exceeds safety limit of {MAX_RECORDS}"
             )));
         }
+
+        let record: T =
+            result.map_err(|e| DataError::DataParse(format!("CSV stream parse error: {e}")))?;
+        trades.push(convert(record)?);
     }
 
     Ok(trades)
