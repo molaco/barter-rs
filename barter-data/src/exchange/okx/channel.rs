@@ -2,7 +2,7 @@ use super::{Okx, okx_interval};
 use crate::{
     Identifier,
     exchange::ExchangeServer,
-    subscription::{Subscription, candle::Candles, trade::PublicTrades},
+    subscription::{Subscription, book::OrderBooksL2, candle::Candles, trade::PublicTrades},
 };
 use serde::Serialize;
 use smol_str::{SmolStr, format_smolstr};
@@ -19,6 +19,11 @@ impl OkxChannel {
     ///
     /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-public-channel-trades-channel>
     pub const TRADES: Self = Self(SmolStr::new_static("trades"));
+
+    /// [`Okx`] L2 orderbook channel (5-level snapshots).
+    ///
+    /// See docs: <https://www.okx.com/docs-v5/en/#order-book-trading-market-data-ws-order-book-channel>
+    pub const ORDER_BOOK_L2: Self = Self(SmolStr::new_static("books5"));
 }
 
 impl<Instrument, Server> Identifier<OkxChannel> for Subscription<Okx<Server>, Instrument, PublicTrades>
@@ -27,6 +32,15 @@ where
 {
     fn id(&self) -> OkxChannel {
         OkxChannel::TRADES
+    }
+}
+
+impl<Instrument, Server> Identifier<OkxChannel> for Subscription<Okx<Server>, Instrument, OrderBooksL2>
+where
+    Server: ExchangeServer,
+{
+    fn id(&self) -> OkxChannel {
+        OkxChannel::ORDER_BOOK_L2
     }
 }
 
@@ -101,5 +115,20 @@ mod tests {
     #[test]
     fn test_candles_channel_month1() {
         assert_eq!(candles_channel(Interval::Month1).as_ref(), "candle1M");
+    }
+
+    #[test]
+    fn test_l2_book_channel() {
+        assert_eq!(OkxChannel::ORDER_BOOK_L2.as_ref(), "books5");
+    }
+
+    #[test]
+    fn test_l2_book_subscription_identifier() {
+        let sub: Subscription<OkxSpot, MarketDataInstrument, OrderBooksL2> = Subscription::new(
+            OkxSpot::default(),
+            MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
+            OrderBooksL2,
+        );
+        assert_eq!(sub.id(), OkxChannel::ORDER_BOOK_L2);
     }
 }

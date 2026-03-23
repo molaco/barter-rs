@@ -10,7 +10,7 @@ use crate::{
     exchange::{Connector, ExchangeServer, ExchangeSub, PingInterval, StreamSelector},
     instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{SubKind, candle::Candles, trade::PublicTrades},
+    subscription::{SubKind, book::OrderBooksL2, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -53,6 +53,9 @@ pub mod rest;
 /// Bulk archive download client for OKX.
 #[cfg(feature = "bulk")]
 pub mod bulk;
+
+/// L2 OrderBook types for [`Okx`].
+pub mod book;
 
 /// Public trade types for [`Okx`].
 pub mod trade;
@@ -177,6 +180,16 @@ where
 {
     type SnapFetcher = NoInitialSnapshots;
     type Transformer = StatelessTransformer<Self, Instrument::Key, PublicTrades, OkxTrades>;
+    type Parser = WebSocketSerdeParser;
+}
+
+impl<Instrument, Server> StreamSelector<Instrument, OrderBooksL2> for Okx<Server>
+where
+    Instrument: InstrumentData,
+    Server: ExchangeServer + Debug + Send + Sync,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, OrderBooksL2, book::OkxOrderBookMessage>;
     type Parser = WebSocketSerdeParser;
 }
 
