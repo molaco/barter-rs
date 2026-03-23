@@ -3,6 +3,7 @@ use crate::{
     Identifier,
     subscription::{
         Subscription,
+        book::OrderBooksL2,
         candle::{Candles, Interval},
         trade::PublicTrades,
     },
@@ -23,6 +24,11 @@ impl HyperliquidChannel {
     /// See docs: <https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket>
     pub const TRADES: Self = Self(SmolStr::new_static("trades"));
 
+    /// [`Hyperliquid`] L2 orderbook channel.
+    ///
+    /// See docs: <https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket>
+    pub const L2_BOOK: Self = Self(SmolStr::new_static("l2Book"));
+
     /// [`Hyperliquid`] real-time candles channel.
     ///
     /// See docs: <https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket>
@@ -39,6 +45,14 @@ impl<Instrument> Identifier<HyperliquidChannel>
 {
     fn id(&self) -> HyperliquidChannel {
         HyperliquidChannel::TRADES
+    }
+}
+
+impl<Instrument> Identifier<HyperliquidChannel>
+    for Subscription<Hyperliquid, Instrument, OrderBooksL2>
+{
+    fn id(&self) -> HyperliquidChannel {
+        HyperliquidChannel::L2_BOOK
     }
 }
 
@@ -114,5 +128,20 @@ mod tests {
     #[test]
     fn test_candles_channel_h6() {
         assert_eq!(candles_channel(Interval::H6).as_ref(), "candle.6h");
+    }
+
+    #[test]
+    fn test_l2_book_channel() {
+        assert_eq!(HyperliquidChannel::L2_BOOK.as_ref(), "l2Book");
+    }
+
+    #[test]
+    fn test_l2_book_subscription_identifier() {
+        let sub: Subscription<Hyperliquid, MarketDataInstrument, OrderBooksL2> = Subscription::new(
+            Hyperliquid,
+            MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
+            OrderBooksL2,
+        );
+        assert_eq!(sub.id(), HyperliquidChannel::L2_BOOK);
     }
 }

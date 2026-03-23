@@ -29,7 +29,7 @@ impl Validator for HyperliquidSubResponse {
             "subscriptionResponse" => Ok(self),
             // Receiving data means subscription succeeded (Hyperliquid
             // sometimes sends trade/candle data before the confirmation)
-            "trades" | "candle" => Ok(self),
+            "trades" | "candle" | "l2Book" => Ok(self),
             other => Err(SocketError::Subscribe(format!(
                 "received non-subscription response: {other}",
             ))),
@@ -154,7 +154,21 @@ mod tests {
                 is_valid: true,
             },
             TestCase {
-                // TC2: unknown channel is invalid
+                // TC2: receiving l2Book data means subscription succeeded
+                input_response: HyperliquidSubResponse {
+                    channel: "l2Book".to_string(),
+                },
+                is_valid: true,
+            },
+            TestCase {
+                // TC3: receiving candle data means subscription succeeded
+                input_response: HyperliquidSubResponse {
+                    channel: "candle".to_string(),
+                },
+                is_valid: true,
+            },
+            TestCase {
+                // TC4: unknown channel is invalid
                 input_response: HyperliquidSubResponse {
                     channel: "error".to_string(),
                 },
@@ -198,6 +212,19 @@ mod tests {
             assert_eq!(json["type"], "candle");
             assert_eq!(json["coin"], "ETH");
             assert_eq!(json["interval"], "1m");
+        }
+
+        #[test]
+        fn test_serialize_l2_book_sub() {
+            let sub = ExchangeSub {
+                channel: HyperliquidChannel(SmolStr::new_static("l2Book")),
+                market: HyperliquidMarket(SmolStr::new_static("BTC")),
+            };
+
+            let json = serde_json::to_value(&sub).unwrap();
+            assert_eq!(json["type"], "l2Book");
+            assert_eq!(json["coin"], "BTC");
+            assert!(!json.as_object().unwrap().contains_key("interval"));
         }
     }
 }

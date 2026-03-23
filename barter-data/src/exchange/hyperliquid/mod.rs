@@ -10,7 +10,7 @@ use crate::{
     exchange::{Connector, ExchangeSub, PingInterval, StreamSelector},
     instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{Map, SubKind, candle::Candles, trade::PublicTrades},
+    subscription::{Map, SubKind, book::OrderBooksL2, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -46,6 +46,9 @@ pub mod rest;
 /// Bulk archive download client for Hyperliquid.
 #[cfg(feature = "bulk")]
 pub mod bulk;
+
+/// L2 OrderBook types for [`Hyperliquid`].
+pub mod book;
 
 /// Public trade types for [`Hyperliquid`].
 pub mod trade;
@@ -184,6 +187,15 @@ where
 {
     type SnapFetcher = NoInitialSnapshots;
     type Transformer = StatelessTransformer<Self, Instrument::Key, PublicTrades, HyperliquidTrades>;
+    type Parser = WebSocketSerdeParser;
+}
+
+impl<Instrument> StreamSelector<Instrument, OrderBooksL2> for Hyperliquid
+where
+    Instrument: InstrumentData,
+{
+    type SnapFetcher = NoInitialSnapshots;
+    type Transformer = StatelessTransformer<Self, Instrument::Key, OrderBooksL2, book::HyperliquidOrderBooks>;
     type Parser = WebSocketSerdeParser;
 }
 
