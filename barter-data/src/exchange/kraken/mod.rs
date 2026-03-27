@@ -1,5 +1,7 @@
 use self::{
     book::l1::KrakenOrderBookL1,
+    book::l2::KrakenOrderBooksL2Transformer,
+    book::snapshot::KrakenOrderBooksL2SnapshotFetcher,
     candle::KrakenKline,
     channel::KrakenChannel,
     market::{KrakenMarket, kraken_market},
@@ -11,7 +13,7 @@ use crate::{
     exchange::{Connector, ExchangeSub, StreamSelector},
     instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{SubKind, book::OrderBooksL1, candle::Candles, trade::PublicTrades},
+    subscription::{SubKind, book::{OrderBooksL1, OrderBooksL2}, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -244,6 +246,15 @@ where
 {
     type SnapFetcher = NoInitialSnapshots;
     type Transformer = StatelessTransformer<Self, Instrument::Key, OrderBooksL1, KrakenOrderBookL1>;
+    type Parser = WebSocketSerdeParser;
+}
+
+impl<Instrument> StreamSelector<Instrument, OrderBooksL2> for Kraken
+where
+    Instrument: InstrumentData,
+{
+    type SnapFetcher = KrakenOrderBooksL2SnapshotFetcher;
+    type Transformer = KrakenOrderBooksL2Transformer<Instrument::Key>;
     type Parser = WebSocketSerdeParser;
 }
 
