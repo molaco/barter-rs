@@ -188,8 +188,8 @@ where
     Instrument: InstrumentData,
     Server: ExchangeServer + Debug + Send + Sync,
 {
-    type SnapFetcher = NoInitialSnapshots;
-    type Transformer = StatelessTransformer<Self, Instrument::Key, OrderBooksL2, book::OkxOrderBookMessage>;
+    type SnapFetcher = book::snapshot::OkxOrderBooksL2SnapshotFetcher;
+    type Transformer = book::l2::OkxOrderBooksL2Transformer<Instrument::Key>;
     type Parser = WebSocketSerdeParser;
 }
 

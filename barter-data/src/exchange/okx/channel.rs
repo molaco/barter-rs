@@ -20,10 +20,13 @@ impl OkxChannel {
     /// See docs: <https://www.okx.com/docs-v5/en/#websocket-api-public-channel-trades-channel>
     pub const TRADES: Self = Self(SmolStr::new_static("trades"));
 
-    /// [`Okx`] L2 orderbook channel (5-level snapshots).
+    /// [`Okx`] L2 orderbook channel (50-level snapshot + diffs).
+    ///
+    /// Uses `books` channel which sends an initial snapshot then incremental
+    /// updates with `seqId`/`prevSeqId` sequencing and CRC32 checksum.
     ///
     /// See docs: <https://www.okx.com/docs-v5/en/#order-book-trading-market-data-ws-order-book-channel>
-    pub const ORDER_BOOK_L2: Self = Self(SmolStr::new_static("books5"));
+    pub const ORDER_BOOK_L2: Self = Self(SmolStr::new_static("books"));
 }
 
 impl<Instrument, Server> Identifier<OkxChannel> for Subscription<Okx<Server>, Instrument, PublicTrades>
@@ -119,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_l2_book_channel() {
-        assert_eq!(OkxChannel::ORDER_BOOK_L2.as_ref(), "books5");
+        assert_eq!(OkxChannel::ORDER_BOOK_L2.as_ref(), "books");
     }
 
     #[test]
