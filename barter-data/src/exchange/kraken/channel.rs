@@ -1,28 +1,38 @@
 use super::{Kraken, kraken_interval};
 use crate::{
     Identifier,
-    subscription::{Subscription, book::OrderBooksL1, candle::Candles, trade::PublicTrades},
+    subscription::{
+        Subscription,
+        book::{OrderBooksL1, OrderBooksL2},
+        candle::Candles,
+        trade::PublicTrades,
+    },
 };
 use serde::Serialize;
 use smol_str::{SmolStr, format_smolstr};
 
 /// Type that defines how to translate a Barter [`Subscription`] into a
-/// [`Kraken`] channel to be subscribed to.
+/// [`Kraken`] v2 channel to be subscribed to.
 ///
-/// See docs: <https://docs.kraken.com/websockets/#message-subscribe>
+/// See docs: <https://docs.kraken.com/api/docs/websocket-v2/>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize)]
 pub struct KrakenChannel(pub(crate) SmolStr);
 
 impl KrakenChannel {
-    /// [`Kraken`] real-time trades channel name.
+    /// [`Kraken`] v2 real-time trades channel.
     ///
-    /// See docs: <https://docs.kraken.com/websockets/#message-subscribe>
+    /// See docs: <https://docs.kraken.com/api/docs/websocket-v2/trade/>
     pub const TRADES: Self = Self(SmolStr::new_static("trade"));
 
-    /// [`Kraken`] real-time OrderBook Level1 (top of books) channel name.
+    /// [`Kraken`] v2 ticker channel (best bid/ask, replaces v1 "spread").
     ///
-    /// See docs: <https://docs.kraken.com/websockets/#message-subscribe>
-    pub const ORDER_BOOK_L1: Self = Self(SmolStr::new_static("spread"));
+    /// See docs: <https://docs.kraken.com/api/docs/websocket-v2/ticker/>
+    pub const TICKER: Self = Self(SmolStr::new_static("ticker"));
+
+    /// [`Kraken`] v2 L2 orderbook channel.
+    ///
+    /// See docs: <https://docs.kraken.com/api/docs/websocket-v2/book/>
+    pub const ORDER_BOOK_L2: Self = Self(SmolStr::new_static("book"));
 }
 
 impl<Instrument> Identifier<KrakenChannel> for Subscription<Kraken, Instrument, PublicTrades> {
@@ -33,7 +43,13 @@ impl<Instrument> Identifier<KrakenChannel> for Subscription<Kraken, Instrument, 
 
 impl<Instrument> Identifier<KrakenChannel> for Subscription<Kraken, Instrument, OrderBooksL1> {
     fn id(&self) -> KrakenChannel {
-        KrakenChannel::ORDER_BOOK_L1
+        KrakenChannel::TICKER
+    }
+}
+
+impl<Instrument> Identifier<KrakenChannel> for Subscription<Kraken, Instrument, OrderBooksL2> {
+    fn id(&self) -> KrakenChannel {
+        KrakenChannel::ORDER_BOOK_L2
     }
 }
 
@@ -56,63 +72,19 @@ impl AsRef<str> for KrakenChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::subscription::candle::{Candles, Interval};
-    use barter_instrument::instrument::market_data::{
-        MarketDataInstrument, kind::MarketDataInstrumentKind,
-    };
 
-    fn candles_channel(interval: Interval) -> KrakenChannel {
-        let sub: Subscription<Kraken, MarketDataInstrument, Candles> = Subscription::new(
-            Kraken,
-            MarketDataInstrument::from(("btc", "usdt", MarketDataInstrumentKind::Spot)),
-            Candles(interval),
-        );
-        Identifier::<KrakenChannel>::id(&sub)
+    #[test]
+    fn test_trades_channel() {
+        assert_eq!(KrakenChannel::TRADES.as_ref(), "trade");
     }
 
     #[test]
-    fn test_candles_channel_m1() {
-        assert_eq!(candles_channel(Interval::M1).as_ref(), "ohlc-1");
+    fn test_ticker_channel() {
+        assert_eq!(KrakenChannel::TICKER.as_ref(), "ticker");
     }
 
     #[test]
-    fn test_candles_channel_m5() {
-        assert_eq!(candles_channel(Interval::M5).as_ref(), "ohlc-5");
-    }
-
-    #[test]
-    fn test_candles_channel_m15() {
-        assert_eq!(candles_channel(Interval::M15).as_ref(), "ohlc-15");
-    }
-
-    #[test]
-    fn test_candles_channel_m30() {
-        assert_eq!(candles_channel(Interval::M30).as_ref(), "ohlc-30");
-    }
-
-    #[test]
-    fn test_candles_channel_h1() {
-        assert_eq!(candles_channel(Interval::H1).as_ref(), "ohlc-60");
-    }
-
-    #[test]
-    fn test_candles_channel_h4() {
-        assert_eq!(candles_channel(Interval::H4).as_ref(), "ohlc-240");
-    }
-
-    #[test]
-    fn test_candles_channel_d1() {
-        assert_eq!(candles_channel(Interval::D1).as_ref(), "ohlc-1440");
-    }
-
-    #[test]
-    fn test_candles_channel_w1() {
-        assert_eq!(candles_channel(Interval::W1).as_ref(), "ohlc-10080");
-    }
-
-    #[test]
-    #[should_panic(expected = "caller must validate interval is supported by Kraken")]
-    fn test_candles_channel_unsupported_panics() {
-        candles_channel(Interval::M3);
+    fn test_book_channel() {
+        assert_eq!(KrakenChannel::ORDER_BOOK_L2.as_ref(), "book");
     }
 }

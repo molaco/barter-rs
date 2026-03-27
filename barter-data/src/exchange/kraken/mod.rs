@@ -3,7 +3,6 @@ use self::{
     candle::KrakenKline,
     channel::KrakenChannel,
     market::{KrakenMarket, kraken_market},
-    message::KrakenMessage,
     subscription::KrakenSubResponse,
     trade::KrakenTrades,
 };
@@ -100,14 +99,14 @@ pub fn kraken_interval(interval: Interval) -> Result<u32, DataError> {
     }
 }
 
-/// [`Kraken`] server base url.
+/// [`Kraken`] WebSocket v2 server base url.
 ///
-/// See docs: <https://docs.kraken.com/websockets/#overview>
-pub const BASE_URL_KRAKEN: &str = "wss://ws.kraken.com/";
+/// See docs: <https://docs.kraken.com/api/docs/websocket-v2/>
+pub const BASE_URL_KRAKEN: &str = "wss://ws.kraken.com/v2";
 
 /// [`Kraken`] exchange.
 ///
-/// See docs: <https://docs.kraken.com/websockets/#overview>
+/// See docs: <https://docs.kraken.com/api/docs/websocket-v2/>
 #[derive(
     Copy,
     Clone,
@@ -142,29 +141,35 @@ impl Connector for Kraken {
             .map(|ExchangeSub { channel, market }| {
                 let channel_str = channel.as_ref();
 
-                // Kraken OHLC channels are encoded as "ohlc-<interval>" (eg/ "ohlc-1").
-                // The subscription request requires "name": "ohlc" with a separate
-                // "interval" field.
-                // Channel names are constructed by Identifier<KrakenChannel>::id(), which
-                // guarantees the interval portion is a valid u32.
-                let subscription = if let Some(interval_str) = channel_str.strip_prefix("ohlc-") {
-                    let interval: u32 = interval_str.parse()
+                // Build v2 params. OHLC channels encode interval in the
+                // channel name as "ohlc-<minutes>" — extract and send as
+                // a separate "interval" param.
+                let mut params = json!({
+                    "channel": if channel_str.starts_with("ohlc-") { "ohlc" } else { channel_str },
+                    "symbol": [market.as_ref()],
+                });
+
+                if let Some(interval_str) = channel_str.strip_prefix("ohlc-") {
+                    let interval: u32 = interval_str
+                        .parse()
                         .expect("interval is a valid u32 from channel name");
-                    json!({
-                        "name": "ohlc",
-                        "interval": interval
-                    })
-                } else {
-                    json!({
-                        "name": channel_str
-                    })
-                };
+                    params["interval"] = json!(interval);
+                }
+
+                // Book channel: request depth=25
+                if channel_str == "book" {
+                    params["depth"] = json!(25);
+                }
+
+                // Ticker channel: use BBO trigger for L1 spread updates
+                if channel_str == "ticker" {
+                    params["event_trigger"] = json!("bbo");
+                }
 
                 WsMessage::text(
                     json!({
-                        "event": "subscribe",
-                        "pair": [market.as_ref()],
-                        "subscription": subscription
+                        "method": "subscribe",
+                        "params": params
                     })
                     .to_string(),
                 )
@@ -180,26 +185,26 @@ impl Connector for Kraken {
             .map(|ExchangeSub { channel, market }| {
                 let channel_str = channel.as_ref();
 
-                // Channel names are constructed by Identifier<KrakenChannel>::id(), which
-                // guarantees the interval portion is a valid u32.
-                let subscription = if let Some(interval_str) = channel_str.strip_prefix("ohlc-") {
-                    let interval: u32 = interval_str.parse()
+                let mut params = json!({
+                    "channel": if channel_str.starts_with("ohlc-") { "ohlc" } else { channel_str },
+                    "symbol": [market.as_ref()],
+                });
+
+                if let Some(interval_str) = channel_str.strip_prefix("ohlc-") {
+                    let interval: u32 = interval_str
+                        .parse()
                         .expect("interval is a valid u32 from channel name");
-                    json!({
-                        "name": "ohlc",
-                        "interval": interval
-                    })
-                } else {
-                    json!({
-                        "name": channel_str
-                    })
-                };
+                    params["interval"] = json!(interval);
+                }
+
+                if channel_str == "book" {
+                    params["depth"] = json!(25);
+                }
 
                 WsMessage::text(
                     json!({
-                        "event": "unsubscribe",
-                        "pair": [market.as_ref()],
-                        "subscription": subscription
+                        "method": "unsubscribe",
+                        "params": params
                     })
                     .to_string(),
                 )
@@ -271,62 +276,76 @@ mod tests {
     }
 
     #[test]
-    fn test_unsubscribe_requests_trades() {
+    fn test_v2_subscribe_trades() {
         let subs = vec![ExchangeSub {
             channel: KrakenChannel(SmolStr::new("trade")),
-            market: KrakenMarket(SmolStr::new("XBT/USD")),
+            market: KrakenMarket(SmolStr::new("BTC/USD")),
         }];
 
-        let messages = Kraken::unsubscribe_requests(&subs);
+        let messages = Kraken::requests(&subs);
         assert_eq!(messages.len(), 1);
 
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
-        assert_eq!(payload["event"], "unsubscribe");
-        assert_eq!(payload["pair"][0], "XBT/USD");
-        assert_eq!(payload["subscription"]["name"], "trade");
+        assert_eq!(payload["method"], "subscribe");
+        assert_eq!(payload["params"]["channel"], "trade");
+        assert_eq!(payload["params"]["symbol"][0], "BTC/USD");
     }
 
     #[test]
-    fn test_unsubscribe_requests_ohlc() {
+    fn test_v2_subscribe_ohlc() {
         let subs = vec![ExchangeSub {
             channel: KrakenChannel(SmolStr::new("ohlc-5")),
-            market: KrakenMarket(SmolStr::new("XBT/USD")),
+            market: KrakenMarket(SmolStr::new("BTC/USD")),
         }];
 
-        let messages = Kraken::unsubscribe_requests(&subs);
-        assert_eq!(messages.len(), 1);
-
+        let messages = Kraken::requests(&subs);
         let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
-        assert_eq!(payload["event"], "unsubscribe");
-        assert_eq!(payload["pair"][0], "XBT/USD");
-        assert_eq!(payload["subscription"]["name"], "ohlc");
-        assert_eq!(payload["subscription"]["interval"], 5);
+        assert_eq!(payload["method"], "subscribe");
+        assert_eq!(payload["params"]["channel"], "ohlc");
+        assert_eq!(payload["params"]["interval"], 5);
+        assert_eq!(payload["params"]["symbol"][0], "BTC/USD");
     }
 
     #[test]
-    fn test_unsubscribe_requests_multiple() {
-        let subs = vec![
-            ExchangeSub {
-                channel: KrakenChannel(SmolStr::new("trade")),
-                market: KrakenMarket(SmolStr::new("XBT/USD")),
-            },
-            ExchangeSub {
-                channel: KrakenChannel(SmolStr::new("spread")),
-                market: KrakenMarket(SmolStr::new("ETH/USD")),
-            },
-        ];
+    fn test_v2_subscribe_book() {
+        let subs = vec![ExchangeSub {
+            channel: KrakenChannel(SmolStr::new("book")),
+            market: KrakenMarket(SmolStr::new("BTC/USD")),
+        }];
+
+        let messages = Kraken::requests(&subs);
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["method"], "subscribe");
+        assert_eq!(payload["params"]["channel"], "book");
+        assert_eq!(payload["params"]["depth"], 25);
+        assert_eq!(payload["params"]["symbol"][0], "BTC/USD");
+    }
+
+    #[test]
+    fn test_v2_subscribe_ticker() {
+        let subs = vec![ExchangeSub {
+            channel: KrakenChannel(SmolStr::new("ticker")),
+            market: KrakenMarket(SmolStr::new("BTC/USD")),
+        }];
+
+        let messages = Kraken::requests(&subs);
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["method"], "subscribe");
+        assert_eq!(payload["params"]["channel"], "ticker");
+        assert_eq!(payload["params"]["event_trigger"], "bbo");
+    }
+
+    #[test]
+    fn test_v2_unsubscribe_trades() {
+        let subs = vec![ExchangeSub {
+            channel: KrakenChannel(SmolStr::new("trade")),
+            market: KrakenMarket(SmolStr::new("BTC/USD")),
+        }];
 
         let messages = Kraken::unsubscribe_requests(&subs);
-        assert_eq!(messages.len(), 2);
-
-        let payload0: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
-        assert_eq!(payload0["event"], "unsubscribe");
-        assert_eq!(payload0["pair"][0], "XBT/USD");
-        assert_eq!(payload0["subscription"]["name"], "trade");
-
-        let payload1: serde_json::Value = serde_json::from_str(&messages[1].to_string()).unwrap();
-        assert_eq!(payload1["event"], "unsubscribe");
-        assert_eq!(payload1["pair"][0], "ETH/USD");
-        assert_eq!(payload1["subscription"]["name"], "spread");
+        let payload: serde_json::Value = serde_json::from_str(&messages[0].to_string()).unwrap();
+        assert_eq!(payload["method"], "unsubscribe");
+        assert_eq!(payload["params"]["channel"], "trade");
+        assert_eq!(payload["params"]["symbol"][0], "BTC/USD");
     }
 }

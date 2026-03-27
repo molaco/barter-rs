@@ -5,7 +5,10 @@ use smol_str::{SmolStr, format_smolstr};
 /// Type that defines how to translate a Barter [`Subscription`] into a
 /// [`Kraken`] market that can be subscribed to.
 ///
-/// See docs: <https://docs.kraken.com/websockets/#message-subscribe>
+/// Kraken v2 uses standard asset names (BTC, not XBT) with slash-separated
+/// pairs (e.g. "BTC/USD").
+///
+/// See docs: <https://docs.kraken.com/api/docs/websocket-v2/trade/>
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 pub struct KrakenMarket(pub(crate) SmolStr);
 
@@ -15,21 +18,11 @@ impl AsRef<str> for KrakenMarket {
     }
 }
 
-/// Map common asset names to Kraken WebSocket names.
-/// Kraken uses "XBT" for Bitcoin and uppercase pairs (e.g. "XBT/USD").
-fn kraken_ws_name(name: &str) -> SmolStr {
-    let upper = name.to_uppercase();
-    match upper.as_str() {
-        "BTC" => SmolStr::new_static("XBT"),
-        other => SmolStr::new(other),
-    }
-}
-
 pub(in crate::exchange::kraken) fn kraken_market(
     base: &AssetNameInternal,
     quote: &AssetNameInternal,
 ) -> KrakenMarket {
-    let base_ws = kraken_ws_name(base.as_ref());
-    let quote_ws = kraken_ws_name(quote.as_ref());
-    KrakenMarket(format_smolstr!("{base_ws}/{quote_ws}"))
+    let base_upper = base.as_ref().to_uppercase();
+    let quote_upper = quote.as_ref().to_uppercase();
+    KrakenMarket(format_smolstr!("{base_upper}/{quote_upper}"))
 }
