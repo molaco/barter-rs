@@ -24,7 +24,7 @@ use barter_integration::{
     error::SocketError,
     protocol::websocket::{WebSocketSerdeParser, WsMessage},
 };
-use book::{BybitOrderBookMessage, l2::BybitOrderBooksL2Transformer};
+use book::{BybitOrderBookMessage, l2::BybitOrderBooksL2Transformer, snapshot::BybitOrderBooksL2SnapshotFetcher};
 use candle::BybitKline;
 use serde::de::{Error, Unexpected};
 use std::{fmt::Debug, marker::PhantomData, time::Duration};
@@ -236,7 +236,7 @@ where
     Instrument: InstrumentData,
     Server: ExchangeServer + Debug + Send + Sync,
 {
-    type SnapFetcher = NoInitialSnapshots;
+    type SnapFetcher = BybitOrderBooksL2SnapshotFetcher;
     type Transformer = BybitOrderBooksL2Transformer<Instrument::Key>;
     type Parser = WebSocketSerdeParser;
 }

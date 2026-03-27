@@ -30,10 +30,10 @@ impl BybitChannel {
     /// See docs: <https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook>
     pub const ORDER_BOOK_L1: Self = Self(SmolStr::new_static("orderbook.1"));
 
-    /// [`Bybit`] OrderBook Level2 channel name (20ms delta updates).
+    /// [`Bybit`] OrderBook Level2 channel name (200-level, 100ms delta updates).
     ///
     /// See docs: <https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook>
-    pub const ORDER_BOOK_L2: Self = Self(SmolStr::new_static("orderbook.50"));
+    pub const ORDER_BOOK_L2: Self = Self(SmolStr::new_static("orderbook.200"));
 }
 
 impl<Server, Instrument> Identifier<BybitChannel>

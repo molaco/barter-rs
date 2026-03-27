@@ -39,20 +39,31 @@ impl<InstrumentKey, Server> ExchangeTransformer<Bybit<Server>, InstrumentKey, Or
 where
     InstrumentKey: Clone + PartialEq + Send + Sync,
 {
-    /// Note: Bybit L2 ignores `initial_snapshots` and relies on the exchange
-    /// pushing a snapshot over WebSocket. There is an inherent data gap between
-    /// connection establishment and the first exchange-pushed snapshot during
-    /// which updates are silently dropped.
+    /// Initialise the transformer with REST snapshots.
+    ///
+    /// Each snapshot seeds the sequencer so that WS delta updates can be
+    /// validated immediately — no data gap on startup.
     fn init(
         instrument_map: Map<InstrumentKey>,
-        _: &[MarketEvent<InstrumentKey, OrderBookEvent>],
+        initial_snapshots: &[MarketEvent<InstrumentKey, OrderBookEvent>],
         _: UnboundedSender<WsMessage>,
     ) -> impl std::future::Future<Output = Result<Self, DataError>> + Send {
         let instrument_map = instrument_map
             .0
             .into_iter()
             .map(|(sub_id, instrument_key)| {
-                (sub_id, BybitOrderBookL2Meta::new(instrument_key, None))
+                // Try to find a matching snapshot for this instrument
+                let sequencer = initial_snapshots
+                    .iter()
+                    .find(|s| s.instrument == instrument_key)
+                    .and_then(|s| match &s.kind {
+                        OrderBookEvent::Snapshot(ob) => Some(BybitOrderBookL2Sequencer {
+                            last_update_id: ob.sequence(),
+                        }),
+                        _ => None,
+                    });
+
+                (sub_id, BybitOrderBookL2Meta::new(instrument_key, sequencer))
             })
             .collect();
 

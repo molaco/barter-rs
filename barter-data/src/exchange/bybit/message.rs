@@ -76,7 +76,7 @@ where
             "{}|{market}",
             BybitChannel::ORDER_BOOK_L1.as_ref(),
         ))),
-        (Some("orderbook"), Some("50"), Some(market), None) => Ok(SubscriptionId::from(format!(
+        (Some("orderbook"), Some("200"), Some(market), None) => Ok(SubscriptionId::from(format!(
             "{}|{market}",
             BybitChannel::ORDER_BOOK_L2.as_ref(),
         ))),

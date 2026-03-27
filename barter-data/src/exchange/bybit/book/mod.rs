@@ -16,6 +16,9 @@ pub mod l1;
 /// Level 2 OrderBook types.
 pub mod l2;
 
+/// REST L2 snapshot fetcher.
+pub mod snapshot;
+
 /// Terse type alias for an [`BybitOrderBookMessage`] OrderBook WebSocket message.
 pub type BybitOrderBookMessage = BybitPayload<BybitOrderBookInner>;
 
