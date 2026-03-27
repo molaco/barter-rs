@@ -54,7 +54,7 @@ where
                 &SubKind::OrderBooksL2,
             );
             let snapshot_url = format!(
-                "{}?category={}&symbol={}&limit=200",
+                "{}?category={}&symbol={}&limit=50",
                 HTTP_BOOK_L2_SNAPSHOT_URL,
                 category,
                 market.as_ref(),
