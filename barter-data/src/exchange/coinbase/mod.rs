@@ -1,4 +1,6 @@
 use self::{
+    book::l2::CoinbaseOrderBooksL2Transformer,
+    book::snapshot::CoinbaseOrderBooksL2SnapshotFetcher,
     candle::CoinbaseKline,
     channel::CoinbaseChannel,
     market::{CoinbaseMarket, coinbase_market},
@@ -10,7 +12,7 @@ use crate::{
     exchange::{Connector, ExchangeSub, StreamSelector},
     instrument::{InstrumentData, MarketInput},
     subscriber::{WebSocketSubscriber, validator::WebSocketSubValidator},
-    subscription::{SubKind, candle::Candles, trade::PublicTrades},
+    subscription::{SubKind, book::OrderBooksL2, candle::Candles, trade::PublicTrades},
     transformer::stateless::StatelessTransformer,
 };
 use barter_instrument::exchange::ExchangeId;
@@ -22,6 +24,9 @@ use barter_macro::{DeExchange, SerExchange};
 use derive_more::Display;
 use serde_json::json;
 use url::Url;
+
+/// OrderBook types for [`Coinbase`].
+pub mod book;
 
 /// WebSocket candle types for [`Coinbase`].
 pub mod candle;
@@ -161,6 +166,15 @@ where
 {
     type SnapFetcher = NoInitialSnapshots;
     type Transformer = StatelessTransformer<Self, Instrument::Key, Candles, CoinbaseKline>;
+    type Parser = WebSocketSerdeParser;
+}
+
+impl<Instrument> StreamSelector<Instrument, OrderBooksL2> for Coinbase
+where
+    Instrument: InstrumentData,
+{
+    type SnapFetcher = CoinbaseOrderBooksL2SnapshotFetcher;
+    type Transformer = CoinbaseOrderBooksL2Transformer<Instrument::Key>;
     type Parser = WebSocketSerdeParser;
 }
 

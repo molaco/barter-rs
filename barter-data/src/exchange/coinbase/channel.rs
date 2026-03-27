@@ -1,7 +1,7 @@
 use super::Coinbase;
 use crate::{
     Identifier,
-    subscription::{Subscription, candle::Candles, trade::PublicTrades},
+    subscription::{Subscription, book::OrderBooksL2, candle::Candles, trade::PublicTrades},
 };
 use serde::Serialize;
 use smol_str::SmolStr;
@@ -23,6 +23,11 @@ impl CoinbaseChannel {
     ///
     /// See docs: <https://docs.cloud.coinbase.com/advanced-trade/docs/ws-channels#candles-channel>
     pub const CANDLES: Self = Self(SmolStr::new_static("candles"));
+
+    /// [`Coinbase`] L2 orderbook channel.
+    ///
+    /// See docs: <https://docs.cloud.coinbase.com/exchange/docs/websocket-channels#level2-channel>
+    pub const ORDER_BOOK_L2: Self = Self(SmolStr::new_static("level2"));
 }
 
 impl<Instrument> Identifier<CoinbaseChannel> for Subscription<Coinbase, Instrument, PublicTrades> {
@@ -34,6 +39,12 @@ impl<Instrument> Identifier<CoinbaseChannel> for Subscription<Coinbase, Instrume
 impl<Instrument> Identifier<CoinbaseChannel> for Subscription<Coinbase, Instrument, Candles> {
     fn id(&self) -> CoinbaseChannel {
         CoinbaseChannel::CANDLES
+    }
+}
+
+impl<Instrument> Identifier<CoinbaseChannel> for Subscription<Coinbase, Instrument, OrderBooksL2> {
+    fn id(&self) -> CoinbaseChannel {
+        CoinbaseChannel::ORDER_BOOK_L2
     }
 }
 
