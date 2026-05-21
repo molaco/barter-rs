@@ -1,12 +1,27 @@
 use crate::{
+    EngineEvent,
     engine::{
+        Engine, EngineOutput,
         Processor,
         audit::{AuditTick, Auditor, context::EngineContext},
+        clock::EngineClock,
         process_with_audit,
+        state::{
+            EngineState, instrument::data::InstrumentDataState, position::PositionExited,
+        },
     },
+    statistic::{summary::TradingSummary, time::TimeInterval},
     shutdown::SyncShutdown,
 };
+use barter_execution::{
+    AccountEventKind, AccountSnapshot,
+    balance::AssetBalance,
+    trade::Trade,
+};
+use barter_instrument::{asset::AssetIndex, instrument::InstrumentIndex, asset::QuoteAsset};
 use barter_integration::{FeedEnded, Terminal};
+use barter_integration::snapshot::Snapshot;
+use rust_decimal::Decimal;
 use std::marker::PhantomData;
 
 /// Receives step-wise backtest events after the engine has processed each input.
@@ -45,6 +60,171 @@ where
 {
     fn on_step(&mut self, _engine: &Engine, audit: &AuditTick<Audit, EngineContext>) {
         self.ticks.push(audit.clone());
+    }
+}
+
+/// Audit type produced by Barter's indexed [`Engine`] backtest path.
+pub type BacktestEngineAudit<MarketKind, OnTradingDisabled, OnDisconnect> =
+    crate::engine::audit::EngineAudit<
+        EngineEvent<MarketKind>,
+        EngineOutput<OnTradingDisabled, OnDisconnect>,
+    >;
+
+/// Account-level sample observed while stepping a Barter engine.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BacktestAccountSample {
+    Snapshot(AccountSnapshot),
+    Balance(Snapshot<AssetBalance<AssetIndex>>),
+}
+
+/// Domain-shaped result extracted from one Barter engine audit tick.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BacktestEngineStep<MarketKind, OnTradingDisabled, OnDisconnect> {
+    pub audit: AuditTick<BacktestEngineAudit<MarketKind, OnTradingDisabled, OnDisconnect>, EngineContext>,
+    pub trades: Vec<Trade<QuoteAsset, InstrumentIndex>>,
+    pub position_exits: Vec<PositionExited<QuoteAsset>>,
+    pub account_samples: Vec<BacktestAccountSample>,
+}
+
+impl<MarketKind, OnTradingDisabled, OnDisconnect>
+    BacktestEngineStep<MarketKind, OnTradingDisabled, OnDisconnect>
+where
+    MarketKind: Clone,
+    OnTradingDisabled: Clone,
+    OnDisconnect: Clone,
+{
+    pub fn from_audit(
+        audit: &AuditTick<BacktestEngineAudit<MarketKind, OnTradingDisabled, OnDisconnect>, EngineContext>,
+    ) -> Self {
+        let mut step = Self {
+            audit: audit.clone(),
+            trades: Vec::new(),
+            position_exits: Vec::new(),
+            account_samples: Vec::new(),
+        };
+
+        let crate::engine::audit::EngineAudit::Process(process) = &audit.event else {
+            return step;
+        };
+
+        if let EngineEvent::Account(crate::execution::AccountStreamEvent::Item(account)) =
+            &process.event
+        {
+            match &account.kind {
+                AccountEventKind::Snapshot(snapshot) => {
+                    step.account_samples
+                        .push(BacktestAccountSample::Snapshot(snapshot.clone()));
+                }
+                AccountEventKind::BalanceSnapshot(balance) => {
+                    step.account_samples
+                        .push(BacktestAccountSample::Balance(balance.clone()));
+                }
+                AccountEventKind::Trade(trade) => step.trades.push(trade.clone()),
+                AccountEventKind::OrderSnapshot(_) | AccountEventKind::OrderCancelled(_) => {}
+            }
+        }
+
+        for output in &process.outputs {
+            if let EngineOutput::PositionExit(position) = output {
+                step.position_exits.push(position.clone());
+            }
+        }
+
+        step
+    }
+}
+
+/// Collects Barter-engine backtest outputs in a reusable domain-shaped result surface.
+#[derive(Debug, Clone)]
+pub struct BacktestEngineEventSink<MarketKind, OnTradingDisabled, OnDisconnect, Interval> {
+    pub risk_free_return: Decimal,
+    pub summary_interval: Interval,
+    pub steps: Vec<BacktestEngineStep<MarketKind, OnTradingDisabled, OnDisconnect>>,
+    pub final_summary: Option<TradingSummary<Interval>>,
+}
+
+impl<MarketKind, OnTradingDisabled, OnDisconnect, Interval>
+    BacktestEngineEventSink<MarketKind, OnTradingDisabled, OnDisconnect, Interval>
+{
+    pub fn new(risk_free_return: Decimal, summary_interval: Interval) -> Self {
+        Self {
+            risk_free_return,
+            summary_interval,
+            steps: Vec::new(),
+            final_summary: None,
+        }
+    }
+
+    pub fn trades(&self) -> impl Iterator<Item = &Trade<QuoteAsset, InstrumentIndex>> {
+        self.steps.iter().flat_map(|step| step.trades.iter())
+    }
+
+    pub fn position_exits(&self) -> impl Iterator<Item = &PositionExited<QuoteAsset>> {
+        self.steps
+            .iter()
+            .flat_map(|step| step.position_exits.iter())
+    }
+
+    pub fn account_samples(&self) -> impl Iterator<Item = &BacktestAccountSample> {
+        self.steps
+            .iter()
+            .flat_map(|step| step.account_samples.iter())
+    }
+}
+
+impl<
+    Clock,
+    GlobalData,
+    InstrumentData,
+    ExecutionTxs,
+    Strategy,
+    Risk,
+    OnTradingDisabled,
+    OnDisconnect,
+    Interval,
+>
+    BacktestEventSink<
+        Engine<Clock, EngineState<GlobalData, InstrumentData>, ExecutionTxs, Strategy, Risk>,
+        BacktestEngineAudit<InstrumentData::MarketEventKind, OnTradingDisabled, OnDisconnect>,
+    >
+    for BacktestEngineEventSink<
+        InstrumentData::MarketEventKind,
+        OnTradingDisabled,
+        OnDisconnect,
+        Interval,
+    >
+where
+    Clock: EngineClock,
+    InstrumentData: InstrumentDataState,
+    InstrumentData::MarketEventKind: Clone,
+    OnTradingDisabled: Clone,
+    OnDisconnect: Clone,
+    Interval: TimeInterval,
+{
+    fn on_step(
+        &mut self,
+        _engine: &Engine<Clock, EngineState<GlobalData, InstrumentData>, ExecutionTxs, Strategy, Risk>,
+        audit: &AuditTick<
+            BacktestEngineAudit<InstrumentData::MarketEventKind, OnTradingDisabled, OnDisconnect>,
+            EngineContext,
+        >,
+    ) {
+        self.steps.push(BacktestEngineStep::from_audit(audit));
+    }
+
+    fn on_finish(
+        &mut self,
+        engine: &Engine<Clock, EngineState<GlobalData, InstrumentData>, ExecutionTxs, Strategy, Risk>,
+        _shutdown_audit: &AuditTick<
+            BacktestEngineAudit<InstrumentData::MarketEventKind, OnTradingDisabled, OnDisconnect>,
+            EngineContext,
+        >,
+    ) {
+        self.final_summary = Some(
+            engine
+                .trading_summary_generator(self.risk_free_return)
+                .generate(self.summary_interval),
+        );
     }
 }
 
@@ -393,5 +573,113 @@ mod tests {
         assert_eq!(output.sink.ticks.len(), 2);
         assert_eq!(output.sink.ticks[0].event, TestAudit::Processed(TestEvent::Value(1)));
         assert_eq!(output.sink.ticks[1].event, TestAudit::FeedEnded);
+    }
+
+    #[test]
+    fn engine_sink_collects_domain_outputs_from_real_barter_engine() {
+        use crate::{
+            engine::{
+                Engine,
+                clock::HistoricalClock,
+                execution_tx::MultiExchangeTxMap,
+                state::{
+                    EngineState, global::DefaultGlobalData,
+                    instrument::data::DefaultInstrumentMarketData, trading::TradingState,
+                },
+            },
+            execution::AccountStreamEvent,
+            risk::DefaultRiskManager,
+            statistic::time::Daily,
+            strategy::DefaultStrategy,
+        };
+        use barter_data::event::DataKind;
+        use barter_execution::{
+            AccountEvent, AccountEventKind,
+            balance::{AssetBalance, Balance},
+            order::id::{OrderId, StrategyId},
+            trade::{AssetFees, Trade, TradeId},
+        };
+        use barter_instrument::{
+            Side, Underlying,
+            asset::{AssetIndex, QuoteAsset},
+            exchange::ExchangeId,
+            index::IndexedInstruments,
+            instrument::{Instrument, InstrumentIndex},
+        };
+        use barter_integration::channel::mpsc_unbounded;
+        use barter_integration::snapshot::Snapshot;
+        use rust_decimal_macros::dec;
+
+        type State = EngineState<DefaultGlobalData, DefaultInstrumentMarketData>;
+
+        let instruments = IndexedInstruments::builder()
+            .add_instrument(Instrument::spot(
+                ExchangeId::BinanceSpot,
+                "binance_spot_btc_usdt",
+                "BTCUSDT",
+                Underlying::new("btc", "usdt"),
+                None,
+            ))
+            .build();
+        let clock = HistoricalClock::new(DateTime::<Utc>::MIN_UTC);
+        let state = EngineState::builder(&instruments, DefaultGlobalData::default(), |_| {
+            DefaultInstrumentMarketData::default()
+        })
+        .time_engine_start(DateTime::<Utc>::MIN_UTC)
+        .trading_state(TradingState::Disabled)
+        .balances([(ExchangeId::BinanceSpot, "usdt", Balance::new(dec!(1000), dec!(1000)))])
+        .build();
+        let (execution_tx, _execution_rx) = mpsc_unbounded();
+        let execution_txs = MultiExchangeTxMap::from_iter([(ExchangeId::BinanceSpot, Some(execution_tx))]);
+        let engine = Engine::new(
+            clock,
+            state,
+            execution_txs,
+            DefaultStrategy::<State>::default(),
+            DefaultRiskManager::<State>::default(),
+        );
+        let sink = BacktestEngineEventSink::<DataKind, (), (), Daily>::new(dec!(0), Daily);
+        let mut stepper = BacktestStepper::with_sink(engine, sink);
+
+        let trade = |id: &str, side: Side, price| {
+            EngineEvent::Account(AccountStreamEvent::Item(AccountEvent {
+                exchange: barter_instrument::exchange::ExchangeIndex(0),
+                kind: AccountEventKind::Trade(Trade {
+                    id: TradeId::new(id),
+                    order_id: OrderId::new(id),
+                    instrument: InstrumentIndex(0),
+                    strategy: StrategyId::new("test"),
+                    time_exchange: DateTime::<Utc>::MIN_UTC,
+                    side,
+                    price,
+                    quantity: dec!(1),
+                    fees: AssetFees::<QuoteAsset>::default(),
+                }),
+            }))
+        };
+
+        stepper.run([
+            EngineEvent::Account(AccountStreamEvent::Item(AccountEvent {
+                exchange: barter_instrument::exchange::ExchangeIndex(0),
+                kind: AccountEventKind::BalanceSnapshot(Snapshot(AssetBalance {
+                    asset: AssetIndex(1),
+                    balance: Balance::new(dec!(1000), dec!(1000)),
+                    time_exchange: DateTime::<Utc>::MIN_UTC,
+                })),
+            })),
+            trade("entry", Side::Buy, dec!(100)),
+            trade("exit", Side::Sell, dec!(110)),
+        ]);
+        let output = stepper.finish();
+
+        assert_eq!(output.sink.account_samples().count(), 1);
+        assert_eq!(output.sink.trades().count(), 2);
+        let exits = output.sink.position_exits().collect::<Vec<_>>();
+        assert_eq!(exits.len(), 1);
+        assert_eq!(exits[0].pnl_realised, dec!(10));
+
+        let summary = output.sink.final_summary.as_ref().unwrap();
+        let tear = summary.instruments.get_index(0).unwrap().1;
+        assert_eq!(tear.pnl, dec!(10));
     }
 }

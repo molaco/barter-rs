@@ -46,6 +46,7 @@ pub mod summary;
 pub mod stepper;
 
 pub use stepper::{
+    BacktestAccountSample, BacktestEngineAudit, BacktestEngineEventSink, BacktestEngineStep,
     BacktestEventSink, BacktestStep, BacktestStepOutcome, BacktestStepper, BacktestStepperOutput,
     NoopBacktestEventSink, VecBacktestEventSink,
 };
