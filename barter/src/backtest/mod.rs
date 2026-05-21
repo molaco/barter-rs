@@ -42,6 +42,14 @@ pub mod market_data;
 /// Contains data structures for representing backtest results and metrics.
 pub mod summary;
 
+/// Step-wise backtest primitives for driving an engine one event at a time.
+pub mod stepper;
+
+pub use stepper::{
+    BacktestEventSink, BacktestStep, BacktestStepOutcome, BacktestStepper, BacktestStepperOutput,
+    NoopBacktestEventSink, VecBacktestEventSink,
+};
+
 /// Configuration for constants used across all backtests in a batch.
 ///
 /// Contains shared inputs like instruments, execution configurations,
