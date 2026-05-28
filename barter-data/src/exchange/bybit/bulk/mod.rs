@@ -2,8 +2,10 @@ pub mod trades;
 
 use crate::{
     bulk::{
-        streaming::{parse_csv_into_sender, parse_csv_stream, response_to_async_read, DEFAULT_BATCH_SIZE},
         BulkConfig, BulkDayTradeFetcher,
+        streaming::{
+            DEFAULT_BATCH_SIZE, parse_csv_into_sender, parse_csv_stream, response_to_async_read,
+        },
     },
     error::DataError,
     trade::RestTrade,
@@ -39,9 +41,10 @@ pub trait BybitBulkServer: Send + Sync + 'static {
             use tokio::io::AsyncReadExt;
             let mut buf = Vec::new();
             let mut reader = reader;
-            reader.read_to_end(&mut buf).await.map_err(|e| {
-                DataError::BulkArchive(format!("failed to read CSV data: {e}"))
-            })?;
+            reader
+                .read_to_end(&mut buf)
+                .await
+                .map_err(|e| DataError::BulkArchive(format!("failed to read CSV data: {e}")))?;
             Self::parse_csv(&buf)
         }
     }
@@ -60,15 +63,16 @@ pub trait BybitBulkServer: Send + Sync + 'static {
             use tokio::io::AsyncReadExt;
             let mut buf = Vec::new();
             let mut reader = reader;
-            reader.read_to_end(&mut buf).await.map_err(|e| {
-                DataError::BulkArchive(format!("failed to read CSV data: {e}"))
-            })?;
+            reader
+                .read_to_end(&mut buf)
+                .await
+                .map_err(|e| DataError::BulkArchive(format!("failed to read CSV data: {e}")))?;
             let trades = Self::parse_csv(&buf)?;
             let count = trades.len() as u64;
             if !trades.is_empty() {
-                tx.send(trades).await.map_err(|_| {
-                    DataError::BulkArchive("receiver dropped".into())
-                })?;
+                tx.send(trades)
+                    .await
+                    .map_err(|_| DataError::BulkArchive("receiver dropped".into()))?;
             }
             Ok(count)
         }
@@ -88,16 +92,28 @@ impl BybitBulkServer for BybitServerSpot {
     async fn parse_csv_async(
         reader: impl AsyncRead + Unpin + Send,
     ) -> Result<Vec<RestTrade>, DataError> {
-        parse_csv_stream::<_, trades::BybitSpotBulkTrade, _>(reader, true, false, RestTrade::try_from)
-            .await
+        parse_csv_stream::<_, trades::BybitSpotBulkTrade, _>(
+            reader,
+            true,
+            false,
+            RestTrade::try_from,
+        )
+        .await
     }
     async fn parse_csv_async_into_sender(
         reader: impl AsyncRead + Unpin + Send,
         tx: &tokio::sync::mpsc::Sender<Vec<RestTrade>>,
         batch_size: usize,
     ) -> Result<u64, DataError> {
-        parse_csv_into_sender::<_, trades::BybitSpotBulkTrade, _>(reader, true, false, RestTrade::try_from, tx, batch_size)
-            .await
+        parse_csv_into_sender::<_, trades::BybitSpotBulkTrade, _>(
+            reader,
+            true,
+            false,
+            RestTrade::try_from,
+            tx,
+            batch_size,
+        )
+        .await
     }
 }
 
@@ -114,15 +130,23 @@ impl BybitBulkServer for BybitServerPerpetualsUsd {
     async fn parse_csv_async(
         reader: impl AsyncRead + Unpin + Send,
     ) -> Result<Vec<RestTrade>, DataError> {
-        parse_csv_stream::<_, trades::BybitBulkTrade, _>(reader, true, false, RestTrade::try_from).await
+        parse_csv_stream::<_, trades::BybitBulkTrade, _>(reader, true, false, RestTrade::try_from)
+            .await
     }
     async fn parse_csv_async_into_sender(
         reader: impl AsyncRead + Unpin + Send,
         tx: &tokio::sync::mpsc::Sender<Vec<RestTrade>>,
         batch_size: usize,
     ) -> Result<u64, DataError> {
-        parse_csv_into_sender::<_, trades::BybitBulkTrade, _>(reader, true, false, RestTrade::try_from, tx, batch_size)
-            .await
+        parse_csv_into_sender::<_, trades::BybitBulkTrade, _>(
+            reader,
+            true,
+            false,
+            RestTrade::try_from,
+            tx,
+            batch_size,
+        )
+        .await
     }
 }
 
@@ -194,13 +218,16 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
         let url =
             format!("https://public.bybit.com/{prefix}/{market}/{market}{sep}{date_str}.csv.gz");
 
-        let resp = self.client.get(&url).send().await.map_err(|e| {
-            DataError::Http {
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| DataError::Http {
                 status: None,
                 url: url.clone(),
                 message: format!("Bybit bulk request failed: {e}"),
-            }
-        })?;
+            })?;
 
         let status = resp.status();
 
@@ -245,13 +272,16 @@ impl<Server: BybitBulkServer> BybitBulkClient<Server> {
         let url =
             format!("https://public.bybit.com/{prefix}/{market}/{market}{sep}{date_str}.csv.gz");
 
-        let resp = self.client.get(&url).send().await.map_err(|e| {
-            DataError::Http {
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| DataError::Http {
                 status: None,
                 url: url.clone(),
                 message: format!("Bybit bulk request failed: {e}"),
-            }
-        })?;
+            })?;
 
         let status = resp.status();
 

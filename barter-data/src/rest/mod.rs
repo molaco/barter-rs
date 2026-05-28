@@ -3,8 +3,7 @@ use crate::{
     subscription::candle::{Candle, Interval},
 };
 use chrono::{DateTime, Utc};
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
 /// Request parameters for fetching historical kline/candlestick data.
 #[derive(Clone, Debug, PartialEq)]

@@ -35,7 +35,11 @@ impl TryFrom<OkxBulkTrade> for RestTrade {
         let side = match trade.side.to_lowercase().as_str() {
             "buy" => Side::Buy,
             "sell" => Side::Sell,
-            other => return Err(DataError::DataParse(format!("unknown OKX bulk side: {other}"))),
+            other => {
+                return Err(DataError::DataParse(format!(
+                    "unknown OKX bulk side: {other}"
+                )));
+            }
         };
 
         let price = trade.price.parse::<f64>().map_err(|e| {

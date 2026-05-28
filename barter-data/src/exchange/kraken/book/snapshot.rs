@@ -13,8 +13,7 @@ use barter_integration::error::SocketError;
 use chrono::Utc;
 use futures_util::future::try_join_all;
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::future::Future;
+use std::{collections::HashMap, future::Future};
 
 use super::l2::KrakenBookLevel;
 
@@ -44,11 +43,7 @@ impl SnapshotFetcher<Kraken, OrderBooksL2> for KrakenOrderBooksL2SnapshotFetcher
             );
             // REST uses pair without slash: "BTC/USD" → "BTCUSD"
             let rest_pair = market.as_ref().replace('/', "");
-            let snapshot_url = format!(
-                "{}?pair={}&count=25",
-                HTTP_BOOK_SNAPSHOT_URL,
-                rest_pair,
-            );
+            let snapshot_url = format!("{}?pair={}&count=25", HTTP_BOOK_SNAPSHOT_URL, rest_pair,);
 
             async move {
                 let resp = reqwest::get(&snapshot_url)
@@ -58,26 +53,34 @@ impl SnapshotFetcher<Kraken, OrderBooksL2> for KrakenOrderBooksL2SnapshotFetcher
                     .await
                     .map_err(SocketError::Http)?;
 
-                let (_, book) = resp
-                    .result
-                    .into_iter()
-                    .next()
-                    .ok_or_else(|| SocketError::Deserialise {
-                        error: serde::de::Error::custom("empty Kraken depth response"),
-                        payload: String::new(),
-                    })?;
+                let (_, book) =
+                    resp.result
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| SocketError::Deserialise {
+                            error: serde::de::Error::custom("empty Kraken depth response"),
+                            payload: String::new(),
+                        })?;
 
                 let time_received = Utc::now();
 
                 // Convert REST levels to KrakenBookLevel
-                let bids: Vec<KrakenBookLevel> = book.bids.iter().map(|l| KrakenBookLevel {
-                    price: l.price.parse().unwrap_or(0.0),
-                    qty: l.volume.parse().unwrap_or(0.0),
-                }).collect();
-                let asks: Vec<KrakenBookLevel> = book.asks.iter().map(|l| KrakenBookLevel {
-                    price: l.price.parse().unwrap_or(0.0),
-                    qty: l.volume.parse().unwrap_or(0.0),
-                }).collect();
+                let bids: Vec<KrakenBookLevel> = book
+                    .bids
+                    .iter()
+                    .map(|l| KrakenBookLevel {
+                        price: l.price.parse().unwrap_or(0.0),
+                        qty: l.volume.parse().unwrap_or(0.0),
+                    })
+                    .collect();
+                let asks: Vec<KrakenBookLevel> = book
+                    .asks
+                    .iter()
+                    .map(|l| KrakenBookLevel {
+                        price: l.price.parse().unwrap_or(0.0),
+                        qty: l.volume.parse().unwrap_or(0.0),
+                    })
+                    .collect();
 
                 Ok(MarketEvent {
                     time_exchange: time_received,
@@ -86,9 +89,7 @@ impl SnapshotFetcher<Kraken, OrderBooksL2> for KrakenOrderBooksL2SnapshotFetcher
                     instrument: subscription.instrument.key().clone(),
                     kind: OrderBookEvent::Snapshot(OrderBook::new(
                         0, // Kraken REST has no sequence number
-                        None,
-                        bids,
-                        asks,
+                        None, bids, asks,
                     )),
                 })
             }

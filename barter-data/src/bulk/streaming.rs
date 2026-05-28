@@ -4,8 +4,7 @@ use futures::TryStreamExt;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncBufRead, AsyncRead, BufReader};
 use tokio_stream::StreamExt;
-use tokio_util::compat::FuturesAsyncReadCompatExt;
-use tokio_util::io::StreamReader;
+use tokio_util::{compat::FuturesAsyncReadCompatExt, io::StreamReader};
 
 use tokio::sync::mpsc;
 
@@ -109,7 +108,7 @@ where
         Err(e) => {
             return Err(DataError::BulkArchive(format!(
                 "failed to read ZIP entry: {e}"
-            )))
+            )));
         }
     };
 
@@ -121,10 +120,9 @@ where
     // compat_reader dropped here, &mut borrow on entry released.
 
     // Drain any remaining bytes and advance past the data descriptor.
-    entry
-        .skip()
-        .await
-        .map_err(|e| DataError::BulkArchive(format!("failed to skip remaining ZIP entry data: {e}")))?;
+    entry.skip().await.map_err(|e| {
+        DataError::BulkArchive(format!("failed to skip remaining ZIP entry data: {e}"))
+    })?;
 
     Ok(trades)
 }
@@ -171,9 +169,12 @@ where
         total += 1;
 
         if batch.len() >= batch_size {
-            tx.send(std::mem::replace(&mut batch, Vec::with_capacity(batch_size)))
-                .await
-                .map_err(|_| DataError::BulkArchive("receiver dropped".into()))?;
+            tx.send(std::mem::replace(
+                &mut batch,
+                Vec::with_capacity(batch_size),
+            ))
+            .await
+            .map_err(|_| DataError::BulkArchive("receiver dropped".into()))?;
         }
     }
 
@@ -215,22 +216,26 @@ where
         Err(e) => {
             return Err(DataError::BulkArchive(format!(
                 "failed to read ZIP entry: {e}"
-            )))
+            )));
         }
     };
 
     let total = {
         let compat_reader = entry.reader_mut().compat();
-        parse_csv_into_sender(compat_reader, has_headers, flexible, convert, tx, batch_size)
-            .await?
+        parse_csv_into_sender(
+            compat_reader,
+            has_headers,
+            flexible,
+            convert,
+            tx,
+            batch_size,
+        )
+        .await?
     };
 
-    entry
-        .skip()
-        .await
-        .map_err(|e| {
-            DataError::BulkArchive(format!("failed to skip remaining ZIP entry data: {e}"))
-        })?;
+    entry.skip().await.map_err(|e| {
+        DataError::BulkArchive(format!("failed to skip remaining ZIP entry data: {e}"))
+    })?;
 
     Ok(total)
 }
@@ -266,11 +271,8 @@ mod tests {
         let zip_bytes = make_test_zip(csv);
 
         let reader = tokio::io::BufReader::new(&zip_bytes[..]);
-        let trades = parse_zip_csv_stream::<_, TestRecord, _>(
-            reader,
-            true,
-            false,
-            |r: TestRecord| {
+        let trades =
+            parse_zip_csv_stream::<_, TestRecord, _>(reader, true, false, |r: TestRecord| {
                 Ok(RestTrade {
                     id: r.name,
                     time: chrono::DateTime::from_timestamp_millis(0).unwrap(),
@@ -278,10 +280,9 @@ mod tests {
                     amount: 0.0,
                     side: barter_instrument::Side::Buy,
                 })
-            },
-        )
-        .await
-        .unwrap();
+            })
+            .await
+            .unwrap();
 
         assert_eq!(trades.len(), 2);
         assert_eq!(trades[0].id, "alpha");
@@ -303,12 +304,9 @@ mod tests {
         }
 
         let reader = tokio::io::BufReader::new(&zip_bytes[..]);
-        let trades = parse_zip_csv_stream::<_, TestRecord, _>(
-            reader,
-            true,
-            false,
-            |_| unreachable!("no data rows to convert"),
-        )
+        let trades = parse_zip_csv_stream::<_, TestRecord, _>(reader, true, false, |_| {
+            unreachable!("no data rows to convert")
+        })
         .await
         .unwrap();
 

@@ -1,8 +1,6 @@
 use crate::{
     error::DataError,
-    rest::{
-        ExchangeRateLimiter, KlineFetcher, KlineRequest,
-    },
+    rest::{ExchangeRateLimiter, KlineFetcher, KlineRequest},
     subscription::candle::{Candle, Interval},
 };
 use barter_integration::protocol::http::{
@@ -174,10 +172,7 @@ impl KlineFetcher for HyperliquidRestClient {
     ///
     /// Hyperliquid returns data oldest-first, so no reversal is needed.
     #[tracing::instrument(skip(self), fields(exchange = "hyperliquid", market = %request.market, interval = %request.interval))]
-    async fn fetch_klines(
-        &self,
-        request: KlineRequest,
-    ) -> Result<Vec<Candle>, DataError> {
+    async fn fetch_klines(&self, request: KlineRequest) -> Result<Vec<Candle>, DataError> {
         debug!("building klines request");
 
         let interval_str = klines::hyperliquid_interval(request.interval)?;
@@ -202,14 +197,18 @@ impl KlineFetcher for HyperliquidRestClient {
             },
         };
 
-        let raw_klines: Vec<klines::HyperliquidKlineRaw> =
-            match self.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
-                Ok(klines) => klines,
-                Err(error) => {
-                    warn!(?error, "klines fetch failed");
-                    return Err(error);
-                }
-            };
+        let raw_klines: Vec<klines::HyperliquidKlineRaw> = match self
+            .client
+            .execute(get_klines_request)
+            .await
+            .map(|(response, _metric)| response)
+        {
+            Ok(klines) => klines,
+            Err(error) => {
+                warn!(?error, "klines fetch failed");
+                return Err(error);
+            }
+        };
 
         // Hyperliquid returns data oldest-first, no reversal needed.
         let candles = raw_klines

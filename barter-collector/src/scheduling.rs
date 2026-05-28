@@ -22,10 +22,7 @@ pub fn date_range(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
 /// - `remaining_days`: `Vec<NaiveDate>` for days in partial months at the boundaries.
 ///
 /// A month is "complete" if both its first and last day fall within `[start, end]`.
-pub fn partition_date_range(
-    start: NaiveDate,
-    end: NaiveDate,
-) -> (Vec<(i32, u32)>, Vec<NaiveDate>) {
+pub fn partition_date_range(start: NaiveDate, end: NaiveDate) -> (Vec<(i32, u32)>, Vec<NaiveDate>) {
     if start > end {
         return (Vec::new(), Vec::new());
     }

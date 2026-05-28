@@ -7,8 +7,7 @@ use crate::{
     trade::RestTrade,
 };
 use chrono::NaiveDate;
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
 /// Date-range request for bulk trade archives.
 #[derive(Clone, Debug, PartialEq)]
@@ -86,9 +85,9 @@ pub trait BulkDayTradeFetcher: Send + Sync {
             match self.fetch_day_trades(market, date).await? {
                 Some(trades) => {
                     if !trades.is_empty() {
-                        tx.send(trades).await.map_err(|_| {
-                            DataError::BulkArchive("receiver dropped".into())
-                        })?;
+                        tx.send(trades)
+                            .await
+                            .map_err(|_| DataError::BulkArchive("receiver dropped".into()))?;
                     }
                     Ok(true)
                 }

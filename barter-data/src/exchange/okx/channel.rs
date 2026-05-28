@@ -29,7 +29,8 @@ impl OkxChannel {
     pub const ORDER_BOOK_L2: Self = Self(SmolStr::new_static("books"));
 }
 
-impl<Instrument, Server> Identifier<OkxChannel> for Subscription<Okx<Server>, Instrument, PublicTrades>
+impl<Instrument, Server> Identifier<OkxChannel>
+    for Subscription<Okx<Server>, Instrument, PublicTrades>
 where
     Server: ExchangeServer,
 {
@@ -38,7 +39,8 @@ where
     }
 }
 
-impl<Instrument, Server> Identifier<OkxChannel> for Subscription<Okx<Server>, Instrument, OrderBooksL2>
+impl<Instrument, Server> Identifier<OkxChannel>
+    for Subscription<Okx<Server>, Instrument, OrderBooksL2>
 where
     Server: ExchangeServer,
 {
@@ -65,8 +67,10 @@ impl AsRef<str> for OkxChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::exchange::okx::spot::OkxSpot;
-    use crate::subscription::candle::{Candles, Interval};
+    use crate::{
+        exchange::okx::spot::OkxSpot,
+        subscription::candle::{Candles, Interval},
+    };
     use barter_instrument::instrument::market_data::{
         MarketDataInstrument, kind::MarketDataInstrumentKind,
     };

@@ -26,8 +26,9 @@ impl TryFrom<HyperliquidFillEvent> for RestTrade {
     type Error = DataError;
 
     fn try_from(fill: HyperliquidFillEvent) -> Result<Self, Self::Error> {
-        let time = DateTime::from_timestamp_millis(fill.time as i64)
-            .ok_or_else(|| DataError::DataParse(format!("invalid fill timestamp: {}", fill.time)))?;
+        let time = DateTime::from_timestamp_millis(fill.time as i64).ok_or_else(|| {
+            DataError::DataParse(format!("invalid fill timestamp: {}", fill.time))
+        })?;
 
         let price: f64 = fill
             .px

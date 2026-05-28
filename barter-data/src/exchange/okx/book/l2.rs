@@ -3,10 +3,7 @@ use crate::{
     books::OrderBook,
     error::DataError,
     event::MarketEvent,
-    exchange::{
-        Connector, ExchangeServer,
-        okx::Okx,
-    },
+    exchange::{Connector, ExchangeServer, okx::Okx},
     subscription::{
         Map,
         book::{OrderBookEvent, OrderBooksL2},
@@ -66,7 +63,12 @@ where
             })
             .collect();
 
-        async move { Ok(Self { exchange_id: Okx::<Server>::ID, instrument_map }) }
+        async move {
+            Ok(Self {
+                exchange_id: Okx::<Server>::ID,
+                instrument_map,
+            })
+        }
     }
 
     fn insert_map_entries(&mut self, entries: Vec<(SubscriptionId, InstrumentKey)>) {
@@ -118,12 +120,8 @@ where
                         last_seq_id: update.seq_id,
                     });
 
-                    let orderbook = OrderBook::new(
-                        update.seq_id,
-                        Some(update.time),
-                        update.bids,
-                        update.asks,
-                    );
+                    let orderbook =
+                        OrderBook::new(update.seq_id, Some(update.time), update.bids, update.asks);
                     results.push(Ok(MarketEvent {
                         time_exchange: update.time,
                         time_received: Utc::now(),
@@ -139,8 +137,7 @@ where
                     };
 
                     // Validate sequence: prevSeqId must match our last_seq_id
-                    if update.prev_seq_id >= 0
-                        && update.prev_seq_id as u64 != sequencer.last_seq_id
+                    if update.prev_seq_id >= 0 && update.prev_seq_id as u64 != sequencer.last_seq_id
                     {
                         results.push(Err(DataError::InvalidSequence {
                             prev_last_update_id: sequencer.last_seq_id,
@@ -151,12 +148,8 @@ where
 
                     sequencer.last_seq_id = update.seq_id;
 
-                    let orderbook = OrderBook::new(
-                        update.seq_id,
-                        Some(update.time),
-                        update.bids,
-                        update.asks,
-                    );
+                    let orderbook =
+                        OrderBook::new(update.seq_id, Some(update.time), update.bids, update.asks);
                     results.push(Ok(MarketEvent {
                         time_exchange: update.time,
                         time_received: Utc::now(),

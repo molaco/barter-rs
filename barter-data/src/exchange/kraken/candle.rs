@@ -1,6 +1,4 @@
-use super::channel::KrakenChannel;
-use super::kraken_interval;
-use super::message::KrakenMessage;
+use super::{channel::KrakenChannel, kraken_interval, message::KrakenMessage};
 use crate::{
     Identifier,
     event::{MarketEvent, MarketIter},
@@ -87,8 +85,8 @@ impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, KrakenKline)>
                 .into_iter()
                 .map(|k| {
                     // Compute close_time from interval_begin + interval
-                    let close_time = k.interval_begin
-                        + chrono::Duration::minutes(k.interval as i64);
+                    let close_time =
+                        k.interval_begin + chrono::Duration::minutes(k.interval as i64);
                     Ok(MarketEvent {
                         time_exchange: close_time,
                         time_received: Utc::now(),

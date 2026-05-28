@@ -98,6 +98,9 @@ mod tests {
         // Status messages are parsed as Event since they have "channel": "status"
         // but the exact match depends on untagged ordering; the important thing
         // is it doesn't fail
-        assert!(matches!(msg, KrakenMessage::Event(_) | KrakenMessage::Data(_)));
+        assert!(matches!(
+            msg,
+            KrakenMessage::Event(_) | KrakenMessage::Data(_)
+        ));
     }
 }

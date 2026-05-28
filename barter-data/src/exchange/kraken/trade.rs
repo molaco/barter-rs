@@ -1,5 +1,4 @@
-use super::channel::KrakenChannel;
-use super::message::KrakenMessage;
+use super::{channel::KrakenChannel, message::KrakenMessage};
 use crate::{
     Identifier,
     event::{MarketEvent, MarketIter},
@@ -42,9 +41,9 @@ pub struct KrakenTradesPayload {
 
 impl Identifier<Option<SubscriptionId>> for KrakenTradesPayload {
     fn id(&self) -> Option<SubscriptionId> {
-        self.data.first().map(|t| {
-            ExchangeSub::from((KrakenChannel::TRADES, &t.symbol)).id()
-        })
+        self.data
+            .first()
+            .map(|t| ExchangeSub::from((KrakenChannel::TRADES, &t.symbol)).id())
     }
 }
 

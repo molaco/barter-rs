@@ -136,14 +136,16 @@ where
 /// client errors (bad request, invalid symbol, etc).
 pub fn is_retriable_data_error(error: &DataError) -> bool {
     match error {
-        DataError::Http { status, message, .. } => match status {
+        DataError::Http {
+            status, message, ..
+        } => match status {
             Some(429) => true, // Too Many Requests
             Some(418) => true, // Binance uses 418 for IP auto-ban on rate limit violation
-            Some(500) => true,   // Internal Server Error
-            Some(502) => true,   // Bad Gateway
-            Some(503) => true,   // Service Unavailable
-            Some(504) => true,   // Gateway Timeout
-            Some(416) => true,   // Range Not Satisfiable (retry from scratch)
+            Some(500) => true, // Internal Server Error
+            Some(502) => true, // Bad Gateway
+            Some(503) => true, // Service Unavailable
+            Some(504) => true, // Gateway Timeout
+            Some(416) => true, // Range Not Satisfiable (retry from scratch)
             None => {
                 // Connection-level failures (no HTTP response received)
                 let msg = message.to_lowercase();
@@ -189,12 +191,7 @@ mod tests {
 
     #[test]
     fn test_retry_policy_new() {
-        let policy = RetryPolicy::new(
-            Duration::from_millis(100),
-            Duration::from_secs(30),
-            2,
-            3,
-        );
+        let policy = RetryPolicy::new(Duration::from_millis(100), Duration::from_secs(30), 2, 3);
         assert_eq!(policy.initial_backoff, Duration::from_millis(100));
         assert_eq!(policy.max_backoff, Duration::from_secs(30));
         assert_eq!(policy.multiplier, 2);
@@ -313,20 +310,32 @@ mod tests {
 
     #[test]
     fn test_retriable_http_429() {
-        let err = DataError::Http { status: Some(429), url: "test".into(), message: "rate limit".into() };
+        let err = DataError::Http {
+            status: Some(429),
+            url: "test".into(),
+            message: "rate limit".into(),
+        };
         assert!(is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_retriable_http_418() {
-        let err = DataError::Http { status: Some(418), url: "test".into(), message: "IP banned".into() };
+        let err = DataError::Http {
+            status: Some(418),
+            url: "test".into(),
+            message: "IP banned".into(),
+        };
         assert!(is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_retriable_http_5xx() {
         for code in [500u16, 502, 503, 504] {
-            let err = DataError::Http { status: Some(code), url: "test".into(), message: "server error".into() };
+            let err = DataError::Http {
+                status: Some(code),
+                url: "test".into(),
+                message: "server error".into(),
+            };
             assert!(
                 is_retriable_data_error(&err),
                 "Expected retriable for HTTP {}",
@@ -337,61 +346,101 @@ mod tests {
 
     #[test]
     fn test_retriable_http_416() {
-        let err = DataError::Http { status: Some(416), url: "test".into(), message: "range not satisfiable".into() };
+        let err = DataError::Http {
+            status: Some(416),
+            url: "test".into(),
+            message: "range not satisfiable".into(),
+        };
         assert!(is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_not_retriable_http_400() {
-        let err = DataError::Http { status: Some(400), url: "test".into(), message: "bad request".into() };
+        let err = DataError::Http {
+            status: Some(400),
+            url: "test".into(),
+            message: "bad request".into(),
+        };
         assert!(!is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_not_retriable_http_401() {
-        let err = DataError::Http { status: Some(401), url: "test".into(), message: "unauthorized".into() };
+        let err = DataError::Http {
+            status: Some(401),
+            url: "test".into(),
+            message: "unauthorized".into(),
+        };
         assert!(!is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_not_retriable_http_403() {
-        let err = DataError::Http { status: Some(403), url: "test".into(), message: "forbidden".into() };
+        let err = DataError::Http {
+            status: Some(403),
+            url: "test".into(),
+            message: "forbidden".into(),
+        };
         assert!(!is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_not_retriable_http_404() {
-        let err = DataError::Http { status: Some(404), url: "test".into(), message: "not found".into() };
+        let err = DataError::Http {
+            status: Some(404),
+            url: "test".into(),
+            message: "not found".into(),
+        };
         assert!(!is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_retriable_connection_failure() {
-        let err = DataError::Http { status: None, url: "test".into(), message: "connection reset by peer".into() };
+        let err = DataError::Http {
+            status: None,
+            url: "test".into(),
+            message: "connection reset by peer".into(),
+        };
         assert!(is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_retriable_connection_timeout() {
-        let err = DataError::Http { status: None, url: "test".into(), message: "request timeout".into() };
+        let err = DataError::Http {
+            status: None,
+            url: "test".into(),
+            message: "request timeout".into(),
+        };
         assert!(is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_retriable_connection_broken_pipe() {
-        let err = DataError::Http { status: None, url: "test".into(), message: "broken pipe".into() };
+        let err = DataError::Http {
+            status: None,
+            url: "test".into(),
+            message: "broken pipe".into(),
+        };
         assert!(is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_retriable_connection_error_sending_request() {
-        let err = DataError::Http { status: None, url: "test".into(), message: "error sending request for url".into() };
+        let err = DataError::Http {
+            status: None,
+            url: "test".into(),
+            message: "error sending request for url".into(),
+        };
         assert!(is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_not_retriable_connection_unknown_message() {
-        let err = DataError::Http { status: None, url: "test".into(), message: "some unknown error".into() };
+        let err = DataError::Http {
+            status: None,
+            url: "test".into(),
+            message: "some unknown error".into(),
+        };
         assert!(!is_retriable_data_error(&err));
     }
 
@@ -403,7 +452,11 @@ mod tests {
 
     #[test]
     fn test_not_retriable_exchange_api() {
-        let err = DataError::ExchangeApi { exchange: "okx".into(), code: "51001".into(), message: "not found".into() };
+        let err = DataError::ExchangeApi {
+            exchange: "okx".into(),
+            code: "51001".into(),
+            message: "not found".into(),
+        };
         assert!(!is_retriable_data_error(&err));
     }
 
@@ -415,13 +468,19 @@ mod tests {
 
     #[test]
     fn test_not_retriable_checksum_mismatch() {
-        let err = DataError::ChecksumMismatch { expected: "abc".into(), actual: "def".into() };
+        let err = DataError::ChecksumMismatch {
+            expected: "abc".into(),
+            actual: "def".into(),
+        };
         assert!(!is_retriable_data_error(&err));
     }
 
     #[test]
     fn test_not_retriable_unsupported_interval() {
-        let err = DataError::UnsupportedInterval { exchange: "binance".into(), interval: "3m".into() };
+        let err = DataError::UnsupportedInterval {
+            exchange: "binance".into(),
+            interval: "3m".into(),
+        };
         assert!(!is_retriable_data_error(&err));
     }
 
@@ -433,7 +492,11 @@ mod tests {
 
     #[test]
     fn test_not_retriable_pagination_limit() {
-        let err = DataError::PaginationLimit { exchange: "binance".into(), market: "btcusdt".into(), limit: 1000 };
+        let err = DataError::PaginationLimit {
+            exchange: "binance".into(),
+            market: "btcusdt".into(),
+            limit: 1000,
+        };
         assert!(!is_retriable_data_error(&err));
     }
 
@@ -472,12 +535,8 @@ mod tests {
             max_retries: 2,
         };
 
-        let result: Result<(), &str> = retry_with_backoff(
-            &policy,
-            |_: &&str| true,
-            || async { Err("fail") },
-        )
-        .await;
+        let result: Result<(), &str> =
+            retry_with_backoff(&policy, |_: &&str| true, || async { Err("fail") }).await;
 
         assert_eq!(result, Err("fail"));
         // Key: did not panic from Duration overflow

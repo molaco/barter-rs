@@ -98,10 +98,7 @@ pub enum DataError {
 
     /// Exchange does not support the requested interval.
     #[error("{exchange} does not support interval: {interval}")]
-    UnsupportedInterval {
-        exchange: String,
-        interval: String,
-    },
+    UnsupportedInterval { exchange: String, interval: String },
 
     /// Exchange does not support the requested instrument kind.
     #[error("{exchange} does not support instrument kind: {instrument}")]
@@ -153,9 +150,7 @@ impl From<SocketError> for DataError {
                 message: body,
             },
             SocketError::Deserialise { error, .. } => DataError::DataParse(error.to_string()),
-            SocketError::DeserialiseBinary { error, .. } => {
-                DataError::DataParse(error.to_string())
-            }
+            SocketError::DeserialiseBinary { error, .. } => DataError::DataParse(error.to_string()),
             SocketError::DeserialiseProtobuf { error, .. } => {
                 DataError::DataParse(error.to_string())
             }

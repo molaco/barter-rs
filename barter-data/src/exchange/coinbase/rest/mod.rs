@@ -114,7 +114,8 @@ impl CoinbaseRestClient {
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, CoinbaseHttpParser);
         // 10 is non-zero
-        let quota = Quota::per_second(NonZeroU32::new(10).unwrap()).allow_burst(NonZeroU32::new(10).unwrap());
+        let quota = Quota::per_second(NonZeroU32::new(10).unwrap())
+            .allow_burst(NonZeroU32::new(10).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
         Self {
             client: Arc::new(client),
@@ -164,10 +165,7 @@ impl KlineFetcher for CoinbaseRestClient {
     /// The Coinbase API returns candles newest-first, so the result is
     /// reversed to oldest-first before returning.
     #[tracing::instrument(skip(self), fields(exchange = "coinbase", market = %request.market, interval = %request.interval))]
-    async fn fetch_klines(
-        &self,
-        request: KlineRequest,
-    ) -> Result<Vec<Candle>, DataError> {
+    async fn fetch_klines(&self, request: KlineRequest) -> Result<Vec<Candle>, DataError> {
         debug!("building klines request");
 
         let granularity = klines::coinbase_interval(request.interval)?;
@@ -186,14 +184,18 @@ impl KlineFetcher for CoinbaseRestClient {
             },
         };
 
-        let response: klines::CoinbaseKlinesResponse =
-            match self.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
-                Ok(resp) => resp,
-                Err(error) => {
-                    warn!(?error, "klines fetch failed");
-                    return Err(error);
-                }
-            };
+        let response: klines::CoinbaseKlinesResponse = match self
+            .client
+            .execute(get_klines_request)
+            .await
+            .map(|(response, _metric)| response)
+        {
+            Ok(resp) => resp,
+            Err(error) => {
+                warn!(?error, "klines fetch failed");
+                return Err(error);
+            }
+        };
 
         let interval = request.interval;
         let mut candles = response
@@ -248,14 +250,18 @@ impl TradeFetcher for CoinbaseRestClient {
                 },
             };
 
-            let response: trades::CoinbaseTradesResponse =
-                match self.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
-                    Ok(resp) => resp,
-                    Err(error) => {
-                        warn!(?error, "trades fetch failed");
-                        return Err(error);
-                    }
-                };
+            let response: trades::CoinbaseTradesResponse = match self
+                .client
+                .execute(get_trades_request)
+                .await
+                .map(|(response, _metric)| response)
+            {
+                Ok(resp) => resp,
+                Err(error) => {
+                    warn!(?error, "trades fetch failed");
+                    return Err(error);
+                }
+            };
 
             // Coinbase returns newest-first; reverse to oldest-first
             let mut raw_trades = response.trades;

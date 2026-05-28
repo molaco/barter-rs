@@ -74,12 +74,12 @@ pub enum CoinbaseL2Message {
 impl Identifier<Option<SubscriptionId>> for CoinbaseL2Message {
     fn id(&self) -> Option<SubscriptionId> {
         match self {
-            CoinbaseL2Message::Snapshot { product_id, .. } => Some(
-                ExchangeSub::from((CoinbaseChannel::ORDER_BOOK_L2, product_id)).id(),
-            ),
-            CoinbaseL2Message::L2Update { product_id, .. } => Some(
-                ExchangeSub::from((CoinbaseChannel::ORDER_BOOK_L2, product_id)).id(),
-            ),
+            CoinbaseL2Message::Snapshot { product_id, .. } => {
+                Some(ExchangeSub::from((CoinbaseChannel::ORDER_BOOK_L2, product_id)).id())
+            }
+            CoinbaseL2Message::L2Update { product_id, .. } => {
+                Some(ExchangeSub::from((CoinbaseChannel::ORDER_BOOK_L2, product_id)).id())
+            }
             CoinbaseL2Message::Other => None,
         }
     }
@@ -90,7 +90,10 @@ fn parse_levels(raw: &[[String; 2]]) -> Vec<Level> {
         .filter_map(|[price, size]| {
             let p: Decimal = price.parse().ok()?;
             let s: Decimal = size.parse().ok()?;
-            Some(Level { price: p, amount: s })
+            Some(Level {
+                price: p,
+                amount: s,
+            })
         })
         .take(50) // Truncate to top 50
         .collect()
@@ -103,7 +106,10 @@ fn parse_change_levels(changes: &[[String; 3]], side: &str) -> Vec<Level> {
         .filter_map(|[_, price, size]| {
             let p: Decimal = price.parse().ok()?;
             let s: Decimal = size.parse().ok()?;
-            Some(Level { price: p, amount: s })
+            Some(Level {
+                price: p,
+                amount: s,
+            })
         })
         .collect()
 }
@@ -140,7 +146,10 @@ where
                 let has_snapshot = initial_snapshots
                     .iter()
                     .any(|s| s.instrument == instrument_key);
-                (sub_id, CoinbaseOrderBookL2Meta::new(instrument_key, has_snapshot))
+                (
+                    sub_id,
+                    CoinbaseOrderBookL2Meta::new(instrument_key, has_snapshot),
+                )
             })
             .collect();
 
@@ -185,9 +194,7 @@ where
         };
 
         match input {
-            CoinbaseL2Message::Snapshot {
-                bids, asks, ..
-            } => {
+            CoinbaseL2Message::Snapshot { bids, asks, .. } => {
                 instrument.initialized = true;
                 let bids_parsed = parse_levels(&bids);
                 let asks_parsed = parse_levels(&asks);
@@ -206,9 +213,7 @@ where
                     )),
                 })]
             }
-            CoinbaseL2Message::L2Update {
-                changes, time, ..
-            } => {
+            CoinbaseL2Message::L2Update { changes, time, .. } => {
                 if !instrument.initialized {
                     tracing::debug!("Coinbase L2 update before snapshot");
                     return vec![];
@@ -222,12 +227,7 @@ where
                     time_received: Utc::now(),
                     exchange: Coinbase::ID,
                     instrument: instrument.key.clone(),
-                    kind: OrderBookEvent::Update(OrderBook::new(
-                        0,
-                        Some(time),
-                        bids,
-                        asks,
-                    )),
+                    kind: OrderBookEvent::Update(OrderBook::new(0, Some(time), bids, asks)),
                 })]
             }
             CoinbaseL2Message::Other => vec![],
@@ -249,7 +249,11 @@ mod tests {
         }"#;
         let msg: CoinbaseL2Message = serde_json::from_str(input).unwrap();
         match msg {
-            CoinbaseL2Message::Snapshot { product_id, bids, asks } => {
+            CoinbaseL2Message::Snapshot {
+                product_id,
+                bids,
+                asks,
+            } => {
                 assert_eq!(product_id, "BTC-USD");
                 assert_eq!(bids.len(), 2);
                 assert_eq!(asks.len(), 2);
@@ -268,7 +272,11 @@ mod tests {
         }"#;
         let msg: CoinbaseL2Message = serde_json::from_str(input).unwrap();
         match msg {
-            CoinbaseL2Message::L2Update { product_id, changes, .. } => {
+            CoinbaseL2Message::L2Update {
+                product_id,
+                changes,
+                ..
+            } => {
                 assert_eq!(product_id, "BTC-USD");
                 assert_eq!(changes.len(), 2);
             }

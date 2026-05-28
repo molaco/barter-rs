@@ -49,10 +49,9 @@ pub fn convert_trade(
         DataError::DataParse(format!("invalid trade timestamp: {}", record.transact_time))
     })?;
 
-    let price: f64 = record
-        .price
-        .parse()
-        .map_err(|e| DataError::DataParse(format!("invalid trade price '{}': {e}", record.price)))?;
+    let price: f64 = record.price.parse().map_err(|e| {
+        DataError::DataParse(format!("invalid trade price '{}': {e}", record.price))
+    })?;
 
     let amount: f64 = record.quantity.parse().map_err(|e| {
         DataError::DataParse(format!("invalid trade quantity '{}': {e}", record.quantity))

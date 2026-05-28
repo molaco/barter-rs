@@ -52,7 +52,8 @@ impl SnapshotFetcher<BinanceSpot, OrderBooksL2> for BinanceSpotOrderBooksL2Snaps
             );
             let snapshot_url = format!(
                 "{}?symbol={}&limit=100",
-                HTTP_BOOK_L2_SNAPSHOT_URL_BINANCE_SPOT, market.as_ref(),
+                HTTP_BOOK_L2_SNAPSHOT_URL_BINANCE_SPOT,
+                market.as_ref(),
             );
 
             async move {

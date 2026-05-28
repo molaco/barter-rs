@@ -111,7 +111,11 @@ where
     D: serde::de::Deserializer<'de>,
 {
     Deserialize::deserialize(deserializer).map(|market: String| {
-        SubscriptionId::from(format!("{}|{}", BinanceChannel::LIQUIDATIONS.as_ref(), market))
+        SubscriptionId::from(format!(
+            "{}|{}",
+            BinanceChannel::LIQUIDATIONS.as_ref(),
+            market
+        ))
     })
 }
 

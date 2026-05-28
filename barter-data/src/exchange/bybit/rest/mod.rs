@@ -205,10 +205,7 @@ where
     /// newest-first), and converts raw DTOs into [`Candle`]s. This is a single-attempt
     /// call; retry logic is handled by the collector.
     #[tracing::instrument(skip(self), fields(exchange = "bybit", market = %request.market, interval = %request.interval))]
-    async fn fetch_klines(
-        &self,
-        request: KlineRequest,
-    ) -> Result<Vec<Candle>, DataError> {
+    async fn fetch_klines(&self, request: KlineRequest) -> Result<Vec<Candle>, DataError> {
         debug!("building klines request");
 
         let get_klines_request = klines::GetBybitKlines {
@@ -223,14 +220,18 @@ where
             },
         };
 
-        let response: klines::BybitKlinesResponse =
-            match self.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
-                Ok(resp) => resp,
-                Err(error) => {
-                    warn!(?error, "klines fetch failed");
-                    return Err(error);
-                }
-            };
+        let response: klines::BybitKlinesResponse = match self
+            .client
+            .execute(get_klines_request)
+            .await
+            .map(|(response, _metric)| response)
+        {
+            Ok(resp) => resp,
+            Err(error) => {
+                warn!(?error, "klines fetch failed");
+                return Err(error);
+            }
+        };
 
         // Check for Bybit API-level error (non-zero retCode)
         if response.ret_code != 0 {
@@ -302,14 +303,18 @@ where
                 },
             };
 
-            let response: trades::BybitTradesResponse =
-                match self.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
-                    Ok(resp) => resp,
-                    Err(error) => {
-                        warn!(?error, "trades fetch failed");
-                        return Err(error);
-                    }
-                };
+            let response: trades::BybitTradesResponse = match self
+                .client
+                .execute(get_trades_request)
+                .await
+                .map(|(response, _metric)| response)
+            {
+                Ok(resp) => resp,
+                Err(error) => {
+                    warn!(?error, "trades fetch failed");
+                    return Err(error);
+                }
+            };
 
             // Check for API-level errors
             if response.ret_code != 0 {

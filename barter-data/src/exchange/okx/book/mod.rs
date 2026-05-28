@@ -73,7 +73,10 @@ pub enum OkxBookAction {
 pub struct OkxOrderBookUpdate {
     pub asks: Vec<OkxLevel>,
     pub bids: Vec<OkxLevel>,
-    #[serde(rename = "ts", deserialize_with = "barter_integration::de::de_str_u64_epoch_ms_as_datetime_utc")]
+    #[serde(
+        rename = "ts",
+        deserialize_with = "barter_integration::de::de_str_u64_epoch_ms_as_datetime_utc"
+    )]
     pub time: chrono::DateTime<Utc>,
     #[serde(rename = "seqId", default)]
     pub seq_id: u64,
@@ -98,7 +101,10 @@ pub struct OkxOrderBookUpdate {
 pub struct OkxOrderBookSnapshot {
     pub asks: Vec<OkxLevel>,
     pub bids: Vec<OkxLevel>,
-    #[serde(rename = "ts", deserialize_with = "barter_integration::de::de_str_u64_epoch_ms_as_datetime_utc")]
+    #[serde(
+        rename = "ts",
+        deserialize_with = "barter_integration::de::de_str_u64_epoch_ms_as_datetime_utc"
+    )]
     pub time: chrono::DateTime<Utc>,
     #[serde(rename = "seqId", default)]
     pub seq_id: u64,
@@ -130,12 +136,17 @@ impl<'de> Deserialize<'de> for OkxLevel {
         // OKX sends ["price", "size", "deprecated", "numOrders"] — we take first two.
         let arr: Vec<&str> = Deserialize::deserialize(deserializer)?;
         if arr.len() < 2 {
-            return Err(serde::de::Error::custom(
-                format!("expected at least 2 elements in OKX level array, got {}", arr.len()),
-            ));
+            return Err(serde::de::Error::custom(format!(
+                "expected at least 2 elements in OKX level array, got {}",
+                arr.len()
+            )));
         }
-        let price = arr[0].parse::<Decimal>().map_err(serde::de::Error::custom)?;
-        let amount = arr[1].parse::<Decimal>().map_err(serde::de::Error::custom)?;
+        let price = arr[0]
+            .parse::<Decimal>()
+            .map_err(serde::de::Error::custom)?;
+        let amount = arr[1]
+            .parse::<Decimal>()
+            .map_err(serde::de::Error::custom)?;
         Ok(OkxLevel { price, amount })
     }
 }
@@ -151,12 +162,7 @@ impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, OkxOrderBookMessage)
             .data
             .into_iter()
             .map(|snap| {
-                let orderbook = OrderBook::new(
-                    snap.seq_id,
-                    Some(snap.time),
-                    snap.bids,
-                    snap.asks,
-                );
+                let orderbook = OrderBook::new(snap.seq_id, Some(snap.time), snap.bids, snap.asks);
                 Ok(MarketEvent {
                     time_exchange: snap.time,
                     time_received: Utc::now(),

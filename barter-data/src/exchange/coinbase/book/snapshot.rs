@@ -62,7 +62,10 @@ impl SnapshotFetcher<Coinbase, OrderBooksL2> for CoinbaseOrderBooksL2SnapshotFet
                     .filter_map(|l| {
                         let p: Decimal = l.price.parse().ok()?;
                         let s: Decimal = l.size.parse().ok()?;
-                        Some(Level { price: p, amount: s })
+                        Some(Level {
+                            price: p,
+                            amount: s,
+                        })
                     })
                     .collect();
 
@@ -73,7 +76,10 @@ impl SnapshotFetcher<Coinbase, OrderBooksL2> for CoinbaseOrderBooksL2SnapshotFet
                     .filter_map(|l| {
                         let p: Decimal = l.price.parse().ok()?;
                         let s: Decimal = l.size.parse().ok()?;
-                        Some(Level { price: p, amount: s })
+                        Some(Level {
+                            price: p,
+                            amount: s,
+                        })
                     })
                     .collect();
 

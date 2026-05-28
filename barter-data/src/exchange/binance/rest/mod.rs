@@ -102,7 +102,8 @@ where
         );
 
         // 1200 and 20 are non-zero
-        let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap()).allow_burst(NonZeroU32::new(20).unwrap());
+        let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap())
+            .allow_burst(NonZeroU32::new(20).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
 
         Self {
@@ -141,7 +142,8 @@ impl<Server> BinanceRestClient<Server> {
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, BinanceHttpParser);
         // 1200 and 20 are non-zero
-        let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap()).allow_burst(NonZeroU32::new(20).unwrap());
+        let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap())
+            .allow_burst(NonZeroU32::new(20).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
         Self {
             client: Arc::new(client),
@@ -199,10 +201,7 @@ where
     /// [`Candle`]s. This is a single-attempt call; retry logic is handled by
     /// the collector.
     #[tracing::instrument(skip(self), fields(exchange = "binance", market = %request.market, interval = %request.interval))]
-    async fn fetch_klines(
-        &self,
-        request: KlineRequest,
-    ) -> Result<Vec<Candle>, DataError> {
+    async fn fetch_klines(&self, request: KlineRequest) -> Result<Vec<Candle>, DataError> {
         debug!("building klines request");
 
         let get_klines_request = klines::GetKlines {
@@ -216,14 +215,18 @@ where
             },
         };
 
-        let raw_klines: Vec<klines::BinanceKlineRaw> =
-            match self.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
-                Ok(klines) => klines,
-                Err(error) => {
-                    warn!(?error, "klines fetch failed");
-                    return Err(error);
-                }
-            };
+        let raw_klines: Vec<klines::BinanceKlineRaw> = match self
+            .client
+            .execute(get_klines_request)
+            .await
+            .map(|(response, _metric)| response)
+        {
+            Ok(klines) => klines,
+            Err(error) => {
+                warn!(?error, "klines fetch failed");
+                return Err(error);
+            }
+        };
 
         let candles = raw_klines
             .into_iter()
@@ -270,14 +273,18 @@ where
                 },
             };
 
-            let raw_trades: Vec<trades::BinanceAggTrade> =
-                match self.client.execute(get_trades_request).await.map(|(response, _metric)| response) {
-                    Ok(trades) => trades,
-                    Err(error) => {
-                        warn!(?error, "trades fetch failed");
-                        return Err(error);
-                    }
-                };
+            let raw_trades: Vec<trades::BinanceAggTrade> = match self
+                .client
+                .execute(get_trades_request)
+                .await
+                .map(|(response, _metric)| response)
+            {
+                Ok(trades) => trades,
+                Err(error) => {
+                    warn!(?error, "trades fetch failed");
+                    return Err(error);
+                }
+            };
 
             let rest_trades = raw_trades
                 .into_iter()

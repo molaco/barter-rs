@@ -195,7 +195,8 @@ where
     Instrument: InstrumentData,
 {
     type SnapFetcher = NoInitialSnapshots;
-    type Transformer = StatelessTransformer<Self, Instrument::Key, OrderBooksL2, book::HyperliquidOrderBooks>;
+    type Transformer =
+        StatelessTransformer<Self, Instrument::Key, OrderBooksL2, book::HyperliquidOrderBooks>;
     type Parser = WebSocketSerdeParser;
 }
 

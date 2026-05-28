@@ -55,14 +55,14 @@ where
                     .await
                     .map_err(SocketError::Http)?;
 
-                let snapshot = resp
-                    .data
-                    .into_iter()
-                    .next()
-                    .ok_or_else(|| SocketError::Deserialise {
-                        error: serde::de::Error::custom("empty OKX books response"),
-                        payload: String::new(),
-                    })?;
+                let snapshot =
+                    resp.data
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| SocketError::Deserialise {
+                            error: serde::de::Error::custom("empty OKX books response"),
+                            payload: String::new(),
+                        })?;
 
                 let time_received = Utc::now();
 
@@ -96,7 +96,10 @@ struct OkxRestResponse {
 struct OkxRestSnapshot {
     asks: Vec<OkxLevel>,
     bids: Vec<OkxLevel>,
-    #[serde(rename = "ts", deserialize_with = "barter_integration::de::de_str_u64_epoch_ms_as_datetime_utc")]
+    #[serde(
+        rename = "ts",
+        deserialize_with = "barter_integration::de::de_str_u64_epoch_ms_as_datetime_utc"
+    )]
     time: chrono::DateTime<Utc>,
     #[serde(rename = "seqId", default)]
     seq_id: u64,

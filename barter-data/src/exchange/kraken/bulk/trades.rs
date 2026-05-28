@@ -45,7 +45,9 @@ impl TryFrom<KrakenBulkTrade> for RestTrade {
             "b" => Side::Buy,
             "s" => Side::Sell,
             other => {
-                return Err(DataError::DataParse(format!("unknown trade side '{other}'")));
+                return Err(DataError::DataParse(format!(
+                    "unknown trade side '{other}'"
+                )));
             }
         };
 
@@ -70,8 +72,9 @@ pub fn parse_trades(csv_data: &[u8]) -> Result<Vec<RestTrade>, DataError> {
 
     let mut trades = Vec::new();
     for result in reader.deserialize::<KrakenBulkTrade>() {
-        let record = result
-            .map_err(|e| DataError::DataParse(format!("failed to parse Kraken trade CSV row: {e}")))?;
+        let record = result.map_err(|e| {
+            DataError::DataParse(format!("failed to parse Kraken trade CSV row: {e}"))
+        })?;
         trades.push(RestTrade::try_from(record)?);
     }
 

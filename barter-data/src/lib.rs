@@ -203,11 +203,13 @@ pub use error::DataError;
 pub use event::{DataKind, MarketEvent, MarketIter};
 
 // Subscriptions
-pub use subscription::trade::{PublicTrade, PublicTrades};
-pub use subscription::book::{OrderBookEvent, OrderBookL1, OrderBooksL1, OrderBooksL2, OrderBooksL3};
-pub use subscription::candle::{Candle, Candles, Interval};
-pub use subscription::liquidation::{Liquidation, Liquidations};
-pub use subscription::{SubKind, Subscription, SubscriptionKind};
+pub use subscription::{
+    SubKind, Subscription, SubscriptionKind,
+    book::{OrderBookEvent, OrderBookL1, OrderBooksL1, OrderBooksL2, OrderBooksL3},
+    candle::{Candle, Candles, Interval},
+    liquidation::{Liquidation, Liquidations},
+    trade::{PublicTrade, PublicTrades},
+};
 
 // Order books
 pub use books::{Level, OrderBook};
@@ -216,8 +218,7 @@ pub use books::{Level, OrderBook};
 pub use instrument::InstrumentData;
 
 // Streams
-pub use streams::builder::StreamBuilder;
-pub use streams::Streams;
+pub use streams::{Streams, builder::StreamBuilder};
 
 // REST types (feature-gated)
 #[cfg(feature = "rest")]
@@ -227,7 +228,9 @@ pub use trade::RestTrade;
 
 // Bulk types (feature-gated)
 #[cfg(feature = "bulk")]
-pub use bulk::{BulkConfig, BulkDayKlineFetcher, BulkDayTradeFetcher, BulkKlineRequest, BulkTradeRequest};
+pub use bulk::{
+    BulkConfig, BulkDayKlineFetcher, BulkDayTradeFetcher, BulkKlineRequest, BulkTradeRequest,
+};
 
 // Shared types (available when either REST or bulk is enabled)
 #[cfg(any(feature = "rest", feature = "bulk"))]

@@ -1,6 +1,5 @@
 use barter_data::error::DataError;
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
 /// Outcome of one pagination step.
 #[derive(Debug)]

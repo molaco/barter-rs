@@ -3,8 +3,8 @@ pub mod trades;
 
 use crate::{
     bulk::{
-        streaming::{response_to_async_read, DEFAULT_BATCH_SIZE},
         BulkConfig, BulkDayTradeFetcher,
+        streaming::{DEFAULT_BATCH_SIZE, response_to_async_read},
     },
     error::DataError,
     retry::{RetryPolicy, is_retriable_data_error, retry_with_backoff},
@@ -18,7 +18,8 @@ use tokio::io::AsyncBufReadExt;
 use trades::{parse_json_line, parse_json_line_multi};
 
 /// Base URL for Hyperliquid hourly node fill data (S3).
-const BASE_URL: &str = "https://hl-mainnet-node-data.s3.ap-northeast-1.amazonaws.com/node_fills_by_block/hourly";
+const BASE_URL: &str =
+    "https://hl-mainnet-node-data.s3.ap-northeast-1.amazonaws.com/node_fills_by_block/hourly";
 
 /// S3 bucket region for Hyperliquid node data.
 const S3_REGION: &str = "ap-northeast-1";
@@ -102,11 +103,15 @@ impl HyperliquidBulkClient {
         let policy = RetryPolicy::default();
 
         retry_with_backoff(&policy, is_retriable_data_error, || async {
-            let resp = self.signed_request(&url).send().await.map_err(|e| DataError::Http {
-                status: None,
-                url: url.clone(),
-                message: format!("HTTP request failed: {e}"),
-            })?;
+            let resp = self
+                .signed_request(&url)
+                .send()
+                .await
+                .map_err(|e| DataError::Http {
+                    status: None,
+                    url: url.clone(),
+                    message: format!("HTTP request failed: {e}"),
+                })?;
 
             let status = resp.status();
             if status == reqwest::StatusCode::NOT_FOUND {
@@ -125,9 +130,11 @@ impl HyperliquidBulkClient {
             let mut lines = tokio::io::BufReader::new(lz4_reader).lines();
 
             let mut trades = Vec::new();
-            while let Some(line) = lines.next_line().await.map_err(|e| {
-                DataError::BulkArchive(format!("LZ4 stream read error: {e}"))
-            })? {
+            while let Some(line) = lines
+                .next_line()
+                .await
+                .map_err(|e| DataError::BulkArchive(format!("LZ4 stream read error: {e}")))?
+            {
                 trades.extend(parse_json_line(&line, market)?);
             }
 
@@ -177,11 +184,15 @@ impl HyperliquidBulkClient {
         let policy = RetryPolicy::default();
 
         retry_with_backoff(&policy, is_retriable_data_error, || async {
-            let resp = self.signed_request(&url).send().await.map_err(|e| DataError::Http {
-                status: None,
-                url: url.clone(),
-                message: format!("HTTP request failed: {e}"),
-            })?;
+            let resp = self
+                .signed_request(&url)
+                .send()
+                .await
+                .map_err(|e| DataError::Http {
+                    status: None,
+                    url: url.clone(),
+                    message: format!("HTTP request failed: {e}"),
+                })?;
 
             let status = resp.status();
             if status == reqwest::StatusCode::NOT_FOUND {
@@ -200,9 +211,11 @@ impl HyperliquidBulkClient {
             let mut lines = tokio::io::BufReader::new(lz4_reader).lines();
 
             let mut local: HashMap<String, Vec<RestTrade>> = HashMap::new();
-            while let Some(line) = lines.next_line().await.map_err(|e| {
-                DataError::BulkArchive(format!("LZ4 stream read error: {e}"))
-            })? {
+            while let Some(line) = lines
+                .next_line()
+                .await
+                .map_err(|e| DataError::BulkArchive(format!("LZ4 stream read error: {e}")))?
+            {
                 parse_json_line_multi(&line, &mut local)?;
             }
 
@@ -262,9 +275,9 @@ impl HyperliquidBulkClient {
             if let Some(hour_map) = self.download_hour_multi(&date_str, hour).await? {
                 any_found = true;
                 for (coin, trades) in hour_map {
-                    tx.send((coin, trades)).await.map_err(|_| {
-                        DataError::BulkArchive("receiver dropped".into())
-                    })?;
+                    tx.send((coin, trades))
+                        .await
+                        .map_err(|_| DataError::BulkArchive("receiver dropped".into()))?;
                 }
             }
         }
@@ -295,12 +308,13 @@ impl HyperliquidBulkClient {
 
                 async move {
                     retry_with_backoff(&policy, is_retriable_data_error, || async {
-                        let resp =
-                            self.signed_request(&url).send().await.map_err(|e| DataError::Http {
+                        let resp = self.signed_request(&url).send().await.map_err(|e| {
+                            DataError::Http {
                                 status: None,
                                 url: url.clone(),
                                 message: format!("HTTP request failed: {e}"),
-                            })?;
+                            }
+                        })?;
 
                         let status = resp.status();
                         if status == reqwest::StatusCode::NOT_FOUND {
@@ -329,15 +343,13 @@ impl HyperliquidBulkClient {
                                     Vec::with_capacity(DEFAULT_BATCH_SIZE),
                                 ))
                                 .await
-                                .map_err(|_| {
-                                    DataError::BulkArchive("receiver dropped".into())
-                                })?;
+                                .map_err(|_| DataError::BulkArchive("receiver dropped".into()))?;
                             }
                         }
                         if !batch.is_empty() {
-                            tx.send(batch).await.map_err(|_| {
-                                DataError::BulkArchive("receiver dropped".into())
-                            })?;
+                            tx.send(batch)
+                                .await
+                                .map_err(|_| DataError::BulkArchive("receiver dropped".into()))?;
                         }
 
                         Ok(true)

@@ -2,8 +2,11 @@ pub mod trades;
 
 use crate::{
     bulk::{
-        streaming::{parse_zip_csv_into_sender, parse_zip_csv_stream, response_to_async_read, DEFAULT_BATCH_SIZE},
         BulkConfig, BulkDayTradeFetcher,
+        streaming::{
+            DEFAULT_BATCH_SIZE, parse_zip_csv_into_sender, parse_zip_csv_stream,
+            response_to_async_read,
+        },
     },
     error::DataError,
     trade::RestTrade,
@@ -58,11 +61,16 @@ impl OkxBulkClient {
             "https://www.okx.com/cdn/okex/traderecords/trades/daily/{date_folder}/{market}-trades-{date_file}.zip"
         );
 
-        let resp = self.client.get(&url).send().await.map_err(|e| DataError::Http {
-            status: None,
-            url: url.clone(),
-            message: format!("OKX bulk request failed: {e}"),
-        })?;
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| DataError::Http {
+                status: None,
+                url: url.clone(),
+                message: format!("OKX bulk request failed: {e}"),
+            })?;
 
         let status = resp.status();
 
@@ -109,11 +117,16 @@ impl OkxBulkClient {
             "https://www.okx.com/cdn/okex/traderecords/trades/daily/{date_folder}/{market}-trades-{date_file}.zip"
         );
 
-        let resp = self.client.get(&url).send().await.map_err(|e| DataError::Http {
-            status: None,
-            url: url.clone(),
-            message: format!("OKX bulk request failed: {e}"),
-        })?;
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| DataError::Http {
+                status: None,
+                url: url.clone(),
+                message: format!("OKX bulk request failed: {e}"),
+            })?;
 
         let status = resp.status();
 
@@ -161,15 +174,11 @@ pub async fn download_monthly_trades(
         "https://static.okx.com/cdn/okex/traderecords/trades/monthly/{instrument_id}/{instrument_id}-trades-{year}-{month:02}.zip",
     );
 
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| DataError::Http {
-            status: None,
-            url: url.clone(),
-            message: format!("OKX monthly request failed: {e}"),
-        })?;
+    let resp = client.get(&url).send().await.map_err(|e| DataError::Http {
+        status: None,
+        url: url.clone(),
+        message: format!("OKX monthly request failed: {e}"),
+    })?;
 
     let status = resp.status();
 
@@ -241,5 +250,4 @@ mod tests {
         let client = OkxBulkClient::with_config(config);
         assert!(!client.config.verify_checksum);
     }
-
 }

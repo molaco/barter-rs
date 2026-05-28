@@ -94,7 +94,8 @@ impl KrakenRestClient {
         );
 
         // 1 is non-zero
-        let quota = Quota::per_second(NonZeroU32::new(1).unwrap()).allow_burst(NonZeroU32::new(1).unwrap());
+        let quota =
+            Quota::per_second(NonZeroU32::new(1).unwrap()).allow_burst(NonZeroU32::new(1).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
 
         Self {
@@ -129,7 +130,8 @@ impl KrakenRestClient {
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, KrakenHttpParser);
         // 1 is non-zero
-        let quota = Quota::per_second(NonZeroU32::new(1).unwrap()).allow_burst(NonZeroU32::new(1).unwrap());
+        let quota =
+            Quota::per_second(NonZeroU32::new(1).unwrap()).allow_burst(NonZeroU32::new(1).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
         Self {
             client: Arc::new(client),
@@ -177,14 +179,18 @@ impl KrakenRestClient {
             },
         };
 
-        let response: klines::KrakenOhlcResponse =
-            match self.client.execute(request).await.map(|(response, _metric)| response) {
-                Ok(resp) => resp,
-                Err(error) => {
-                    warn!(?error, "Kraken OHLC fetch failed");
-                    return Err(error);
-                }
-            };
+        let response: klines::KrakenOhlcResponse = match self
+            .client
+            .execute(request)
+            .await
+            .map(|(response, _metric)| response)
+        {
+            Ok(resp) => resp,
+            Err(error) => {
+                warn!(?error, "Kraken OHLC fetch failed");
+                return Err(error);
+            }
+        };
 
         // Check for API-level errors in the response
         if !response.error.is_empty() {
@@ -230,14 +236,18 @@ impl KrakenRestClient {
             },
         };
 
-        let response: trades::KrakenTradesResponse =
-            match self.client.execute(request).await.map(|(response, _metric)| response) {
-                Ok(resp) => resp,
-                Err(error) => {
-                    warn!(?error, "Kraken trades fetch failed");
-                    return Err(error);
-                }
-            };
+        let response: trades::KrakenTradesResponse = match self
+            .client
+            .execute(request)
+            .await
+            .map(|(response, _metric)| response)
+        {
+            Ok(resp) => resp,
+            Err(error) => {
+                warn!(?error, "Kraken trades fetch failed");
+                return Err(error);
+            }
+        };
 
         // Check for API-level errors in the response
         if !response.error.is_empty() {
@@ -285,10 +295,7 @@ impl KlineFetcher for KrakenRestClient {
     /// request with exponential-backoff retry, and converts raw DTOs into
     /// [`Candle`]s.
     #[tracing::instrument(skip(self), fields(exchange = "kraken", market = %request.market, interval = %request.interval))]
-    async fn fetch_klines(
-        &self,
-        request: KlineRequest,
-    ) -> Result<Vec<Candle>, DataError> {
+    async fn fetch_klines(&self, request: KlineRequest) -> Result<Vec<Candle>, DataError> {
         debug!("building Kraken OHLC request");
 
         let since = request.start.map(|dt| dt.timestamp());

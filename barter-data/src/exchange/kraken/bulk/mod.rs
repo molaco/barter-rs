@@ -67,8 +67,9 @@ impl KrakenArchiveParser {
         }
 
         let mut csv_data = Vec::with_capacity(csv_file.size() as usize);
-        std::io::Read::read_to_end(&mut { csv_file }, &mut csv_data)
-            .map_err(|e| DataError::BulkArchive(format!("failed to read CSV data from ZIP: {e}")))?;
+        std::io::Read::read_to_end(&mut { csv_file }, &mut csv_data).map_err(|e| {
+            DataError::BulkArchive(format!("failed to read CSV data from ZIP: {e}"))
+        })?;
 
         parse_trades(&csv_data)
     }
@@ -84,11 +85,9 @@ impl KrakenArchiveParser {
     ) -> impl Stream<Item = Result<Vec<RestTrade>, DataError>> + Send {
         let path = zip_path.to_path_buf();
         let pair = pair.to_string();
-        let result = tokio::task::spawn_blocking(move || {
-            Self::parse_zip_trades(&path, &pair)
-        })
-        .await
-        .map_err(|e| DataError::BulkArchive(format!("ZIP task panicked: {e}")));
+        let result = tokio::task::spawn_blocking(move || Self::parse_zip_trades(&path, &pair))
+            .await
+            .map_err(|e| DataError::BulkArchive(format!("ZIP task panicked: {e}")));
 
         match result {
             Ok(Ok(trades)) => {

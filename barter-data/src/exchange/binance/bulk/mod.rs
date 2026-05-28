@@ -5,7 +5,10 @@ use crate::{
     bulk::{
         BulkConfig, BulkDayKlineFetcher, BulkDayTradeFetcher,
         checksum::{parse_binance_checksum, verify_sha256},
-        streaming::{parse_zip_csv_into_sender, parse_zip_csv_stream, response_to_async_read, DEFAULT_BATCH_SIZE},
+        streaming::{
+            DEFAULT_BATCH_SIZE, parse_zip_csv_into_sender, parse_zip_csv_stream,
+            response_to_async_read,
+        },
     },
     error::DataError,
     exchange::binance::{
@@ -464,7 +467,12 @@ impl<Server: BulkArchiveServer> BulkDayTradeFetcher for BinanceBulkClient<Server
         market: &'a str,
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>> {
-        Box::pin(download_and_parse_trades::<Server>(&self.client, &self.config, market, date))
+        Box::pin(download_and_parse_trades::<Server>(
+            &self.client,
+            &self.config,
+            market,
+            date,
+        ))
     }
 
     fn stream_day_trades<'a>(
@@ -486,11 +494,16 @@ impl<Server: BulkArchiveServer> BulkDayTradeFetcher for BinanceBulkClient<Server
         let policy = RetryPolicy::default();
         Box::pin(async move {
             retry_with_backoff(&policy, is_retriable_data_error, || async {
-                let resp = self.client.get(&url).send().await.map_err(|e| DataError::Http {
-                    status: None,
-                    url: url.clone(),
-                    message: format!("request failed: {e}"),
-                })?;
+                let resp = self
+                    .client
+                    .get(&url)
+                    .send()
+                    .await
+                    .map_err(|e| DataError::Http {
+                        status: None,
+                        url: url.clone(),
+                        message: format!("request failed: {e}"),
+                    })?;
 
                 let status = resp.status();
                 if status == reqwest::StatusCode::NOT_FOUND {
@@ -531,7 +544,13 @@ impl<Server: BulkArchiveServer> BulkDayKlineFetcher for BinanceBulkClient<Server
         date: NaiveDate,
     ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<Candle>>, DataError>> + Send + 'a>> {
         let bi = binance_interval(interval);
-        Box::pin(download_and_parse_klines::<Server>(&self.client, &self.config, market, bi, date))
+        Box::pin(download_and_parse_klines::<Server>(
+            &self.client,
+            &self.config,
+            market,
+            bi,
+            date,
+        ))
     }
 }
 

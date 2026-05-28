@@ -1,5 +1,4 @@
-use super::super::channel::KrakenChannel;
-use super::super::message::KrakenMessage;
+use super::super::{channel::KrakenChannel, message::KrakenMessage};
 use crate::{
     Identifier,
     books::Level,
@@ -10,8 +9,7 @@ use crate::{
 use barter_instrument::exchange::ExchangeId;
 use barter_integration::subscription::SubscriptionId;
 use chrono::{DateTime, Utc};
-use rust_decimal::prelude::FromPrimitive;
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, prelude::FromPrimitive};
 use serde::{Deserialize, Serialize};
 
 /// Terse type alias for a Kraken v2 ticker (L1 best bid/ask) WebSocket message.
@@ -44,9 +42,9 @@ pub struct KrakenTickerPayload {
 
 impl Identifier<Option<SubscriptionId>> for KrakenTickerPayload {
     fn id(&self) -> Option<SubscriptionId> {
-        self.data.first().map(|t| {
-            ExchangeSub::from((KrakenChannel::TICKER, &t.symbol)).id()
-        })
+        self.data
+            .first()
+            .map(|t| ExchangeSub::from((KrakenChannel::TICKER, &t.symbol)).id())
     }
 }
 
@@ -66,9 +64,7 @@ pub struct KrakenTickerData {
 impl<InstrumentKey: Clone> From<(ExchangeId, InstrumentKey, KrakenOrderBookL1)>
     for MarketIter<InstrumentKey, OrderBookL1>
 {
-    fn from(
-        (exchange, instrument, msg): (ExchangeId, InstrumentKey, KrakenOrderBookL1),
-    ) -> Self {
+    fn from((exchange, instrument, msg): (ExchangeId, InstrumentKey, KrakenOrderBookL1)) -> Self {
         match msg {
             KrakenOrderBookL1::Data(payload) => payload
                 .data

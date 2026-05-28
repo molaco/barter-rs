@@ -120,7 +120,8 @@ impl OkxRestClient {
     pub fn with_base_url(base_url: String) -> Self {
         let client = RestClient::new(base_url, PublicNoHeaders, OkxHttpParser);
         // 600 and 10 are non-zero
-        let quota = Quota::per_minute(NonZeroU32::new(600).unwrap()).allow_burst(NonZeroU32::new(10).unwrap());
+        let quota = Quota::per_minute(NonZeroU32::new(600).unwrap())
+            .allow_burst(NonZeroU32::new(10).unwrap());
         let rate_limiter = governor::RateLimiter::direct(quota);
 
         Self {
@@ -160,14 +161,18 @@ impl OkxRestClient {
         &self,
         request: trades::GetOkxTrades,
     ) -> Result<Vec<trades::OkxRestTrade>, DataError> {
-        let response: trades::OkxTradesResponse =
-            match self.client.execute(request).await.map(|(response, _metric)| response) {
-                Ok(resp) => resp,
-                Err(error) => {
-                    warn!(?error, "trades fetch failed");
-                    return Err(error);
-                }
-            };
+        let response: trades::OkxTradesResponse = match self
+            .client
+            .execute(request)
+            .await
+            .map(|(response, _metric)| response)
+        {
+            Ok(resp) => resp,
+            Err(error) => {
+                warn!(?error, "trades fetch failed");
+                return Err(error);
+            }
+        };
 
         // Check for OKX-level error (non-zero code)
         if response.code != "0" {
@@ -234,10 +239,7 @@ impl KlineFetcher for OkxRestClient {
     /// (OKX returns newest-first), and converts raw DTOs into [`Candle`]s.
     /// This is a single-attempt call; retry logic is handled by the collector.
     #[tracing::instrument(skip(self), fields(exchange = "okx", market = %request.market, interval = %request.interval))]
-    async fn fetch_klines(
-        &self,
-        request: KlineRequest,
-    ) -> Result<Vec<Candle>, DataError> {
+    async fn fetch_klines(&self, request: KlineRequest) -> Result<Vec<Candle>, DataError> {
         debug!("building klines request");
 
         let get_klines_request = klines::GetOkxKlines {
@@ -253,14 +255,18 @@ impl KlineFetcher for OkxRestClient {
 
         let interval = request.interval;
 
-        let response: klines::OkxKlinesResponse =
-            match self.client.execute(get_klines_request).await.map(|(response, _metric)| response) {
-                Ok(resp) => resp,
-                Err(error) => {
-                    warn!(?error, "klines fetch failed");
-                    return Err(error);
-                }
-            };
+        let response: klines::OkxKlinesResponse = match self
+            .client
+            .execute(get_klines_request)
+            .await
+            .map(|(response, _metric)| response)
+        {
+            Ok(resp) => resp,
+            Err(error) => {
+                warn!(?error, "klines fetch failed");
+                return Err(error);
+            }
+        };
 
         // Check for OKX-level error (non-zero code)
         if response.code != "0" {

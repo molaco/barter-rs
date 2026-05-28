@@ -1,6 +1,5 @@
 use self::{
-    book::l2::CoinbaseOrderBooksL2Transformer,
-    book::snapshot::CoinbaseOrderBooksL2SnapshotFetcher,
+    book::{l2::CoinbaseOrderBooksL2Transformer, snapshot::CoinbaseOrderBooksL2SnapshotFetcher},
     candle::CoinbaseKline,
     channel::CoinbaseChannel,
     market::{CoinbaseMarket, coinbase_market},

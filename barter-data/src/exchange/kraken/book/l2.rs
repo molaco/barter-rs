@@ -20,8 +20,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::super::channel::KrakenChannel;
-use super::super::message::KrakenMessage;
+use super::super::{channel::KrakenChannel, message::KrakenMessage};
 
 /// Terse type alias for a Kraken v2 book WebSocket message.
 pub type KrakenOrderBookL2 = KrakenMessage<KrakenBookPayload>;
@@ -52,9 +51,9 @@ pub struct KrakenBookPayload {
 
 impl Identifier<Option<SubscriptionId>> for KrakenBookPayload {
     fn id(&self) -> Option<SubscriptionId> {
-        self.data.first().map(|d| {
-            ExchangeSub::from((KrakenChannel::ORDER_BOOK_L2, &d.symbol)).id()
-        })
+        self.data
+            .first()
+            .map(|d| ExchangeSub::from((KrakenChannel::ORDER_BOOK_L2, &d.symbol)).id())
     }
 }
 
@@ -116,7 +115,10 @@ where
                 let has_snapshot = initial_snapshots
                     .iter()
                     .any(|s| s.instrument == instrument_key);
-                (sub_id, KrakenOrderBookL2Meta::new(instrument_key, has_snapshot))
+                (
+                    sub_id,
+                    KrakenOrderBookL2Meta::new(instrument_key, has_snapshot),
+                )
             })
             .collect();
 

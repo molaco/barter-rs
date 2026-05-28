@@ -79,8 +79,7 @@ mod tests {
             "usdt",
             MarketDataInstrumentKind::Future(MarketDataFutureContract { expiry: Utc::now() }),
         ));
-        let result =
-            hyperliquid_market(&instrument.base, &instrument.quote, &instrument.kind);
+        let result = hyperliquid_market(&instrument.base, &instrument.quote, &instrument.kind);
         assert!(result.is_err());
     }
 }

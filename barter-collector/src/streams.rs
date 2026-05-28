@@ -1,11 +1,13 @@
-use crate::pagination::{PageResult, PaginationStrategy};
-use crate::retry::is_retriable_data_error;
-use barter_data::error::DataError;
-use barter_data::rest::ExchangeRateLimiter;
-use futures::stream::{self, Stream};
-use futures::StreamExt;
-use std::pin::Pin;
-use std::sync::Arc;
+use crate::{
+    pagination::{PageResult, PaginationStrategy},
+    retry::is_retriable_data_error,
+};
+use barter_data::{error::DataError, rest::ExchangeRateLimiter};
+use futures::{
+    StreamExt,
+    stream::{self, Stream},
+};
+use std::{pin::Pin, sync::Arc};
 
 /// Stream data by driving a [`PaginationStrategy`] in a loop.
 ///
@@ -16,44 +18,39 @@ pub fn stream_paginated<S: PaginationStrategy + 'static>(
     strategy: S,
     rate_limiter: Arc<ExchangeRateLimiter>,
 ) -> Pin<Box<dyn Stream<Item = Result<Vec<S::Item>, DataError>> + Send>> {
-    Box::pin(stream::unfold(
-        Some(strategy),
-        move |maybe_strategy| {
-            let limiter = rate_limiter.clone();
-            async move {
-                let mut strategy = maybe_strategy?;
+    Box::pin(stream::unfold(Some(strategy), move |maybe_strategy| {
+        let limiter = rate_limiter.clone();
+        async move {
+            let mut strategy = maybe_strategy?;
 
-                // Rate limit before each page (not retried separately —
-                // fetch_page itself is retried if it returns a retriable error).
-                limiter.until_ready().await;
+            // Rate limit before each page (not retried separately —
+            // fetch_page itself is retried if it returns a retriable error).
+            limiter.until_ready().await;
 
-                let result = strategy.fetch_page().await;
+            let result = strategy.fetch_page().await;
 
-                match result {
-                    Ok(PageResult::Continue(batch)) => {
-                        Some((Ok(batch), Some(strategy)))
+            match result {
+                Ok(PageResult::Continue(batch)) => Some((Ok(batch), Some(strategy))),
+                Ok(PageResult::Done(batch)) => {
+                    if batch.is_empty() {
+                        None
+                    } else {
+                        Some((Ok(batch), None))
                     }
-                    Ok(PageResult::Done(batch)) => {
-                        if batch.is_empty() {
-                            None
-                        } else {
-                            Some((Ok(batch), None))
-                        }
-                    }
-                    Ok(PageResult::Empty) => None,
-                    Err(e) if is_retriable_data_error(&e) => {
-                        // On retriable error, yield the error and stop.
-                        // The caller can decide to restart the stream.
-                        // (Retry within fetch_page is the strategy's
-                        // responsibility if it wraps a retry-aware fetcher.)
-                        tracing::warn!(error = %e, "retriable error in pagination, stopping stream");
-                        Some((Err(e), None))
-                    }
-                    Err(e) => Some((Err(e), None)),
                 }
+                Ok(PageResult::Empty) => None,
+                Err(e) if is_retriable_data_error(&e) => {
+                    // On retriable error, yield the error and stop.
+                    // The caller can decide to restart the stream.
+                    // (Retry within fetch_page is the strategy's
+                    // responsibility if it wraps a retry-aware fetcher.)
+                    tracing::warn!(error = %e, "retriable error in pagination, stopping stream");
+                    Some((Err(e), None))
+                }
+                Err(e) => Some((Err(e), None)),
             }
-        },
-    ))
+        }
+    }))
 }
 
 /// Stream bulk data by fanning out over dates with bounded concurrency.
@@ -86,11 +83,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Datelike, NaiveDate, TimeZone, Utc};
-    use barter_data::bulk::{BulkDayTradeFetcher, BulkDayKlineFetcher};
-    use barter_data::trade::RestTrade;
-    use barter_data::subscription::candle::{Candle, Interval};
+    use barter_data::{
+        bulk::{BulkDayKlineFetcher, BulkDayTradeFetcher},
+        subscription::candle::{Candle, Interval},
+        trade::RestTrade,
+    };
     use barter_instrument::Side;
+    use chrono::{Datelike, NaiveDate, TimeZone, Utc};
     use std::collections::HashSet;
 
     #[tokio::test]
@@ -113,19 +112,14 @@ mod tests {
         let results: Vec<_> = stream.collect().await;
         // Day 2 skipped (None), days 1 and 3 yielded (order may vary due to buffer_unordered)
         assert_eq!(results.len(), 2);
-        let mut values: Vec<i32> = results
-            .into_iter()
-            .map(|r| r.unwrap()[0])
-            .collect();
+        let mut values: Vec<i32> = results.into_iter().map(|r| r.unwrap()[0]).collect();
         values.sort();
         assert_eq!(values, vec![1, 3]);
     }
 
     #[tokio::test]
     async fn test_stream_bulk_propagates_errors() {
-        let dates = vec![
-            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
-        ];
+        let dates = vec![NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()];
 
         let stream = stream_bulk(dates, 1, |_date| async move {
             Err::<Option<Vec<i32>>, _>(DataError::DataParse("test error".into()))
@@ -149,8 +143,13 @@ mod tests {
             type Item = u32;
             fn fetch_page(
                 &mut self,
-            ) -> Pin<Box<dyn std::future::Future<Output = Result<PageResult<u32>, DataError>> + Send + '_>>
-            {
+            ) -> Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<PageResult<u32>, DataError>>
+                        + Send
+                        + '_,
+                >,
+            > {
                 let count = self.count;
                 self.count += 1;
                 let max = self.max;
@@ -194,16 +193,21 @@ mod tests {
             &'a self,
             _market: &'a str,
             date: NaiveDate,
-        ) -> Pin<Box<dyn std::future::Future<Output = Result<Option<Vec<RestTrade>>, DataError>> + Send + 'a>>
-        {
+        ) -> Pin<
+            Box<
+                dyn std::future::Future<Output = Result<Option<Vec<RestTrade>>, DataError>>
+                    + Send
+                    + 'a,
+            >,
+        > {
             let known = self.known_dates.contains(&date);
             Box::pin(async move {
                 if known {
                     let trade = RestTrade {
                         id: format!("t-{date}"),
-                        time: Utc.with_ymd_and_hms(
-                            date.year(), date.month(), date.day(), 0, 0, 0,
-                        ).unwrap(),
+                        time: Utc
+                            .with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
+                            .unwrap(),
                         price: 50_000.0,
                         amount: 1.5,
                         side: Side::Buy,
@@ -228,17 +232,22 @@ mod tests {
             _market: &'a str,
             _interval: Interval,
             date: NaiveDate,
-        ) -> Pin<Box<dyn std::future::Future<Output = Result<Option<Vec<Candle>>, DataError>> + Send + 'a>>
-        {
+        ) -> Pin<
+            Box<
+                dyn std::future::Future<Output = Result<Option<Vec<Candle>>, DataError>>
+                    + Send
+                    + 'a,
+            >,
+        > {
             let known = self.known_dates.contains(&date);
             Box::pin(async move {
                 if known {
-                    let open_time = Utc.with_ymd_and_hms(
-                        date.year(), date.month(), date.day(), 0, 0, 0,
-                    ).unwrap();
-                    let close_time = Utc.with_ymd_and_hms(
-                        date.year(), date.month(), date.day(), 23, 59, 59,
-                    ).unwrap();
+                    let open_time = Utc
+                        .with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
+                        .unwrap();
+                    let close_time = Utc
+                        .with_ymd_and_hms(date.year(), date.month(), date.day(), 23, 59, 59)
+                        .unwrap();
                     let candle = Candle {
                         open_time,
                         close_time,
@@ -274,9 +283,7 @@ mod tests {
             NaiveDate::from_ymd_opt(2024, 6, 3).unwrap(),
         ];
 
-        let stream = stream_bulk(dates, 2, |date| {
-            fetcher.fetch_day_trades("BTCUSDT", date)
-        });
+        let stream = stream_bulk(dates, 2, |date| fetcher.fetch_day_trades("BTCUSDT", date));
 
         let results: Vec<_> = stream.collect().await;
 
@@ -348,9 +355,7 @@ mod tests {
         let known: HashSet<NaiveDate> = dates.iter().copied().collect();
         let fetcher = MockBulkTradeFetcher { known_dates: known };
 
-        let stream = stream_bulk(dates, 2, |date| {
-            fetcher.fetch_day_trades("BTCUSDT", date)
-        });
+        let stream = stream_bulk(dates, 2, |date| fetcher.fetch_day_trades("BTCUSDT", date));
 
         let results: Vec<_> = stream.collect().await;
 

@@ -135,7 +135,8 @@ impl OkxKlineRaw {
         let open_time = DateTime::from_timestamp_millis(ts_ms)
             .ok_or_else(|| format!("invalid ts millis: {}", ts_ms))?;
 
-        let close_time = open_time + TimeDelta::milliseconds(interval.to_ms()) - TimeDelta::milliseconds(1);
+        let close_time =
+            open_time + TimeDelta::milliseconds(interval.to_ms()) - TimeDelta::milliseconds(1);
 
         let open = self
             .open

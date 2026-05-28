@@ -310,9 +310,7 @@ pub fn exchange_supports_instrument_kind(
         (_, Spot) => true,
 
         // Future
-        (GateioFuturesUsd | GateioFuturesBtc | OkxSpot | OkxPerpetualsUsd, Future { .. }) => {
-            true
-        }
+        (GateioFuturesUsd | GateioFuturesBtc | OkxSpot | OkxPerpetualsUsd, Future { .. }) => true,
         (_, Future { .. }) => false,
 
         // Perpetual
@@ -384,8 +382,16 @@ pub fn exchange_supports_instrument_kind_sub_kind(
         (GateioPerpetualsBtc, Perpetual, PublicTrades) => true,
         (GateioOptions, Option { .. }, PublicTrades) => true,
         (Kraken, Spot, PublicTrades | OrderBooksL1) => true,
-        (OkxSpot, Spot | Future { .. } | Perpetual | Option { .. }, PublicTrades | OrderBooksL2) => true,
-        (OkxPerpetualsUsd, Perpetual | Future { .. } | Option { .. }, PublicTrades | OrderBooksL2) => true,
+        (
+            OkxSpot,
+            Spot | Future { .. } | Perpetual | Option { .. },
+            PublicTrades | OrderBooksL2,
+        ) => true,
+        (
+            OkxPerpetualsUsd,
+            Perpetual | Future { .. } | Option { .. },
+            PublicTrades | OrderBooksL2,
+        ) => true,
 
         // Candles (WebSocket)
         (BinanceSpot, Spot, Candles(_)) => true,

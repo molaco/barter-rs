@@ -36,10 +36,9 @@ impl KrakenOhlcResponse {
     /// the remaining key as the OHLC data array. The pair key in the response
     /// may differ from the requested pair (e.g., `"XXBTZUSD"` vs `"XBTUSD"`).
     pub fn parse_klines(&self) -> Result<(Vec<KrakenKlineRaw>, Option<i64>), DataError> {
-        let obj = self
-            .result
-            .as_object()
-            .ok_or_else(|| DataError::DataParse("Kraken OHLC result is not an object".to_string()))?;
+        let obj = self.result.as_object().ok_or_else(|| {
+            DataError::DataParse("Kraken OHLC result is not an object".to_string())
+        })?;
 
         let mut last: Option<i64> = None;
         let mut klines: Option<Vec<KrakenKlineRaw>> = None;
