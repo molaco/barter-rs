@@ -54,6 +54,10 @@ impl RestExchangeServer for BinanceServerSpot {
         "/api/v3/aggTrades"
     }
 
+    fn historical_trades_path() -> &'static str {
+        "/api/v3/historicalTrades"
+    }
+
     fn max_trades_time_window() -> Option<chrono::TimeDelta> {
         Some(chrono::TimeDelta::minutes(59))
     }

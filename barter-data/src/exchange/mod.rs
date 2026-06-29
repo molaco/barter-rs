@@ -238,6 +238,18 @@ pub trait RestExchangeServer: Default + Debug + Clone + Send {
     /// this method.
     fn trades_path() -> &'static str;
 
+    /// Path to the individual (raw) trades endpoint
+    /// (e.g., "/api/v3/historicalTrades").
+    ///
+    /// Used to fetch *individual* trades that match the live `@trade` stream
+    /// over a past window via `fromId` pagination, as opposed to aggregated
+    /// trades from [`trades_path`](Self::trades_path). The default empty
+    /// string indicates the exchange does not support raw historical-trade
+    /// fetching.
+    fn historical_trades_path() -> &'static str {
+        ""
+    }
+
     /// Maximum time window allowed per trades request.
     /// Returns `None` if there is no limit (default).
     /// Binance Futures limits `endTime - startTime` to < 1 hour.

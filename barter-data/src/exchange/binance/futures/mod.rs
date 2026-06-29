@@ -60,6 +60,10 @@ impl RestExchangeServer for BinanceServerFuturesUsd {
         "/fapi/v1/aggTrades"
     }
 
+    fn historical_trades_path() -> &'static str {
+        "/fapi/v1/historicalTrades"
+    }
+
     fn max_trades_time_window() -> Option<chrono::TimeDelta> {
         Some(chrono::TimeDelta::minutes(59))
     }

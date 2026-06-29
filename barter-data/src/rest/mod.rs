@@ -107,4 +107,14 @@ pub trait TradeFetcher: Send + Sync {
     fn wait_for_rate_limit(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
         Box::pin(async {})
     }
+
+    /// Resolve a starting raw trade id at/after `start_ms`, for forward fromId pagination.
+    /// Default None = unsupported / not needed.
+    fn resolve_start_trade_id(
+        &self,
+        _market: &str,
+        _start_ms: i64,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<u64>, DataError>> + Send + '_>> {
+        Box::pin(async { Ok(None) })
+    }
 }

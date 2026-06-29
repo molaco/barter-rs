@@ -6,8 +6,9 @@ use crate::{
     },
     subscription::candle::{Candle, Interval},
 };
-use barter_integration::protocol::http::{
-    HttpParser, public::PublicNoHeaders, rest::client::RestClient,
+use barter_integration::{
+    error::SocketError,
+    protocol::http::{BuildStrategy, HttpParser, rest::client::RestClient},
 };
 use governor::Quota;
 use reqwest::StatusCode;
@@ -51,6 +52,42 @@ impl HttpParser for BinanceHttpParser {
     }
 }
 
+/// [`BuildStrategy`] for Binance REST requests that optionally injects the
+/// `X-MBX-APIKEY` header.
+///
+/// Most Binance market-data endpoints are public and require no key, but some
+/// (notably `/historicalTrades`) are gated behind a valid API key. When
+/// `api_key` is `None`, no header is added and every request stays public —
+/// preserving the prior [`PublicNoHeaders`](barter_integration::protocol::http::public::PublicNoHeaders)
+/// behaviour.
+#[derive(Clone, Default)]
+pub struct BinanceAuthHeaders {
+    api_key: Option<String>,
+}
+
+impl fmt::Debug for BinanceAuthHeaders {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Never print the secret; only whether one is configured.
+        f.debug_struct("BinanceAuthHeaders")
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
+}
+
+impl BuildStrategy for BinanceAuthHeaders {
+    fn build<Request>(
+        &self,
+        _request: Request,
+        builder: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Request, SocketError> {
+        let builder = match &self.api_key {
+            Some(k) => builder.header("X-MBX-APIKEY", k),
+            None => builder,
+        };
+        builder.build().map_err(SocketError::from)
+    }
+}
+
 /// Generic REST client for Binance exchange variants.
 ///
 /// The `Server` type parameter determines which Binance server variant
@@ -62,7 +99,7 @@ impl HttpParser for BinanceHttpParser {
 #[non_exhaustive]
 #[derive(Clone)]
 pub struct BinanceRestClient<Server> {
-    pub(crate) client: Arc<RestClient<'static, PublicNoHeaders, BinanceHttpParser>>,
+    pub(crate) client: Arc<RestClient<'static, BinanceAuthHeaders, BinanceHttpParser>>,
     pub(crate) rate_limiter: Arc<ExchangeRateLimiter>,
     _server: PhantomData<Server>,
 }
@@ -97,7 +134,7 @@ where
     pub fn new() -> Self {
         let client = RestClient::new(
             Server::rest_base_url().to_owned(),
-            PublicNoHeaders,
+            BinanceAuthHeaders::default(),
             BinanceHttpParser,
         );
 
@@ -121,7 +158,56 @@ where
     pub fn with_rate_limiter(rate_limiter: Arc<ExchangeRateLimiter>) -> Self {
         let client = RestClient::new(
             Server::rest_base_url().to_owned(),
-            PublicNoHeaders,
+            BinanceAuthHeaders::default(),
+            BinanceHttpParser,
+        );
+
+        Self {
+            client: Arc::new(client),
+            rate_limiter,
+            _server: PhantomData,
+        }
+    }
+
+    /// Construct a new [`BinanceRestClient`] with an optional API key.
+    ///
+    /// Behaves like [`new`](Self::new) (creating its own rate limiter) but
+    /// attaches `api_key` so that key-gated endpoints such as
+    /// `/historicalTrades` can be reached. A `None` key keeps every request
+    /// public.
+    pub fn with_api_key(api_key: Option<String>) -> Self {
+        let client = RestClient::new(
+            Server::rest_base_url().to_owned(),
+            BinanceAuthHeaders { api_key },
+            BinanceHttpParser,
+        );
+
+        // 1200 and 20 are non-zero
+        let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap())
+            .allow_burst(NonZeroU32::new(20).unwrap());
+        let rate_limiter = governor::RateLimiter::direct(quota);
+
+        Self {
+            client: Arc::new(client),
+            rate_limiter: Arc::new(rate_limiter),
+            _server: PhantomData,
+        }
+    }
+
+    /// Construct a new [`BinanceRestClient`] with a shared rate limiter and an
+    /// optional API key.
+    ///
+    /// Combines [`with_rate_limiter`](Self::with_rate_limiter) and
+    /// [`with_api_key`](Self::with_api_key): the rate-limit budget is shared
+    /// via the supplied [`ExchangeRateLimiter`], while `api_key` (when `Some`)
+    /// is sent on every request via the `X-MBX-APIKEY` header.
+    pub fn with_rate_limiter_and_key(
+        rate_limiter: Arc<ExchangeRateLimiter>,
+        api_key: Option<String>,
+    ) -> Self {
+        let client = RestClient::new(
+            Server::rest_base_url().to_owned(),
+            BinanceAuthHeaders { api_key },
             BinanceHttpParser,
         );
 
@@ -140,7 +226,7 @@ impl<Server> BinanceRestClient<Server> {
     /// compile time. Does not require the `Server` type to implement
     /// [`RestExchangeServer`] since the URL is provided directly.
     pub fn with_base_url(base_url: String) -> Self {
-        let client = RestClient::new(base_url, PublicNoHeaders, BinanceHttpParser);
+        let client = RestClient::new(base_url, BinanceAuthHeaders::default(), BinanceHttpParser);
         // 1200 and 20 are non-zero
         let quota = Quota::per_minute(NonZeroU32::new(1200).unwrap())
             .allow_burst(NonZeroU32::new(20).unwrap());
@@ -153,7 +239,7 @@ impl<Server> BinanceRestClient<Server> {
     }
 
     /// Return a reference to the inner HTTP client.
-    pub fn http_client(&self) -> &Arc<RestClient<'static, PublicNoHeaders, BinanceHttpParser>> {
+    pub fn http_client(&self) -> &Arc<RestClient<'static, BinanceAuthHeaders, BinanceHttpParser>> {
         &self.client
     }
 
@@ -248,19 +334,73 @@ where
         Box::pin(async { self.rate_limiter.until_ready().await })
     }
 
-    /// Fetch a single batch of aggregate trades from the Binance REST API.
+    /// Fetch a single batch of trades from the Binance REST API.
     ///
-    /// Builds a [`GetAggTrades`](trades::GetAggTrades) request from the provided
-    /// [`TradeRequest`], executes the request, and converts raw DTOs into
-    /// [`RestTrade`]s. This is a single-attempt call; retry logic is handled by
-    /// the collector.
+    /// Two modes, selected by [`TradeRequest::initial_cursor`]:
+    ///
+    /// - **`Some(from_id)`** — fetches *individual* (raw) trades via
+    ///   [`GetHistoricalTrades`](trades::GetHistoricalTrades) (`/historicalTrades`,
+    ///   paged by `fromId`). These match the live `@trade` stream 1:1 and are the
+    ///   correct source for gap-filling. `from_id` is the decimal raw trade id to
+    ///   start at (seed it with [`resolve_start_trade_id`](Self::resolve_start_trade_id)).
+    /// - **`None`** — fetches *aggregate* trades via
+    ///   [`GetAggTrades`](trades::GetAggTrades) using the time window
+    ///   (`start`/`end`), preserving the original behaviour.
+    ///
+    /// Either way this is a single-attempt call returning oldest-first trades;
+    /// retry logic is handled by the collector.
     #[tracing::instrument(skip(self), fields(exchange = "binance", market = %request.market))]
     fn fetch_trades(
         &self,
         request: TradeRequest,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<RestTrade>, DataError>> + Send + '_>> {
         Box::pin(async move {
-            debug!("building trades request");
+            // Raw individual-trades path — opt-in via `initial_cursor` carrying a
+            // decimal raw `fromId`. Returns trades matching the live `@trade`
+            // stream rather than aggregated trades.
+            if let Some(cursor) = request.initial_cursor {
+                debug!(%cursor, "building raw historical trades request");
+
+                let from_id = cursor.parse::<u64>().map_err(|e| {
+                    DataError::DataParse(format!(
+                        "invalid raw trade fromId cursor '{cursor}': {e}"
+                    ))
+                })?;
+
+                let get_raw_request = trades::GetHistoricalTrades {
+                    path: Server::historical_trades_path(),
+                    params: trades::GetHistoricalTradesParams {
+                        symbol: request.market,
+                        from_id: Some(from_id),
+                        limit: request.limit,
+                    },
+                };
+
+                let raw_trades: Vec<trades::BinanceRawTrade> = match self
+                    .client
+                    .execute(get_raw_request)
+                    .await
+                    .map(|(response, _metric)| response)
+                {
+                    Ok(trades) => trades,
+                    Err(error) => {
+                        warn!(?error, "raw historical trades fetch failed");
+                        return Err(error);
+                    }
+                };
+
+                let rest_trades = raw_trades
+                    .into_iter()
+                    .map(RestTrade::try_from)
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(DataError::DataParse)?;
+
+                debug!(count = rest_trades.len(), "fetched raw trades batch");
+
+                return Ok(rest_trades);
+            }
+
+            debug!("building aggregate trades request");
 
             let get_trades_request = trades::GetAggTrades {
                 path: Server::trades_path(),
@@ -295,6 +435,46 @@ where
             debug!(count = rest_trades.len(), "fetched trades batch");
 
             Ok(rest_trades)
+        })
+    }
+
+    /// Resolve the raw trade id to seed forward `fromId` pagination from
+    /// `start_ms`.
+    ///
+    /// Issues a single public `aggTrades` probe (`limit=1`, `startTime=start_ms`)
+    /// and returns the aggregate's first (raw) trade id — i.e. the id of the
+    /// earliest individual trade at/after `start_ms`. Feed this back into
+    /// [`fetch_trades`](Self::fetch_trades) via
+    /// [`TradeRequest::initial_cursor`] to page individual trades. Returns
+    /// `Ok(None)` when no trade exists at/after `start_ms`.
+    #[tracing::instrument(skip(self), fields(exchange = "binance", market = %market))]
+    fn resolve_start_trade_id(
+        &self,
+        market: &str,
+        start_ms: i64,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<u64>, DataError>> + Send + '_>> {
+        let market = market.to_owned();
+        Box::pin(async move {
+            debug!(start_ms, "resolving start trade id via aggTrades probe");
+
+            let probe = trades::GetAggTrades {
+                path: Server::trades_path(),
+                params: trades::GetAggTradesParams {
+                    symbol: market,
+                    start_time: Some(start_ms),
+                    end_time: None,
+                    from_id: None,
+                    limit: Some(1),
+                },
+            };
+
+            let raw: Vec<trades::BinanceAggTrade> = self
+                .client
+                .execute(probe)
+                .await
+                .map(|(response, _metric)| response)?;
+
+            Ok(raw.first().map(|t| t.first_trade_id))
         })
     }
 }
