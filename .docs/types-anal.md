@@ -1,663 +1,661 @@
 # Types Analysis
 
-Per-crate type inventory from `mcp__rust-code-mcp-refactor__crate_types` (hypergraph snapshot `edb921b2e8ad5bb860faf9bb8f88fd0b`). One type per line, grouped by crate.
-
-## barter_integration (44 types)
-
-- `barter_integration::FeedEnded` (Struct, pub) — Marker struct signalling that an `Iterator` or `Stream` event feed has ended; converted into engine audits and shutdown reasons.
-- `barter_integration::Terminal` (Trait, pub) — Trait communicating whether a value (typically an audit or error) is terminal and should trigger shutdown/restart.
-- `barter_integration::Transformer` (Trait, pub) — Stateful transformer trait turning an `Input` into an iterator of `Result<Output, Error>`s, used inside `ExchangeStream`.
-- `barter_integration::Unrecoverable` (Trait, pub) — Marker trait reporting whether an error is unrecoverable, gating retry vs surface-up behaviour.
-- `barter_integration::Validator` (Trait, pub) — Self-validating trait used to check that constructed values (configs, subscriptions) are coherent before use.
-- `barter_integration::channel::Channel` (Struct, pub) — Convenience pairing of an `UnboundedTx`/`UnboundedRx` for in-process mpsc communication.
-- `barter_integration::channel::ChannelState` (Enum, pub) — Two-state enum (Active(Tx) / Disabled) backing `ChannelTxDroppable` to allow runtime detach.
-- `barter_integration::channel::ChannelTxDroppable` (Struct, pub) — Tx wrapper that can be disabled at runtime, dropping its inner sender without panicking on send.
-- `barter_integration::channel::Tx` (Trait, pub) — Send-half abstraction used across the workspace so engine/execution can plug different transports.
-- `barter_integration::channel::UnboundedRx` (Struct, pub) — Newtype wrapping `tokio::sync::mpsc::UnboundedReceiver` with a helper to turn it into a `Stream`.
-- `barter_integration::channel::UnboundedTx` (Struct, pub) — Newtype wrapping `tokio::sync::mpsc::UnboundedSender` that implements the workspace `Tx` trait.
-- `barter_integration::collection::FnvIndexMap` (TypeAlias, pub) — Type alias for `IndexMap` keyed with FNV hashing, used pervasively in maps with small integer-ish keys.
-- `barter_integration::collection::FnvIndexSet` (TypeAlias, pub) — Type alias for `IndexSet` keyed with FNV hashing for fast, stable iteration order.
-- `barter_integration::collection::none_one_or_many::NoneOneOrMany` (Enum, pub) — Compact `Option<OneOrMany<T>>`-like enum that avoids heap allocation for None and single-element cases.
-- `barter_integration::collection::one_or_many::OneOrMany` (Enum, pub) — Either a single element or a `Vec` of elements; serialized transparently to ease batched API payloads.
-- `barter_integration::error::SocketError` (Enum, pub) — Catch-all socket/IO error enum covering WebSocket, REST, serde, signing, and subscription failures.
-- `barter_integration::metric::Field` (Struct, pub) — Single key/value measurement attached to a `Metric` (e.g. round-trip latency).
-- `barter_integration::metric::Metric` (Struct, pub) — Named time-stamped measurement bundle with tags and fields, used to record exchange interaction stats.
-- `barter_integration::metric::Tag` (Struct, pub) — Static-key string-value pair categorising a `Metric` (exchange, endpoint, side, etc.).
-- `barter_integration::metric::Value` (Enum, pub) — Variant-typed measurement value (Float/Int/UInt/Bool/String) for `Field`.
-- `barter_integration::protocol::StreamParser` (Trait, pub) — Protocol-agnostic stream parser turning raw protocol messages (WS frames, FIX, etc.) into a typed `Output`.
-- `barter_integration::protocol::http::BuildStrategy` (Trait, pub) — Strategy trait deciding how a `RestRequest` becomes a built `reqwest::Request` (signed vs public).
-- `barter_integration::protocol::http::HttpParser` (Trait, pub) — Trait deserialising a `reqwest` response into `RestRequest::Response` or an API-specific error.
-- `barter_integration::protocol::http::private::RequestSigner` (Struct, pub) — Generic HTTP request signer combining an API-specific `Signer`, a `Mac`, and an `Encoder`.
-- `barter_integration::protocol::http::private::Signer` (Trait, pub) — Per-API signing logic: produce config, feed bytes-to-sign into a Mac, and build the final signed request.
-- `barter_integration::protocol::http::private::encoder::Base64Encoder` (Struct, pub) — Base64 implementation of `Encoder` used to render Mac signatures into headers.
-- `barter_integration::protocol::http::private::encoder::Encoder` (Trait, pub) — Bytes-to-`String` encoder abstraction used to render Mac output into a header-friendly form.
-- `barter_integration::protocol::http::private::encoder::HexEncoder` (Struct, pub) — Lowercase hex implementation of `Encoder` for HMAC-hex signatures.
-- `barter_integration::protocol::http::public::PublicNoHeaders` (Struct, pub) — `BuildStrategy` that builds an unauthenticated HTTP request with no extra headers — used for public REST.
-- `barter_integration::protocol::http::rest::RestRequest` (Trait, pub) — Per-endpoint trait describing path/method/query/body/timeout, executed by `RestClient`.
-- `barter_integration::protocol::http::rest::client::RestClient` (Struct, pub) — Reusable REST client that builds, signs, executes, and parses `RestRequest`s into typed responses.
-- `barter_integration::protocol::websocket::WebSocket` (TypeAlias, pub) — Alias for `tokio_tungstenite::WebSocketStream<MaybeTlsStream<TcpStream>>`, the workspace's standard WS type.
-- `barter_integration::protocol::websocket::WebSocketProtobufParser` (Struct, pub) — `StreamParser` impl that decodes binary WS frames as protobuf payloads.
-- `barter_integration::protocol::websocket::WebSocketSerdeParser` (Struct, pub) — Default `StreamParser` impl for WebSocket that uses serde_json to decode text/binary frames.
-- `barter_integration::protocol::websocket::WsError` (TypeAlias, pub) — Alias for tungstenite's WS `Error` type, kept here for re-export convenience.
-- `barter_integration::protocol::websocket::WsMessage` (TypeAlias, pub) — Alias for tungstenite's WS `Message` type used across exchange transformers.
-- `barter_integration::protocol::websocket::WsSink` (TypeAlias, pub) — Alias for the sink half of a tungstenite WebSocket split.
-- `barter_integration::protocol::websocket::WsStream` (TypeAlias, pub) — Alias for the stream half of a tungstenite WebSocket split.
-- `barter_integration::snapshot::SnapUpdates` (Struct, pub) — Pair of an initial `Snapshot` and a stream/iter of subsequent updates — common shape for L2 books and account state.
-- `barter_integration::snapshot::Snapshot` (Struct, pub) — Single-element newtype wrapping a "current full state" value; carries `From`/`Constructor`/`Map`.
-- `barter_integration::stream::ExchangeStream` (Struct, pub) — Generic pin-projected stream that pulls protocol messages and runs them through a `Transformer` into typed output.
-- `barter_integration::stream::indexed::IndexedStream` (Struct, pub) — Pin-projected wrapper that re-indexes items of an inner stream via an `Indexer` implementation.
-- `barter_integration::stream::indexed::Indexer` (Trait, pub) — Trait that converts an unindexed item (exchange-name keyed) into an indexed item (integer-keyed).
-- `barter_integration::subscription::SubscriptionId` (Struct, pub) — `SmolStr` newtype identifying a subscribed exchange stream (used to route incoming WS messages).
-
-## barter_instrument (38 types)
-
-- `barter_instrument::Keyed` (Struct, pub) — Generic `{ key, value }` pair used as the universal element in indexed lookup tables.
-- `barter_instrument::Side` (Enum, pub) — Buy/Sell side of a trade or position, with serde aliases for common exchange spellings.
-- `barter_instrument::Underlying` (Struct, pub) — `{ base, quote }` pair describing the underlying asset pair of an instrument.
-- `barter_instrument::asset::Asset` (Struct, pub) — Asset record holding both the internal lowercase name and the exchange-specific spelling.
-- `barter_instrument::asset::AssetId` (Struct, pub) — `u64` newtype unique identifier for an `Asset` (used in serialization/storage).
-- `barter_instrument::asset::AssetIndex` (Struct, pub) — `usize` newtype index into the `IndexedInstruments` asset table for O(1) lookup.
-- `barter_instrument::asset::AssetKind` (Enum, pub) — Coarse classification of an asset as `Crypto` or `Fiat`.
-- `barter_instrument::asset::BaseAsset` (Struct, pub) — Zero-sized marker type representing the "base" leg of an instrument (e.g. BTC in BTC/USDT).
-- `barter_instrument::asset::ExchangeAsset` (Struct, pub) — Pair binding an `ExchangeId` to an `Asset` so the same symbol on different venues is distinguishable.
-- `barter_instrument::asset::QuoteAsset` (Struct, pub) — Zero-sized marker type representing the "quote" leg of an instrument (e.g. USDT in BTC/USDT).
-- `barter_instrument::asset::name::AssetNameExchange` (Struct, pub) — `SmolStr` newtype holding an asset name in the exchange's preferred casing/spelling.
-- `barter_instrument::asset::name::AssetNameInternal` (Struct, pub) — `SmolStr` newtype holding an asset name in Barter-internal lowercase form.
-- `barter_instrument::exchange::ExchangeId` (Enum, pub) — Closed enum of every supported exchange/execution venue; primary discriminant across the workspace.
-- `barter_instrument::exchange::ExchangeIndex` (Struct, pub) — `usize` newtype index into the `IndexedInstruments` exchange table.
-- `barter_instrument::index::IndexedInstruments` (Struct, pub) — Read-only indexed bundle of exchanges/assets/instruments with O(1) lookup tables for `EngineState` and execution mapping.
-- `barter_instrument::index::builder::IndexedInstrumentsBuilder` (Struct, pub) — Mutable builder that accumulates instruments and produces an immutable `IndexedInstruments`.
-- `barter_instrument::index::error::IndexError` (Enum, pub) — Error enum for failed `ExchangeIndex`/`AssetIndex`/`InstrumentIndex` lookups in `IndexedInstruments`.
-- `barter_instrument::instrument::Instrument` (Struct, pub) — Fully described tradable instrument: exchange, names, underlying, quote convention, kind, and optional spec.
-- `barter_instrument::instrument::InstrumentId` (Struct, pub) — `u64` newtype unique identifier for an `Instrument` (storage/serialization key).
-- `barter_instrument::instrument::InstrumentIndex` (Struct, pub) — `usize` newtype index into the `IndexedInstruments` instrument table.
-- `barter_instrument::instrument::kind::InstrumentKind` (Enum, pub) — Instrument shape: `Spot` / `Perpetual` / `Future` / `Option`, parameterised by settlement-asset key type.
-- `barter_instrument::instrument::kind::future::FutureContract` (Struct, pub) — Future contract specification: contract size, settlement asset, and expiry timestamp.
-- `barter_instrument::instrument::kind::option::OptionContract` (Struct, pub) — Option contract specification: contract size, settlement, kind, exercise style, expiry, and strike.
-- `barter_instrument::instrument::kind::option::OptionExercise` (Enum, pub) — American / Bermudan / European exercise style for an `OptionContract`.
-- `barter_instrument::instrument::kind::option::OptionKind` (Enum, pub) — Put / Call enumeration for an `OptionContract`.
-- `barter_instrument::instrument::kind::perpetual::PerpetualContract` (Struct, pub) — Perpetual-swap contract spec: contract size and settlement asset (no expiry).
-- `barter_instrument::instrument::market_data::MarketDataInstrument` (Struct, pub) — Lightweight (base, quote, kind) instrument representation used by `barter-data` market subscriptions.
-- `barter_instrument::instrument::market_data::kind::MarketDataFutureContract` (Struct, pub) — Market-data-only future contract spec carrying just the expiry.
-- `barter_instrument::instrument::market_data::kind::MarketDataInstrumentKind` (Enum, pub) — Spot/Perpetual/Future/Option kind variant used for market-data subscription matching (no settlement asset).
-- `barter_instrument::instrument::market_data::kind::MarketDataOptionContract` (Struct, pub) — Market-data-only option contract spec (kind, exercise, expiry, strike).
-- `barter_instrument::instrument::name::InstrumentNameExchange` (Struct, pub) — `SmolStr` newtype holding an instrument symbol in the exchange's spelling (e.g. "XBT-USDT").
-- `barter_instrument::instrument::name::InstrumentNameInternal` (Struct, pub) — `SmolStr` newtype holding a Barter-internal globally-unique instrument name composed from exchange + base/quote.
-- `barter_instrument::instrument::quote::InstrumentQuoteAsset` (Enum, pub) — Whether an instrument is quoted in the underlying base or underlying quote asset.
-- `barter_instrument::instrument::spec::InstrumentSpec` (Struct, pub) — Aggregate price/quantity/notional spec describing exchange constraints for valid orders.
-- `barter_instrument::instrument::spec::InstrumentSpecNotional` (Struct, pub) — Minimum notional value an order must meet for this instrument.
-- `barter_instrument::instrument::spec::InstrumentSpecPrice` (Struct, pub) — Price-side constraints (min price and tick size) used to validate/quantise orders.
-- `barter_instrument::instrument::spec::InstrumentSpecQuantity` (Struct, pub) — Quantity-side constraints (unit, min, increment) used to validate/quantise order sizes.
-- `barter_instrument::instrument::spec::OrderQuantityUnits` (Enum, pub) — Whether an order's quantity is denominated in `Asset`, `Contract`, or `Quote`.
-
-## barter_integration is above; barter_collector below.
-
-## barter_collector (3 types)
-
-- `barter_collector::config::CollectorConfig` (Struct, pub) — Central collector configuration consolidating concurrency, cache directory, retry policy, and pagination caps.
-- `barter_collector::pagination::PageResult` (Enum, pub) — Tri-state outcome of a single pagination step: `Continue(batch)`, `Done(batch)`, or `Empty`.
-- `barter_collector::pagination::PaginationStrategy` (Trait, pub) — Trait per exchange/data-type that yields a page of items; driven by `stream::unfold` inside `stream_paginated`.
-
-## barter_data (356 types)
-
-- `barter_data::Identifier` (Trait, pub) — Generic `id() -> T` trait used to extract subscription/channel/market identifiers from typed payloads.
-- `barter_data::NoInitialSnapshots` (Struct, pub) — Zero-sized `SnapshotFetcher` impl signalling that a stream emits no initial REST snapshot before live updates.
-- `barter_data::SnapshotFetcher` (Trait, pub) — Trait that fetches initial REST snapshots (e.g. L2 books) before transformers begin consuming live stream events.
-- `barter_data::WsSendRateLimiter` (TypeAlias, pub(crate)) — Internal rate-limiter alias guarding outbound WebSocket subscription messages.
-- `barter_data::books::Asks` (Struct, pub) — Zero-sized marker tagging an `OrderBookSide` as the asks (sellers) side.
-- `barter_data::books::Bids` (Struct, pub) — Zero-sized marker tagging an `OrderBookSide` as the bids (buyers) side.
-- `barter_data::books::Level` (Struct, pub) — Single `{ price, amount }` level of an order book.
-- `barter_data::books::OrderBook` (Struct, pub) — Normalised L2 order book with sequence number, optional engine time, and sorted bid/ask sides.
-- `barter_data::books::OrderBookSide` (Struct, pub) — One side of an `OrderBook` (Bids or Asks) holding sorted `Level`s.
-- `barter_data::books::manager::OrderBookL2Manager` (Struct, pub) — Owns an `OrderBookMap` and applies streamed L2 events to the corresponding books in a `run` loop.
-- `barter_data::books::map::OrderBookMap` (Trait, pub) — Shared-state collection trait that maps instrument keys to `Arc<RwLock<OrderBook>>`.
-- `barter_data::books::map::OrderBookMapMulti` (Struct, pub) — `OrderBookMap` impl backed by an `FnvHashMap`, supporting many instruments.
-- `barter_data::books::map::OrderBookMapSingle` (Struct, pub) — `OrderBookMap` impl carrying a single instrument's book.
-- `barter_data::bulk::BulkConfig` (Struct, pub) — Configuration for bulk archive downloads (concurrency, cache dir, retry policy).
-- `barter_data::bulk::BulkDayKlineFetcher` (Trait, pub) — Trait fetching a single day's worth of klines from a bulk-archive endpoint.
-- `barter_data::bulk::BulkDayTradeFetcher` (Trait, pub) — Trait fetching a single day's worth of trades from a bulk-archive endpoint.
-- `barter_data::bulk::BulkKlineRequest` (Struct, pub) — Parameters describing a bulk kline date range / interval for an exchange.
-- `barter_data::bulk::BulkTradeRequest` (Struct, pub) — Parameters describing a bulk trade date range / market for an exchange.
-- `barter_data::error::DataError` (Enum, pub) — Catch-all error enum for market-data fetch/stream/transform failures.
-- `barter_data::event::DataKind` (Enum, pub) — Union enum of all market-data kinds (trade, candle, book, liquidation, …) emitted in a `MarketEvent`.
-- `barter_data::event::MarketEvent` (Struct, pub) — Normalised market-data event with exchange/instrument key, exchange/engine timestamps, and a `DataKind` payload.
-- `barter_data::event::MarketIter` (Struct, pub) — Iterator wrapper yielding `MarketEvent`s, used to fan multi-item exchange messages into per-event records.
-- `barter_data::exchange::Connector` (Trait, pub) — Per-exchange connector trait: defines channel/market/subscription/REST/WS conventions.
-- `barter_data::exchange::ExchangeServer` (Trait, pub) — Per-exchange WebSocket-server descriptor (URL, ping interval, etc.).
-- `barter_data::exchange::PingInterval` (Struct, pub) — `{ interval, payload }` value describing how often and with what payload to ping an exchange WS.
-- `barter_data::exchange::RestExchangeServer` (Trait, pub) — Per-exchange REST-server descriptor (base URL, auth strategy).
-- `barter_data::exchange::StreamSelector` (Trait, pub) — Per-exchange-per-`SubKind` trait selecting the correct snapshot fetcher and transformer to produce a stream.
-- `barter_data::exchange::binance::Binance` (Struct, pub) — Generic Binance connector marker parameterised by spot/futures/coin server.
-- `barter_data::exchange::binance::book::BinanceLevel` (Struct, pub) — Binance wire-format `[price, qty]` order book level deserialiser.
-- `barter_data::exchange::binance::book::l1::BinanceOrderBookL1` (Struct, pub) — Binance `bookTicker` L1 message (best bid/ask snapshot).
-- `barter_data::exchange::binance::book::l2::BinanceOrderBookL2Meta` (Struct, pub) — Per-instrument L2 sequencer metadata for Binance (last update id, instrument key).
-- `barter_data::exchange::binance::book::l2::BinanceOrderBookL2Snapshot` (Struct, pub) — Binance REST L2 snapshot payload used to seed local books before applying WS deltas.
-- `barter_data::exchange::binance::bulk::BinanceBulkClient` (Struct, pub) — Bulk-archive HTTP client downloading Binance daily/monthly trade and kline zips.
-- `barter_data::exchange::binance::bulk::BinanceServerFuturesCoin` (Struct, pub) — Bulk-archive server descriptor for Binance coin-margined futures.
-- `barter_data::exchange::binance::bulk::BulkArchiveServer` (Trait, pub) — Marker trait describing Binance bulk-archive endpoints by server flavour.
-- `barter_data::exchange::binance::bulk::klines::BinanceBulkKline` (Struct, pub) — CSV row of a Binance bulk kline archive (open/high/low/close/volume/...).
-- `barter_data::exchange::binance::bulk::trades::BinanceBulkAggTrade` (Struct, pub) — CSV row of a Binance bulk aggregate trade archive.
-- `barter_data::exchange::binance::candle::BinanceKline` (Struct, pub) — Binance live kline WS payload (interval, OHLCV, trade counts).
-- `barter_data::exchange::binance::candle::BinanceKlineData` (Struct, pub) — Inner data block of a Binance kline message.
-- `barter_data::exchange::binance::channel::BinanceChannel` (Struct, pub) — Binance WS channel name newtype (e.g. "@trade", "@kline_1m").
-- `barter_data::exchange::binance::futures::BinanceFuturesUsd` (TypeAlias, pub) — Alias for the USD-M futures `Binance` connector variant.
-- `barter_data::exchange::binance::futures::BinanceServerFuturesUsd` (Struct, pub) — Server descriptor for Binance USD-M futures (URLs, ping).
-- `barter_data::exchange::binance::futures::l2::BinanceFuturesOrderBookL2Update` (Struct, pub) — Binance USD-M futures L2 update WS payload.
-- `barter_data::exchange::binance::futures::l2::BinanceFuturesUsdOrderBookL2Sequencer` (Struct, pub) — Sequencer enforcing Binance USD-M futures L2 update-id ordering.
-- `barter_data::exchange::binance::futures::l2::BinanceFuturesUsdOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` impl pulling REST L2 snapshots for Binance USD-M futures.
-- `barter_data::exchange::binance::futures::l2::BinanceFuturesUsdOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` driving the futures L2 sequencer and emitting normalised `OrderBookEvent`s.
-- `barter_data::exchange::binance::futures::liquidation::BinanceLiquidation` (Struct, pub) — Binance futures `forceOrder` liquidation WS message.
-- `barter_data::exchange::binance::futures::liquidation::BinanceLiquidationOrder` (Struct, pub) — Inner liquidation-order payload of a `BinanceLiquidation`.
-- `barter_data::exchange::binance::market::BinanceMarket` (Struct, pub) — Binance market-symbol newtype used in subscription requests.
-- `barter_data::exchange::binance::rest::BinanceApiError` (Struct, pub) — Binance REST `{ code, msg }` API error body.
-- `barter_data::exchange::binance::rest::BinanceHttpParser` (Struct, pub) — `HttpParser` impl that turns Binance REST responses into typed `Ok` or `BinanceApiError`.
-- `barter_data::exchange::binance::rest::BinanceRestClient` (Struct, pub) — Convenience REST client preconfigured for Binance public endpoints.
-- `barter_data::exchange::binance::rest::klines::BinanceKlineRaw` (Struct, pub) — Raw tuple-shaped kline row returned by Binance REST.
-- `barter_data::exchange::binance::rest::klines::GetKlines` (Struct, pub) — Binance `GET /klines` `RestRequest` definition.
-- `barter_data::exchange::binance::rest::klines::GetKlinesParams` (Struct, pub) — Query-params struct for Binance `GetKlines` (symbol, interval, time range, limit).
-- `barter_data::exchange::binance::rest::trades::BinanceAggTrade` (Struct, pub) — Binance REST aggregate trade response item.
-- `barter_data::exchange::binance::rest::trades::GetAggTrades` (Struct, pub) — Binance `GET /aggTrades` `RestRequest` definition.
-- `barter_data::exchange::binance::rest::trades::GetAggTradesParams` (Struct, pub) — Query-params for Binance `GetAggTrades` (symbol, time range, limit).
-- `barter_data::exchange::binance::spot::BinanceServerSpot` (Struct, pub) — Server descriptor for Binance spot (URLs, ping).
-- `barter_data::exchange::binance::spot::BinanceSpot` (TypeAlias, pub) — Alias for the spot `Binance` connector variant.
-- `barter_data::exchange::binance::spot::l2::BinanceSpotOrderBookL2Sequencer` (Struct, pub) — Sequencer enforcing Binance spot L2 update-id ordering relative to REST snapshot.
-- `barter_data::exchange::binance::spot::l2::BinanceSpotOrderBookL2Update` (Struct, pub) — Binance spot L2 update WS payload.
-- `barter_data::exchange::binance::spot::l2::BinanceSpotOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` impl pulling REST L2 snapshots for Binance spot.
-- `barter_data::exchange::binance::spot::l2::BinanceSpotOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` driving the spot L2 sequencer and emitting normalised `OrderBookEvent`s.
-- `barter_data::exchange::binance::subscription::BinanceSubResponse` (Struct, pub) — Binance subscription-ack message used by the WS sub validator.
-- `barter_data::exchange::binance::trade::BinanceTrade` (Struct, pub) — Binance live trade WS payload.
-- `barter_data::exchange::bitfinex::Bitfinex` (Struct, pub) — Bitfinex connector marker implementing the `Connector` trait.
-- `barter_data::exchange::bitfinex::candle::BitfinexCandle` (Struct, pub) — Normalised Bitfinex candle structure produced by the transformer.
-- `barter_data::exchange::bitfinex::candle::BitfinexCandleMessage` (Struct, pub) — Bitfinex WS candle envelope carrying channel id and payload.
-- `barter_data::exchange::bitfinex::candle::BitfinexCandlePayload` (Enum, pub) — Bitfinex candle payload variant (snapshot vector vs single update).
-- `barter_data::exchange::bitfinex::channel::BitfinexChannel` (Struct, pub) — Bitfinex WS channel-name newtype (e.g. `"trades"`, `"candles"`).
-- `barter_data::exchange::bitfinex::market::BitfinexMarket` (Struct, pub) — Bitfinex market-symbol newtype.
-- `barter_data::exchange::bitfinex::message::BitfinexMessage` (Struct, pub) — Bitfinex WS envelope wrapping `BitfinexPayload` per channel id.
-- `barter_data::exchange::bitfinex::message::BitfinexPayload` (Enum, pub) — Bitfinex payload variant union (trade / heartbeat / book / etc.).
-- `barter_data::exchange::bitfinex::subscription::BitfinexChannelId` (Struct, pub) — Numeric channel-id returned by Bitfinex on subscribe.
-- `barter_data::exchange::bitfinex::subscription::BitfinexError` (Struct, pub) — Bitfinex error message returned over WS (code + msg).
-- `barter_data::exchange::bitfinex::subscription::BitfinexPlatformEvent` (Enum, pub) — Bitfinex platform-status event union (info, error, subscribed, …).
-- `barter_data::exchange::bitfinex::subscription::BitfinexPlatformStatus` (Struct, pub) — Bitfinex info message with platform operational status.
-- `barter_data::exchange::bitfinex::subscription::BitfinexSubResponse` (Struct, pub) — Bitfinex subscription-ack message used by the WS sub validator.
-- `barter_data::exchange::bitfinex::subscription::Status` (Enum, pub) — Online/maintenance status flag inside `BitfinexPlatformStatus`.
-- `barter_data::exchange::bitfinex::trade::BitfinexTrade` (Struct, pub) — Bitfinex live trade payload.
-- `barter_data::exchange::bitfinex::validator::BitfinexWebSocketSubValidator` (Struct, pub) — Bitfinex-specific `SubscriptionValidator` impl that confirms `subscribed` responses.
-- `barter_data::exchange::bitmex::Bitmex` (Struct, pub) — BitMEX connector marker.
-- `barter_data::exchange::bitmex::candle::BitmexKline` (TypeAlias, pub) — Alias for the BitMEX kline message type.
-- `barter_data::exchange::bitmex::candle::BitmexKlineInner` (Struct, pub) — Inner BitMEX kline payload with OHLCV.
-- `barter_data::exchange::bitmex::channel::BitmexChannel` (Struct, pub) — BitMEX WS channel-name newtype.
-- `barter_data::exchange::bitmex::market::BitmexMarket` (Struct, pub) — BitMEX market-symbol newtype.
-- `barter_data::exchange::bitmex::message::BitmexMessage` (Struct, pub) — BitMEX WS envelope with table/action/data fields.
-- `barter_data::exchange::bitmex::subscription::BitmexSubResponse` (Struct, pub) — BitMEX subscription-ack message.
-- `barter_data::exchange::bitmex::trade::BitmexTrade` (TypeAlias, pub) — Alias for the BitMEX trade message type.
-- `barter_data::exchange::bitmex::trade::BitmexTradeInner` (Struct, pub) — Inner BitMEX trade payload.
-- `barter_data::exchange::bybit::Bybit` (Struct, pub) — Bybit connector marker parameterised by spot/perp server.
-- `barter_data::exchange::bybit::book::BybitLevel` (Struct, pub) — Bybit wire-format `[price, qty]` order book level deserialiser.
-- `barter_data::exchange::bybit::book::BybitOrderBookInner` (Struct, pub) — Inner Bybit order-book payload (bids/asks arrays + sequence).
-- `barter_data::exchange::bybit::book::BybitOrderBookMessage` (TypeAlias, pub) — Alias for the Bybit order-book WS envelope.
-- `barter_data::exchange::bybit::book::l2::BybitOrderBookL2Meta` (Struct, pub) — Per-instrument Bybit L2 sequencer metadata.
-- `barter_data::exchange::bybit::book::l2::BybitOrderBookL2Sequencer` (Struct, pub(in barter_data::exchange::bybit::book::l2)) — Internal sequencer enforcing Bybit L2 update ordering.
-- `barter_data::exchange::bybit::book::l2::BybitOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` driving Bybit L2 sequencing and emitting `OrderBookEvent`s.
-- `barter_data::exchange::bybit::book::snapshot::BybitOrderBookL2Snapshot` (Struct, pub(in barter_data::exchange::bybit::book::snapshot)) — Internal Bybit REST L2 snapshot deser model.
-- `barter_data::exchange::bybit::book::snapshot::BybitOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` impl pulling REST L2 snapshots for Bybit.
-- `barter_data::exchange::bybit::book::snapshot::BybitRestResponse` (Struct, pub(in barter_data::exchange::bybit::book::snapshot)) — Internal Bybit REST envelope wrapping the L2 snapshot result.
-- `barter_data::exchange::bybit::bulk::BybitBulkClient` (Struct, pub) — Bulk-archive HTTP client for Bybit daily trade archives.
-- `barter_data::exchange::bybit::bulk::BybitBulkServer` (Trait, pub) — Trait describing Bybit bulk-archive endpoints by server flavour.
-- `barter_data::exchange::bybit::bulk::trades::BybitBulkTrade` (Struct, pub) — CSV row of a Bybit perpetuals bulk trade archive.
-- `barter_data::exchange::bybit::bulk::trades::BybitSpotBulkTrade` (Struct, pub) — CSV row of a Bybit spot bulk trade archive.
-- `barter_data::exchange::bybit::candle::BybitKline` (TypeAlias, pub) — Alias for the Bybit kline WS message type.
-- `barter_data::exchange::bybit::candle::BybitKlineData` (Struct, pub) — Inner Bybit kline payload (open/high/low/close/volume/turnover).
-- `barter_data::exchange::bybit::channel::BybitChannel` (Struct, pub) — Bybit WS channel-name newtype.
-- `barter_data::exchange::bybit::futures::BybitPerpetualsUsd` (TypeAlias, pub) — Alias for the Bybit perpetual-USD connector variant.
-- `barter_data::exchange::bybit::futures::BybitServerPerpetualsUsd` (Struct, pub) — Bybit perpetuals-USD server descriptor.
-- `barter_data::exchange::bybit::market::BybitMarket` (Struct, pub) — Bybit market-symbol newtype.
-- `barter_data::exchange::bybit::message::BybitPayload` (Struct, pub) — Bybit WS envelope with topic, type, data, ts.
-- `barter_data::exchange::bybit::message::BybitPayloadKind` (Enum, pub) — Bybit message-kind enum distinguishing snapshot vs delta payloads.
-- `barter_data::exchange::bybit::rest::BybitApiError` (Struct, pub) — Bybit REST `{ retCode, retMsg }` API error body.
-- `barter_data::exchange::bybit::rest::BybitCategory` (Trait, pub) — Trait selecting Bybit REST `category` (spot/linear/inverse/option).
-- `barter_data::exchange::bybit::rest::BybitHttpParser` (Struct, pub) — `HttpParser` impl translating Bybit REST envelopes into typed responses or errors.
-- `barter_data::exchange::bybit::rest::BybitRestClient` (Struct, pub) — Convenience REST client preconfigured for Bybit public endpoints.
-- `barter_data::exchange::bybit::rest::klines::BybitKlineRaw` (Struct, pub) — Bybit REST raw kline tuple deserialiser.
-- `barter_data::exchange::bybit::rest::klines::BybitKlinesResponse` (Struct, pub) — Outer envelope of Bybit `kline` REST response.
-- `barter_data::exchange::bybit::rest::klines::BybitKlinesResult` (Struct, pub) — Inner `result` block of Bybit kline REST response.
-- `barter_data::exchange::bybit::rest::klines::GetBybitKlines` (Struct, pub) — Bybit `GET /v5/market/kline` `RestRequest` definition.
-- `barter_data::exchange::bybit::rest::klines::GetBybitKlinesParams` (Struct, pub) — Query-params struct for `GetBybitKlines` (category, symbol, interval, range, limit).
-- `barter_data::exchange::bybit::rest::trades::BybitRestTrade` (Struct, pub) — Bybit REST historical-trade item.
-- `barter_data::exchange::bybit::rest::trades::BybitTradesResponse` (Struct, pub) — Outer envelope of Bybit recent-trade REST response.
-- `barter_data::exchange::bybit::rest::trades::BybitTradesResult` (Struct, pub) — Inner `result` block of Bybit trades REST response.
-- `barter_data::exchange::bybit::rest::trades::GetBybitTrades` (Struct, pub) — Bybit `GET /v5/market/recent-trade` `RestRequest` definition.
-- `barter_data::exchange::bybit::rest::trades::GetBybitTradesParams` (Struct, pub) — Query-params struct for `GetBybitTrades` (category, symbol, limit).
-- `barter_data::exchange::bybit::spot::BybitServerSpot` (Struct, pub) — Bybit spot server descriptor.
-- `barter_data::exchange::bybit::spot::BybitSpot` (TypeAlias, pub) — Alias for the Bybit spot connector variant.
-- `barter_data::exchange::bybit::subscription::BybitResponse` (Struct, pub) — Bybit subscription/operation response envelope.
-- `barter_data::exchange::bybit::subscription::BybitReturnMessage` (Enum, pub) — Enum classifying Bybit return-message variants (ok / error string).
-- `barter_data::exchange::bybit::trade::BybitTrade` (TypeAlias, pub) — Alias for the Bybit live-trade message type.
-- `barter_data::exchange::bybit::trade::BybitTradeInner` (Struct, pub) — Inner Bybit trade payload (price, qty, side, time).
-- `barter_data::exchange::coinbase::Coinbase` (Struct, pub) — Coinbase connector marker.
-- `barter_data::exchange::coinbase::book::l2::CoinbaseL2Message` (Enum, pub) — Coinbase L2 WS message variant (snapshot vs l2update).
-- `barter_data::exchange::coinbase::book::l2::CoinbaseL2Snapshot` (Struct, pub) — Coinbase L2 snapshot payload (initial bids/asks).
-- `barter_data::exchange::coinbase::book::l2::CoinbaseL2Update` (Struct, pub) — Coinbase L2 update payload (changes vector).
-- `barter_data::exchange::coinbase::book::l2::CoinbaseOrderBookL2Meta` (Struct, pub) — Per-instrument Coinbase L2 sequencer metadata.
-- `barter_data::exchange::coinbase::book::l2::CoinbaseOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` driving Coinbase L2 message decoding.
-- `barter_data::exchange::coinbase::book::snapshot::CoinbaseOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` impl pulling REST L2 snapshots for Coinbase products.
-- `barter_data::exchange::coinbase::book::snapshot::CoinbaseRestBook` (Struct, pub(in barter_data::exchange::coinbase::book::snapshot)) — Internal Coinbase REST L2 snapshot deser model.
-- `barter_data::exchange::coinbase::book::snapshot::CoinbaseRestLevel` (Struct, pub(in barter_data::exchange::coinbase::book::snapshot)) — Internal Coinbase REST L2 level deser (price, size, num-orders).
-- `barter_data::exchange::coinbase::candle::CoinbaseKline` (Struct, pub) — Normalised Coinbase kline structure.
-- `barter_data::exchange::coinbase::candle::CoinbaseKlineData` (Struct, pub) — Inner Coinbase kline data block.
-- `barter_data::exchange::coinbase::candle::CoinbaseKlineEvent` (Struct, pub) — Coinbase WS kline event envelope.
-- `barter_data::exchange::coinbase::channel::CoinbaseChannel` (Struct, pub) — Coinbase WS channel-name newtype.
-- `barter_data::exchange::coinbase::market::CoinbaseMarket` (Struct, pub) — Coinbase product-id newtype used in subscription requests.
-- `barter_data::exchange::coinbase::rest::CoinbaseApiError` (Struct, pub) — Coinbase REST `{ message }` API error body.
-- `barter_data::exchange::coinbase::rest::CoinbaseHttpParser` (Struct, pub) — `HttpParser` impl for Coinbase REST responses.
-- `barter_data::exchange::coinbase::rest::CoinbaseRestClient` (Struct, pub) — Convenience REST client preconfigured for Coinbase public endpoints.
-- `barter_data::exchange::coinbase::rest::klines::CoinbaseKlineRaw` (Struct, pub) — Coinbase REST raw kline tuple deserialiser.
-- `barter_data::exchange::coinbase::rest::klines::CoinbaseKlinesResponse` (Struct, pub) — Coinbase kline REST response envelope.
-- `barter_data::exchange::coinbase::rest::klines::GetCoinbaseKlines` (Struct, pub) — Coinbase `GET /products/{id}/candles` `RestRequest` definition.
-- `barter_data::exchange::coinbase::rest::klines::GetCoinbaseKlinesParams` (Struct, pub) — Query-params for `GetCoinbaseKlines` (granularity, time range).
-- `barter_data::exchange::coinbase::rest::trades::CoinbaseRestTrade` (Struct, pub) — Coinbase REST historical-trade item.
-- `barter_data::exchange::coinbase::rest::trades::CoinbaseTradesResponse` (Struct, pub) — Coinbase trades REST response envelope.
-- `barter_data::exchange::coinbase::rest::trades::GetCoinbaseTrades` (Struct, pub) — Coinbase `GET /products/{id}/trades` `RestRequest` definition.
-- `barter_data::exchange::coinbase::rest::trades::GetCoinbaseTradesParams` (Struct, pub) — Query-params for `GetCoinbaseTrades` (limit, before/after cursors).
-- `barter_data::exchange::coinbase::subscription::CoinbaseChannels` (Struct, pub) — Coinbase subscribe-payload channels block.
-- `barter_data::exchange::coinbase::subscription::CoinbaseSubResponse` (Enum, pub) — Coinbase subscription/ack/error response variant.
-- `barter_data::exchange::coinbase::trade::CoinbaseTrade` (Struct, pub) — Coinbase live trade WS payload.
-- `barter_data::exchange::gateio::Gateio` (Struct, pub) — Gate.io connector marker parameterised by server variant.
-- `barter_data::exchange::gateio::candle::GateioKline` (TypeAlias, pub) — Alias for the Gate.io kline WS message type.
-- `barter_data::exchange::gateio::candle::GateioKlineInner` (Struct, pub) — Inner Gate.io kline payload (OHLCV + interval).
-- `barter_data::exchange::gateio::channel::GateioChannel` (Struct, pub) — Gate.io WS channel-name newtype.
-- `barter_data::exchange::gateio::future::GateioFuturesBtc` (TypeAlias, pub) — Alias for the Gate.io BTC-margined futures connector variant.
-- `barter_data::exchange::gateio::future::GateioFuturesUsd` (TypeAlias, pub) — Alias for the Gate.io USD-margined futures connector variant.
-- `barter_data::exchange::gateio::future::GateioServerFuturesBtc` (Struct, pub) — Server descriptor for Gate.io BTC-margined futures.
-- `barter_data::exchange::gateio::future::GateioServerFuturesUsd` (Struct, pub) — Server descriptor for Gate.io USD-margined futures.
-- `barter_data::exchange::gateio::market::GateioMarket` (Struct, pub) — Gate.io market-symbol newtype.
-- `barter_data::exchange::gateio::message::GateioError` (Struct, pub) — Gate.io WS error sub-payload.
-- `barter_data::exchange::gateio::message::GateioMessage` (Struct, pub) — Gate.io WS envelope with channel/event/result fields.
-- `barter_data::exchange::gateio::option::GateioOptions` (TypeAlias, pub) — Alias for the Gate.io options connector variant.
-- `barter_data::exchange::gateio::option::GateioServerOptions` (Struct, pub) — Server descriptor for Gate.io options.
-- `barter_data::exchange::gateio::perpetual::GateioPerpetualsBtc` (TypeAlias, pub) — Alias for the Gate.io BTC-margined perpetuals connector variant.
-- `barter_data::exchange::gateio::perpetual::GateioPerpetualsUsd` (TypeAlias, pub) — Alias for the Gate.io USD-margined perpetuals connector variant.
-- `barter_data::exchange::gateio::perpetual::GateioServerPerpetualsBtc` (Struct, pub) — Server descriptor for Gate.io BTC-margined perpetuals.
-- `barter_data::exchange::gateio::perpetual::GateioServerPerpetualsUsd` (Struct, pub) — Server descriptor for Gate.io USD-margined perpetuals.
-- `barter_data::exchange::gateio::perpetual::trade::GateioFuturesTradeInner` (Struct, pub) — Inner Gate.io perpetuals trade payload (price, size, side, time).
-- `barter_data::exchange::gateio::perpetual::trade::GateioFuturesTrades` (TypeAlias, pub) — Alias for the Gate.io perpetuals trades message type.
-- `barter_data::exchange::gateio::spot::GateioServerSpot` (Struct, pub) — Server descriptor for Gate.io spot.
-- `barter_data::exchange::gateio::spot::GateioSpot` (TypeAlias, pub) — Alias for the Gate.io spot connector variant.
-- `barter_data::exchange::gateio::spot::trade::GateioSpotTrade` (TypeAlias, pub) — Alias for the Gate.io spot trades message type.
-- `barter_data::exchange::gateio::spot::trade::GateioSpotTradeInner` (Struct, pub) — Inner Gate.io spot trade payload.
-- `barter_data::exchange::gateio::subscription::GateioSubResponse` (TypeAlias, pub) — Alias for the Gate.io subscription-ack message.
-- `barter_data::exchange::gateio::subscription::GateioSubResult` (Struct, pub) — Gate.io sub-ack `result` block with status field.
-- `barter_data::exchange::hyperliquid::Hyperliquid` (Struct, pub) — Hyperliquid connector marker.
-- `barter_data::exchange::hyperliquid::book::HyperliquidBookData` (Struct, pub) — Hyperliquid order-book WS payload (bids/asks vectors).
-- `barter_data::exchange::hyperliquid::book::HyperliquidLevel` (Struct, pub) — Hyperliquid order-book level (price, size, n-orders).
-- `barter_data::exchange::hyperliquid::book::HyperliquidOrderBooks` (Struct, pub) — `SubKind`-style marker for the Hyperliquid order books subscription.
-- `barter_data::exchange::hyperliquid::bulk::HyperliquidBulkClient` (Struct, pub) — Bulk-archive S3 client for Hyperliquid daily fill archives.
-- `barter_data::exchange::hyperliquid::bulk::s3_signer::AwsCredentials` (Struct, pub) — AWS access-key/secret/session bundle used by the S3 SigV4 signer.
-- `barter_data::exchange::hyperliquid::bulk::s3_signer::HmacSha256` (TypeAlias, pub(in barter_data::exchange::hyperliquid::bulk::s3_signer)) — HMAC-SHA256 type alias used by the internal AWS SigV4 signer.
-- `barter_data::exchange::hyperliquid::bulk::s3_signer::SignedHeaders` (Struct, pub) — Output of the SigV4 signer (Authorization + amz-date headers).
-- `barter_data::exchange::hyperliquid::bulk::trades::BlockWrapper` (Struct, pub(in barter_data::exchange::hyperliquid::bulk::trades)) — Internal Hyperliquid block-archive wrapper.
-- `barter_data::exchange::hyperliquid::bulk::trades::HyperliquidFillEvent` (Struct, pub) — Hyperliquid bulk fill-event row (price, sz, side, time).
-- `barter_data::exchange::hyperliquid::candle::HyperliquidCandle` (Struct, pub) — Hyperliquid candle WS payload.
-- `barter_data::exchange::hyperliquid::candle::HyperliquidKline` (Struct, pub) — Inner Hyperliquid kline data block.
-- `barter_data::exchange::hyperliquid::channel::HyperliquidChannel` (Struct, pub) — Hyperliquid WS channel-name newtype.
-- `barter_data::exchange::hyperliquid::market::HyperliquidMarket` (Struct, pub) — Hyperliquid market-symbol newtype.
-- `barter_data::exchange::hyperliquid::rest::HyperliquidApiError` (Struct, pub) — Hyperliquid REST API error body.
-- `barter_data::exchange::hyperliquid::rest::HyperliquidHttpParser` (Struct, pub) — `HttpParser` impl for Hyperliquid REST responses.
-- `barter_data::exchange::hyperliquid::rest::HyperliquidRestClient` (Struct, pub) — Convenience REST client preconfigured for Hyperliquid info endpoints.
-- `barter_data::exchange::hyperliquid::rest::klines::GetHyperliquidKlines` (Struct, pub) — Hyperliquid `info` POST-kline `RestRequest` definition.
-- `barter_data::exchange::hyperliquid::rest::klines::HyperliquidKlineRaw` (Struct, pub) — Raw Hyperliquid kline element deserialiser.
-- `barter_data::exchange::hyperliquid::rest::klines::HyperliquidKlineReq` (Struct, pub) — Body of the Hyperliquid candle-snapshot info request.
-- `barter_data::exchange::hyperliquid::rest::klines::PostHyperliquidKlines` (Struct, pub) — Inner POST body wrapper for Hyperliquid candle-snapshot request.
-- `barter_data::exchange::hyperliquid::subscription::HyperliquidSubResponse` (Struct, pub) — Hyperliquid subscription-ack message.
-- `barter_data::exchange::hyperliquid::trade::HyperliquidTrade` (Struct, pub) — Hyperliquid live trade payload.
-- `barter_data::exchange::hyperliquid::trade::HyperliquidTrades` (Struct, pub) — `SubKind`-style marker for the Hyperliquid trades subscription.
-- `barter_data::exchange::kraken::Kraken` (Struct, pub) — Kraken connector marker.
-- `barter_data::exchange::kraken::book::l1::KrakenOrderBookL1` (TypeAlias, pub) — Alias for the Kraken L1 ticker message type.
-- `barter_data::exchange::kraken::book::l1::KrakenTickerData` (Struct, pub) — Kraken ticker data block carrying best bid/ask info.
-- `barter_data::exchange::kraken::book::l1::KrakenTickerPayload` (Struct, pub) — Kraken ticker WS payload envelope.
-- `barter_data::exchange::kraken::book::l2::KrakenBookData` (Struct, pub) — Kraken L2 book data block (bids/asks/checksum).
-- `barter_data::exchange::kraken::book::l2::KrakenBookLevel` (Struct, pub) — Kraken L2 book level deser (price, vol, timestamp).
-- `barter_data::exchange::kraken::book::l2::KrakenBookPayload` (Struct, pub) — Kraken L2 book WS payload envelope.
-- `barter_data::exchange::kraken::book::l2::KrakenOrderBookL2` (TypeAlias, pub) — Alias for the Kraken L2 book WS message type.
-- `barter_data::exchange::kraken::book::l2::KrakenOrderBookL2Meta` (Struct, pub) — Per-instrument Kraken L2 sequencer metadata.
-- `barter_data::exchange::kraken::book::l2::KrakenOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` driving Kraken L2 decoding and checksum validation.
-- `barter_data::exchange::kraken::book::snapshot::KrakenOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` impl pulling REST L2 snapshots for Kraken.
-- `barter_data::exchange::kraken::book::snapshot::KrakenRestBook` (Struct, pub(in barter_data::exchange::kraken::book::snapshot)) — Internal Kraken REST L2 snapshot deser model.
-- `barter_data::exchange::kraken::book::snapshot::KrakenRestLevel` (Struct, pub(in barter_data::exchange::kraken::book::snapshot)) — Internal Kraken REST L2 level deser.
-- `barter_data::exchange::kraken::book::snapshot::KrakenRestResponse` (Struct, pub(in barter_data::exchange::kraken::book::snapshot)) — Internal Kraken REST envelope `{ error, result }` wrapper.
-- `barter_data::exchange::kraken::bulk::KrakenArchiveParser` (Struct, pub) — Helper parsing Kraken bulk-archive CSV/zip files into normalised trades.
-- `barter_data::exchange::kraken::bulk::trades::KrakenBulkTrade` (Struct, pub) — CSV row of a Kraken bulk trade archive.
-- `barter_data::exchange::kraken::candle::KrakenKline` (TypeAlias, pub) — Alias for the Kraken OHLC WS message type.
-- `barter_data::exchange::kraken::candle::KrakenKlineData` (Struct, pub) — Kraken OHLC data block deser.
-- `barter_data::exchange::kraken::candle::KrakenKlinePayload` (Struct, pub) — Kraken OHLC WS payload envelope.
-- `barter_data::exchange::kraken::channel::KrakenChannel` (Struct, pub) — Kraken WS channel-name newtype.
-- `barter_data::exchange::kraken::market::KrakenMarket` (Struct, pub) — Kraken market-pair newtype.
-- `barter_data::exchange::kraken::message::KrakenError` (Struct, pub) — Kraken WS error message struct.
-- `barter_data::exchange::kraken::message::KrakenEvent` (Enum, pub) — Kraken control-event enum (heartbeat, system status, subscription status, …).
-- `barter_data::exchange::kraken::message::KrakenMessage` (Enum, pub) — Top-level Kraken WS message union (event vs data payload).
-- `barter_data::exchange::kraken::message::KrakenStatus` (Struct, pub) — Kraken system-status snapshot deser.
-- `barter_data::exchange::kraken::rest::KrakenApiError` (Struct, pub) — Kraken REST API error body.
-- `barter_data::exchange::kraken::rest::KrakenHttpParser` (Struct, pub) — `HttpParser` impl for Kraken REST responses.
-- `barter_data::exchange::kraken::rest::KrakenRestClient` (Struct, pub) — Convenience REST client preconfigured for Kraken public endpoints.
-- `barter_data::exchange::kraken::rest::klines::GetKrakenOhlc` (Struct, pub) — Kraken `GET /0/public/OHLC` `RestRequest` definition.
-- `barter_data::exchange::kraken::rest::klines::GetKrakenOhlcParams` (Struct, pub) — Query-params for `GetKrakenOhlc` (pair, interval, since).
-- `barter_data::exchange::kraken::rest::klines::KrakenKlineRaw` (Struct, pub) — Kraken REST raw kline tuple deserialiser.
-- `barter_data::exchange::kraken::rest::klines::KrakenOhlcResponse` (Struct, pub) — Kraken OHLC REST response envelope.
-- `barter_data::exchange::kraken::rest::trades::GetKrakenTrades` (Struct, pub) — Kraken `GET /0/public/Trades` `RestRequest` definition.
-- `barter_data::exchange::kraken::rest::trades::GetKrakenTradesParams` (Struct, pub) — Query-params for `GetKrakenTrades` (pair, since).
-- `barter_data::exchange::kraken::rest::trades::KrakenTradeRaw` (Struct, pub) — Kraken REST raw historical-trade item.
-- `barter_data::exchange::kraken::rest::trades::KrakenTradesResponse` (Struct, pub) — Kraken trades REST response envelope.
-- `barter_data::exchange::kraken::subscription::KrakenSubResponse` (Struct, pub) — Kraken subscription-ack message.
-- `barter_data::exchange::kraken::subscription::KrakenSubResult` (Struct, pub) — Inner Kraken subscription result-body deser.
-- `barter_data::exchange::kraken::trade::KrakenSide` (Enum, pub) — Kraken buy/sell side enum with `"b"`/`"s"` aliases.
-- `barter_data::exchange::kraken::trade::KrakenTrade` (Struct, pub) — Inner Kraken trade record (price, vol, time, side, type, misc).
-- `barter_data::exchange::kraken::trade::KrakenTrades` (TypeAlias, pub) — Alias for the Kraken trades WS message type.
-- `barter_data::exchange::kraken::trade::KrakenTradesPayload` (Struct, pub) — Kraken trades WS payload envelope.
-- `barter_data::exchange::okx::Okx` (Struct, pub) — OKX connector marker parameterised by server variant.
-- `barter_data::exchange::okx::book::OkxBookAction` (Enum, pub) — OKX book-action enum (snapshot vs update).
-- `barter_data::exchange::okx::book::OkxBookMessage` (Struct, pub) — OKX order-book WS payload (action + data array).
-- `barter_data::exchange::okx::book::OkxLevel` (Struct, pub) — OKX order-book level deserialiser (price, qty, deprecated, n-orders).
-- `barter_data::exchange::okx::book::OkxOrderBookMessage` (TypeAlias, pub) — Alias for the OKX order-book WS envelope.
-- `barter_data::exchange::okx::book::OkxOrderBookSnapshot` (Struct, pub) — OKX initial L2 snapshot inner payload.
-- `barter_data::exchange::okx::book::OkxOrderBookUpdate` (Struct, pub) — OKX L2 update inner payload.
-- `barter_data::exchange::okx::book::l2::OkxOrderBookL2Meta` (Struct, pub) — Per-instrument OKX L2 sequencer metadata.
-- `barter_data::exchange::okx::book::l2::OkxOrderBookL2Sequencer` (Struct, pub) — Sequencer enforcing OKX L2 checksum + sequence ordering.
-- `barter_data::exchange::okx::book::l2::OkxOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` driving OKX L2 decoding.
-- `barter_data::exchange::okx::book::snapshot::OkxOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` impl pulling REST L2 snapshots for OKX.
-- `barter_data::exchange::okx::book::snapshot::OkxRestResponse` (Struct, pub(in barter_data::exchange::okx::book::snapshot)) — Internal OKX REST envelope wrapping the snapshot result.
-- `barter_data::exchange::okx::book::snapshot::OkxRestSnapshot` (Struct, pub(in barter_data::exchange::okx::book::snapshot)) — Internal OKX REST L2 snapshot deser model.
-- `barter_data::exchange::okx::bulk::OkxBulkClient` (Struct, pub) — Bulk-archive client for OKX daily trade archives.
-- `barter_data::exchange::okx::bulk::trades::OkxBulkTrade` (Struct, pub) — CSV row of an OKX bulk trade archive.
-- `barter_data::exchange::okx::candle::OkxKline` (Struct, pub) — OKX kline WS payload.
-- `barter_data::exchange::okx::candle::OkxKlineArg` (Struct, pub) — OKX kline subscription-arg (channel + instrument id).
-- `barter_data::exchange::okx::channel::OkxChannel` (Struct, pub) — OKX WS channel-name newtype.
-- `barter_data::exchange::okx::market::OkxMarket` (Struct, pub) — OKX instrument-id newtype.
-- `barter_data::exchange::okx::perpetual::OkxPerpetualsUsd` (TypeAlias, pub) — Alias for the OKX USD-margined perpetuals connector variant.
-- `barter_data::exchange::okx::perpetual::OkxServerPerpetualsUsd` (Struct, pub) — OKX USD-margined perpetuals server descriptor.
-- `barter_data::exchange::okx::rest::OkxApiError` (Struct, pub) — OKX REST API error body.
-- `barter_data::exchange::okx::rest::OkxHttpParser` (Struct, pub) — `HttpParser` impl translating OKX REST envelopes (`{code, msg, data}`) into typed responses.
-- `barter_data::exchange::okx::rest::OkxRestClient` (Struct, pub) — Convenience REST client preconfigured for OKX public endpoints.
-- `barter_data::exchange::okx::rest::klines::GetOkxKlines` (Struct, pub) — OKX `GET /api/v5/market/candles` `RestRequest` definition.
-- `barter_data::exchange::okx::rest::klines::GetOkxKlinesParams` (Struct, pub) — Query-params for `GetOkxKlines` (instId, bar, before/after, limit).
-- `barter_data::exchange::okx::rest::klines::OkxKlineRaw` (Struct, pub) — OKX REST raw kline tuple deserialiser.
-- `barter_data::exchange::okx::rest::klines::OkxKlinesResponse` (Struct, pub) — OKX kline REST response envelope.
-- `barter_data::exchange::okx::rest::trades::GetOkxTrades` (Struct, pub) — OKX `GET /api/v5/market/trades` `RestRequest` definition.
-- `barter_data::exchange::okx::rest::trades::GetOkxTradesParams` (Struct, pub) — Query-params for `GetOkxTrades` (instId, limit).
-- `barter_data::exchange::okx::rest::trades::OkxRestTrade` (Struct, pub) — OKX REST historical-trade item.
-- `barter_data::exchange::okx::rest::trades::OkxTradesResponse` (Struct, pub) — OKX trades REST response envelope.
-- `barter_data::exchange::okx::spot::OkxServerSpot` (Struct, pub) — OKX spot server descriptor.
-- `barter_data::exchange::okx::spot::OkxSpot` (TypeAlias, pub) — Alias for the OKX spot connector variant.
-- `barter_data::exchange::okx::subscription::OkxSubResponse` (Enum, pub) — OKX subscription/operation response variant.
-- `barter_data::exchange::okx::trade::OkxMessage` (Struct, pub) — OKX trades WS envelope.
-- `barter_data::exchange::okx::trade::OkxTrade` (Struct, pub) — OKX live trade payload (price, size, side, ts, tradeId).
-- `barter_data::exchange::okx::trade::OkxTrades` (TypeAlias, pub) — Alias for the OKX trades message type.
-- `barter_data::exchange::subscription::ExchangeSub` (Struct, pub) — Exchange-side subscription value (channel + market) used to build outbound WS sub messages.
-- `barter_data::instrument::InstrumentData` (Trait, pub) — Trait abstracting over the instrument key/data carried alongside `MarketEvent`s in subscriptions.
-- `barter_data::instrument::MarketInput` (Enum, pub) — Input enum accepted by builders, either a typed `MarketDataInstrument` or a more generic carrier.
-- `barter_data::instrument::MarketInstrumentData` (Struct, pub) — Typed wrapper bundling an `InstrumentKey` with its `MarketDataInstrument` for subscription building.
-- `barter_data::rest::ExchangeRateLimiter` (TypeAlias, pub) — Alias for the shared per-exchange rate-limiter type wrapping `governor`.
-- `barter_data::rest::KlineFetcher` (Trait, pub) — Trait fetching paginated historical klines from REST for an exchange.
-- `barter_data::rest::KlineRequest` (Struct, pub) — Generic kline request struct (instrument, interval, time range, limit).
-- `barter_data::rest::TradeFetcher` (Trait, pub) — Trait fetching paginated historical trades from REST for an exchange.
-- `barter_data::rest::TradeRequest` (Struct, pub) — Generic trade request struct (instrument, time range, limit).
-- `barter_data::retry::RetryPolicy` (Struct, pub) — Retry-policy configuration (max attempts, base delay, jitter, max delay) used by REST fetchers.
-- `barter_data::streams::Streams` (Struct, pub) — Top-level collection of per-exchange `MarketEvent` streams produced by the builder.
-- `barter_data::streams::builder::StreamBuilder` (Struct, pub) — Typed builder for one `SubKind` across many exchanges/instruments, producing a `Streams`.
-- `barter_data::streams::builder::SubscribeFuture` (TypeAlias, pub) — Type-erased future returned by `StreamBuilder::init` while subscribing.
-- `barter_data::streams::builder::dynamic::Channels` (Struct, pub(in barter_data::streams::builder::dynamic)) — Internal channel bundle for the dynamic-stream builder.
-- `barter_data::streams::builder::dynamic::DynamicStreamHandles` (Struct, pub) — Public handle bundle exposing per-subscription control handles for the dynamic stream builder.
-- `barter_data::streams::builder::dynamic::DynamicStreams` (Struct, pub) — Heterogeneous stream collection produced by the dynamic builder; can mix multiple `SubKind`s.
-- `barter_data::streams::builder::dynamic::HandleKey` (Struct, pub(in barter_data::streams::builder::dynamic)) — Internal key used by the dynamic registry to look up handles.
-- `barter_data::streams::builder::dynamic::OutputSelector` (Trait, pub(in barter_data::streams::builder::dynamic)) — Internal trait selecting output channels for typed dynamic-stream factories.
-- `barter_data::streams::builder::dynamic::Rxs` (Struct, pub(in barter_data::streams::builder::dynamic)) — Internal collection of receive halves used by the dynamic-stream builder.
-- `barter_data::streams::builder::dynamic::StreamFactory` (Trait, pub(in barter_data::streams::builder::dynamic)) — Internal type-erased factory producing a typed stream for the dynamic registry.
-- `barter_data::streams::builder::dynamic::StreamRegistry` (Struct, pub(in barter_data::streams::builder::dynamic)) — Internal registry mapping `SubKindVariant` to its `StreamFactory`.
-- `barter_data::streams::builder::dynamic::SubKindVariant` (Enum, pub(crate)) — Internal enum keyed by `SubKind` variant used to dispatch the right dynamic factory.
-- `barter_data::streams::builder::dynamic::Txs` (Struct, pub(in barter_data::streams::builder::dynamic)) — Internal collection of send halves used by the dynamic-stream builder.
-- `barter_data::streams::builder::dynamic::TypedStreamFactory` (Struct, pub(in barter_data::streams::builder::dynamic)) — Internal typed implementation of `StreamFactory` parameterised by `SubKind`.
-- `barter_data::streams::builder::multi::BuilderInitFuture` (TypeAlias, pub) — Type-erased future returned by `MultiStreamBuilder::init` while subscribing to many sub-kinds.
-- `barter_data::streams::builder::multi::MultiStreamBuilder` (Struct, pub) — Builder composing multiple `StreamBuilder`s across `SubKind`s to produce one merged `Streams` per kind.
-- `barter_data::streams::consumer::MarketStreamEvent` (TypeAlias, pub) — Alias for a market-stream event (typically `Result<MarketEvent, _>` plus reconnection signals).
-- `barter_data::streams::consumer::MarketStreamResult` (TypeAlias, pub) — Alias for the result type produced by consuming a market stream.
-- `barter_data::streams::consumer::StreamKey` (Struct, pub) — Composite key identifying one logical stream (exchange + sub kind).
-- `barter_data::streams::handle::Command` (Enum, pub) — Stream control command (e.g. `Stop`) sent to per-stream worker tasks.
-- `barter_data::streams::handle::DynHandle` (Trait, pub) — Type-erased handle trait letting the dynamic builder hold heterogeneous stream handles uniformly.
-- `barter_data::streams::handle::SubEntry` (Struct, pub) — Entry describing one active subscription owned by a `TypedHandle`.
-- `barter_data::streams::handle::TypedHandle` (Struct, pub) — Concrete typed handle controlling one stream worker (sender + sub-entries).
-- `barter_data::streams::reconnect::Event` (Enum, pub) — Event type for reconnecting streams: payload, disconnect, reconnect.
-- `barter_data::streams::reconnect::stream::ReconnectingStream` (Trait, pub) — Trait wrapping an inner stream to add automatic reconnection with backoff.
-- `barter_data::streams::reconnect::stream::ReconnectionBackoffPolicy` (Struct, pub) — Configuration controlling reconnect attempt backoff (base, factor, max, jitter).
-- `barter_data::streams::reconnect::stream::ReconnectionState` (Struct, pub(in barter_data::streams::reconnect::stream)) — Internal state machine for the reconnecting-stream wrapper.
-- `barter_data::streams::task::ActiveSubs` (Struct, pub(in barter_data::streams::task)) — Internal record of currently-active subscriptions for a worker task.
-- `barter_data::subscriber::Subscribed` (Struct, pub) — Output of a `Subscriber`: ready WebSocket, subscription map, and validated state.
-- `barter_data::subscriber::Subscriber` (Trait, pub) — Trait performing the WS subscription handshake for an exchange.
-- `barter_data::subscriber::WebSocketSubscriber` (Struct, pub) — Default `Subscriber` impl built on top of `barter-integration` WebSocket.
-- `barter_data::subscriber::mapper::SubscriptionMapper` (Trait, pub) — Trait mapping abstract `Subscription`s to concrete exchange `ExchangeSub` payloads.
-- `barter_data::subscriber::mapper::WebSocketSubMapper` (Struct, pub) — Default WS `SubscriptionMapper` impl.
-- `barter_data::subscriber::validator::SubscriptionValidator` (Trait, pub) — Trait validating the exchange's response to a subscription request.
-- `barter_data::subscriber::validator::WebSocketSubValidator` (Struct, pub) — Default WS `SubscriptionValidator` impl used by most exchanges.
-- `barter_data::subscription::Map` (Struct, pub) — Subscription-id-to-instrument-key map used by transformers to route incoming messages.
-- `barter_data::subscription::SubKind` (Enum, pub) — Top-level subscription kind (PublicTrades, OrderBooksL1/L2/L3, Candles, Liquidations, …).
-- `barter_data::subscription::Subscription` (Struct, pub) — User-facing subscription record: exchange + instrument + sub-kind.
-- `barter_data::subscription::SubscriptionKind` (Trait, pub) — Sealed trait implemented by zero-sized markers like `PublicTrades` / `OrderBooksL2` to type subscriptions.
-- `barter_data::subscription::SubscriptionMeta` (Struct, pub) — Metadata returned alongside a subscription describing channel/market id pairs.
-- `barter_data::subscription::book::OrderBookEvent` (Enum, pub) — Normalised order-book event (snapshot replace vs incremental update).
-- `barter_data::subscription::book::OrderBookL1` (Struct, pub) — Normalised L1 best bid/ask quote payload.
-- `barter_data::subscription::book::OrderBooksL1` (Struct, pub) — Zero-sized `SubscriptionKind` marker for L1 order-book subscriptions.
-- `barter_data::subscription::book::OrderBooksL2` (Struct, pub) — Zero-sized `SubscriptionKind` marker for L2 order-book subscriptions.
-- `barter_data::subscription::book::OrderBooksL3` (Struct, pub) — Zero-sized `SubscriptionKind` marker for L3 order-book subscriptions.
-- `barter_data::subscription::candle::Candle` (Struct, pub) — Normalised OHLCV candle (open, high, low, close, volume, trade count, close time).
-- `barter_data::subscription::candle::Candles` (Struct, pub) — Zero-sized `SubscriptionKind` marker for candle subscriptions.
-- `barter_data::subscription::candle::Interval` (Enum, pub) — Closed enum of supported kline intervals (1m, 5m, 1h, 1d, …) with parse/display.
-- `barter_data::subscription::candle::ParseIntervalError` (Struct, pub) — Error type returned when parsing an `Interval` from string fails.
-- `barter_data::subscription::liquidation::Liquidation` (Struct, pub) — Normalised liquidation event (side, price, qty, time).
-- `barter_data::subscription::liquidation::Liquidations` (Struct, pub) — Zero-sized `SubscriptionKind` marker for liquidation subscriptions.
-- `barter_data::subscription::trade::PublicTrade` (Struct, pub) — Normalised public trade event (id, price, qty, side).
-- `barter_data::subscription::trade::PublicTrades` (Struct, pub) — Zero-sized `SubscriptionKind` marker for public-trade subscriptions.
-- `barter_data::trade::RestTrade` (Struct, pub) — Normalised REST-historical trade row used by `TradeFetcher` implementations.
-- `barter_data::transformer::ExchangeTransformer` (Trait, pub) — Trait turning protocol-level exchange messages into `MarketEvent`s within an `ExchangeStream`.
-- `barter_data::transformer::stateless::StatelessTransformer` (Struct, pub) — Default stateless `ExchangeTransformer` implementation for one-to-one message decoding (trades, candles, L1).
-
-## barter_execution (57 types)
-
-- `barter_execution::AccountEvent` (Struct, pub) — Per-exchange account event envelope carrying the originating `ExchangeKey` and a typed `AccountEventKind`.
-- `barter_execution::AccountEventKind` (Enum, pub) — Union of account-event payloads: snapshot, balance, order snapshot, cancel response, or trade.
-- `barter_execution::AccountSnapshot` (Struct, pub) — Full account snapshot (exchange + balances + per-instrument order snapshots) used to seed engine state.
-- `barter_execution::InstrumentAccountSnapshot` (Struct, pub) — Per-instrument slice of an `AccountSnapshot` listing all known orders for that instrument.
-- `barter_execution::UnindexedAccountEvent` (TypeAlias, pub) — Alias for an `AccountEvent` keyed on raw exchange/asset/instrument names before indexing.
-- `barter_execution::UnindexedAccountSnapshot` (TypeAlias, pub) — Alias for an `AccountSnapshot` keyed on raw exchange/asset/instrument names before indexing.
-- `barter_execution::balance::AssetBalance` (Struct, pub) — Per-asset balance record (asset key + `Balance` + exchange timestamp).
-- `barter_execution::balance::Balance` (Struct, pub) — `{ total, free }` balance amounts; `used` is computed as `total - free`.
-- `barter_execution::client::ExecutionClient` (Trait, pub) — Trait an exchange execution backend implements (account snapshot/stream, open/cancel orders, fetch balances/trades).
-- `barter_execution::client::mock::MockExecution` (Struct, pub) — In-process `ExecutionClient` impl driving a `MockExchange` via mpsc/broadcast channels.
-- `barter_execution::client::mock::MockExecutionClientConfig` (Struct, pub) — Construction config for `MockExecution` bundling the request tx and event rx.
-- `barter_execution::client::mock::MockExecutionConfig` (Struct, pub) — User-facing mock exchange configuration (exchange id, initial state, latency, fees).
-- `barter_execution::error::ApiError` (Enum, pub) — API-level exchange error variants (invalid asset/instrument, rate limit, insufficient balance, order rejected, …).
-- `barter_execution::error::ClientError` (Enum, pub) — Top-level execution client error union (connectivity, api, account-snapshot, account-stream).
-- `barter_execution::error::ConnectivityError` (Enum, pub) — Connectivity-class execution errors (exchange offline, timeout, socket error).
-- `barter_execution::error::KeyError` (Enum, pub) — Lookup-failure error when mapping exchange names to internal `*Index` keys.
-- `barter_execution::error::OrderError` (Enum, pub) — Order-level error union covering connectivity and api-rejected outcomes.
-- `barter_execution::error::UnindexedApiError` (TypeAlias, pub) — Alias for `ApiError` keyed on raw exchange-side names.
-- `barter_execution::error::UnindexedClientError` (TypeAlias, pub) — Alias for `ClientError` keyed on raw exchange-side names.
-- `barter_execution::error::UnindexedOrderError` (TypeAlias, pub) — Alias for `OrderError` keyed on raw exchange-side names.
-- `barter_execution::exchange::mock::MockExchange` (Struct, pub) — Tokio-driven mock exchange holding `AccountState` and reacting to `MockExchangeRequest`s.
-- `barter_execution::exchange::mock::OpenOrderNotifications` (Struct, pub) — Pair of balance snapshot + simulated trade emitted by `MockExchange` after a fill.
-- `barter_execution::exchange::mock::account::AccountState` (Struct, pub) — Mock exchange's in-memory account state (balances, open/cancelled orders, trades).
-- `barter_execution::exchange::mock::request::MockExchangeRequest` (Struct, pub) — Request envelope sent to `MockExchange` carrying timestamp and `MockExchangeRequestKind`.
-- `barter_execution::exchange::mock::request::MockExchangeRequestKind` (Enum, pub) — Union of mock-exchange request kinds (fetch snapshot/balances/orders/trades, cancel/open order).
-- `barter_execution::indexer::AccountEventIndexer` (Struct, pub) — Translator from `UnindexedAccountEvent`/`UnindexedOrder*` into indexed counterparts via an `ExecutionInstrumentMap`.
-- `barter_execution::indexer::IndexedAccountStream` (TypeAlias, pub) — Alias for an `IndexedStream` wrapping an account-event stream with `AccountEventIndexer`.
-- `barter_execution::map::ExecutionInstrumentMap` (Struct, pub) — Bidirectional map between exchange-side names and Barter-internal `*Index` keys for one execution venue.
-- `barter_execution::order::Order` (Struct, pub) — Generic order record (key, side, price, qty, kind, TIF, state) parameterised by state type.
-- `barter_execution::order::OrderEvent` (Struct, pub) — Generic order event envelope (`OrderKey` + state); used as the base for requests, responses, and snapshots.
-- `barter_execution::order::OrderKey` (Struct, pub) — Composite order key (exchange, instrument, strategy, client-order-id) used to identify an order.
-- `barter_execution::order::OrderKind` (Enum, pub) — Order kind enum: `Market` or `Limit`.
-- `barter_execution::order::OrderSnapshot` (TypeAlias, pub) — Alias for an `Order` carrying its full `OrderState` snapshot.
-- `barter_execution::order::TimeInForce` (Enum, pub) — Time-in-force enum (GTC w/ post-only flag, GTD, FOK, IOC).
-- `barter_execution::order::UnindexedOrder` (TypeAlias, pub) — Alias for an `Order` keyed on exchange-side names with `UnindexedOrderState`.
-- `barter_execution::order::UnindexedOrderKey` (TypeAlias, pub) — Alias for an `OrderKey` keyed on exchange-side names.
-- `barter_execution::order::UnindexedOrderSnapshot` (TypeAlias, pub) — Alias for an `OrderSnapshot` keyed on exchange-side names.
-- `barter_execution::order::id::ClientOrderId` (Struct, pub) — `SmolStr`-backed client-supplied order id with `random` helper for stack-allocated ids.
-- `barter_execution::order::id::OrderId` (Struct, pub) — `SmolStr`-backed exchange-assigned order id.
-- `barter_execution::order::id::StrategyId` (Struct, pub) — `SmolStr` newtype tagging which strategy owns an order/trade.
-- `barter_execution::order::request::OrderRequestCancel` (TypeAlias, pub) — Alias for an `OrderEvent` carrying a `RequestCancel`.
-- `barter_execution::order::request::OrderRequestOpen` (TypeAlias, pub) — Alias for an `OrderEvent` carrying a `RequestOpen`.
-- `barter_execution::order::request::OrderResponseCancel` (TypeAlias, pub) — Alias for an `OrderEvent` carrying the cancel response (`Result<Cancelled, OrderError>`).
-- `barter_execution::order::request::RequestCancel` (Struct, pub) — Cancel-request payload: optional `OrderId` (None means cancel by client-order-id).
-- `barter_execution::order::request::RequestOpen` (Struct, pub) — Open-request payload (side, price, qty, kind, TIF) used to construct new orders.
-- `barter_execution::order::request::UnindexedOrderResponseCancel` (TypeAlias, pub) — Alias for `OrderResponseCancel` keyed on exchange-side names.
-- `barter_execution::order::state::ActiveOrderState` (Enum, pub) — Active order states (OpenInFlight, Open, CancelInFlight).
-- `barter_execution::order::state::CancelInFlight` (Struct, pub) — Marker carrying the last-known `Open` while a cancel request is in flight.
-- `barter_execution::order::state::Cancelled` (Struct, pub) — Terminal cancelled state with exchange-assigned id and timestamp.
-- `barter_execution::order::state::InactiveOrderState` (Enum, pub) — Inactive order states (Cancelled, FullyFilled, OpenFailed, Expired).
-- `barter_execution::order::state::Open` (Struct, pub) — Open-order state carrying exchange id, accept time, and filled qty.
-- `barter_execution::order::state::OpenInFlight` (Struct, pub) — Zero-sized marker meaning an open request has been sent but no exchange ack received yet.
-- `barter_execution::order::state::OrderState` (Enum, pub) — Top-level order state union: `Active(ActiveOrderState)` or `Inactive(InactiveOrderState)`.
-- `barter_execution::order::state::UnindexedOrderState` (TypeAlias, pub) — Alias for `OrderState` keyed on exchange-side names.
-- `barter_execution::trade::AssetFees` (Struct, pub) — Per-asset fee record attached to a `Trade` (which asset, how much).
-- `barter_execution::trade::Trade` (Struct, pub) — Executed trade record (id, order id, instrument, strategy, time, side, price, qty, fees).
-- `barter_execution::trade::TradeId` (Struct, pub) — `SmolStr`-backed exchange-assigned trade id.
+Per-crate type inventory from `mcp__rust-code-mcp-refactor__crate_types` (hypergraph snapshot `edb921b2e8ad5bb860faf9bb8f88fd0b`). One type per line, grouped by crate. Descriptions sourced from 6 per-crate subagents that each read the corresponding `.skeleton/*.rs` aggregate and ran `find_definition` + `find_references` against the hypergraph (no `read_file_content` calls).
 
 ## barter (142 types)
 
-- `barter::EngineEvent` (Enum, pub) — Top-level engine input event union (commands, trading-state updates, account events, market events, shutdown).
-- `barter::Sequence` (Struct, pub) — Monotonically incrementing event-processing sequence number stamped on `AuditTick`/`EngineMeta`.
-- `barter::Timed` (Struct, pub) — Generic `{ value, time }` wrapper used to timestamp inputs into the engine.
-- `barter::backtest::BacktestArgsConstant` (Struct, pub) — Constants shared across a backtest batch (instruments, execution configs, market data, interval, engine state seed).
-- `barter::backtest::BacktestArgsDynamic` (Struct, pub) — Per-backtest variables (id, risk-free return, strategy, risk) varied within a batch.
-- `barter::backtest::market_data::BacktestMarketData` (Trait, pub) — Trait providing the historical market-event stream and the first-event timestamp for a backtest.
-- `barter::backtest::market_data::MarketDataInMemory` (Struct, pub) — In-memory `BacktestMarketData` impl backed by an `Arc<Vec<MarketStreamEvent>>` cloned per stream.
-- `barter::backtest::stepper::BacktestAccountSample` (Enum, pub) — Account-level sample (snapshot or balance) observed while stepping a Barter engine.
-- `barter::backtest::stepper::BacktestEngineAudit` (TypeAlias, pub) — Alias for the indexed-engine backtest `EngineAudit` type.
-- `barter::backtest::stepper::BacktestEngineEventSink` (Struct, pub) — `BacktestEventSink` impl that collects engine outputs into a reusable domain-shaped result surface.
-- `barter::backtest::stepper::BacktestEngineStep` (Struct, pub) — Domain-shaped result extracted from one Barter engine audit tick (trades, exits, samples).
-- `barter::backtest::stepper::BacktestEventSink` (Trait, pub) — Hook receiving per-step audit ticks plus a final on-finish callback during a backtest run.
-- `barter::backtest::stepper::BacktestStep` (Struct, pub) — Result of processing one event with a `BacktestStepper` (audit + outcome).
-- `barter::backtest::stepper::BacktestStepOutcome` (Enum, pub) — Outcome flag for a step: `Continue` or `Terminal`.
-- `barter::backtest::stepper::BacktestStepper` (Struct, pub) — Step-wise backtest driver wrapping an already-constructed engine and forwarding ticks to a sink.
-- `barter::backtest::stepper::BacktestStepperOutput` (Struct, pub) — Output of `BacktestStepper::finish` (engine, sink, shutdown audit, shutdown result).
-- `barter::backtest::stepper::NoopBacktestEventSink` (Struct, pub) — `BacktestEventSink` impl that discards every step.
-- `barter::backtest::stepper::VecBacktestEventSink` (Struct, pub) — `BacktestEventSink` impl that stores every audit tick in memory.
-- `barter::backtest::summary::BacktestSummary` (Struct, pub) — Per-backtest summary (id, risk-free return, `TradingSummary`).
-- `barter::backtest::summary::MultiBacktestSummary` (Struct, pub) — Container for multiple `BacktestSummary`s plus batch metadata (count, duration).
-- `barter::engine::Engine` (Struct, pub) — Central algorithmic trading engine processing events and maintaining indexed state, strategy, and risk.
-- `barter::engine::EngineMeta` (Struct, pub) — Engine metadata: start time and monotonic processing `Sequence`.
-- `barter::engine::EngineOutput` (Enum, pub) — Union of engine-produced outputs (commanded action, trading-disabled, disconnects, position exit, algo orders).
-- `barter::engine::Processor` (Trait, pub) — Core trait for engine components: `process(event) -> Audit` shape implemented by `Engine` and its sub-processors.
-- `barter::engine::UpdateFromAccountOutput` (Enum, pub) — Output of `update_from_account_stream` (none, on-disconnect, position exit).
-- `barter::engine::UpdateFromMarketOutput` (Enum, pub) — Output of `update_from_market_stream` (none, on-disconnect).
-- `barter::engine::UpdateTradingStateOutput` (Enum, pub) — Output of `update_from_trading_state_update` (none, on-trading-disabled).
-- `barter::engine::action::ActionOutput` (Enum, pub) — Union of engine-action outputs (algo-orders, cancels, opens, close-positions).
-- `barter::engine::action::cancel_orders::CancelOrders` (Trait, pub) — Trait the engine implements to action `CancelOrders` commands by emitting cancel requests.
-- `barter::engine::action::close_positions::ClosePositions` (Trait, pub) — Trait the engine implements to generate and send orders that close open positions.
-- `barter::engine::action::generate_algo_orders::GenerateAlgoOrders` (Trait, pub) — Trait the engine implements to generate and send algorithmic-strategy order requests each tick.
-- `barter::engine::action::generate_algo_orders::GenerateAlgoOrdersOutput` (Struct, pub) — Summary of an algo-order generation pass (sent orders, refused cancels/opens).
-- `barter::engine::action::send_requests::SendCancelsAndOpensOutput` (Struct, pub) — Aggregated cancel + open send results returned by close-positions and similar actions.
-- `barter::engine::action::send_requests::SendRequests` (Trait, pub) — Trait the engine implements to push order requests through its `ExecutionTxMap`.
-- `barter::engine::action::send_requests::SendRequestsOutput` (Struct, pub) — Summary of a single send pass (which requests were sent, which errored).
-- `barter::engine::audit::AuditTick` (Struct, pub) — Generic `{ event, context }` audit envelope produced by the engine's audit stream.
-- `barter::engine::audit::Auditor` (Trait, pub) — Trait implemented by engine-style components to produce `AuditTick`s and full state snapshots.
-- `barter::engine::audit::EngineAudit` (Enum, pub) — Engine audit-event variant (`FeedEnded` vs `Process(ProcessAudit)`).
-- `barter::engine::audit::ProcessAudit` (Struct, pub) — Audit payload describing one processed event (the event, outputs, unrecoverable errors).
-- `barter::engine::audit::context::EngineContext` (Struct, pub) — Audit context attached to every `AuditTick` carrying the `Sequence` and `DateTime<Utc>`.
-- `barter::engine::audit::state_replica::StateReplicaManager` (Struct, pub) — Drives a non-hot-path `EngineState` replica by consuming the audit stream; useful for UIs/web apps.
-- `barter::engine::clock::EngineClock` (Trait, pub) — Trait exposing the engine's "current time" (live or historical).
-- `barter::engine::clock::HistoricalClock` (Struct, pub) — `EngineClock` backed by processed event timestamps; used in backtests.
-- `barter::engine::clock::HistoricalClockInner` (Struct, pub(in barter::engine::clock)) — Internal locked-state struct backing `HistoricalClock`.
-- `barter::engine::clock::LiveClock` (Struct, pub) — `EngineClock` impl that returns `Utc::now()` for live trading.
-- `barter::engine::clock::TimeExchange` (Trait, pub) — Trait extracting an "exchange time" from an event so `HistoricalClock` can advance.
-- `barter::engine::command::Command` (Enum, pub) — Trading commands sent into the engine from outside (send cancels/opens, close positions, cancel orders).
-- `barter::engine::error::EngineError` (Enum, pub) — Top-level engine error split into recoverable and unrecoverable variants.
-- `barter::engine::error::RecoverableEngineError` (Enum, pub) — Transient engine errors the engine continues running through (e.g. unhealthy channel).
-- `barter::engine::error::UnrecoverableEngineError` (Enum, pub) — Fatal engine errors triggering graceful shutdown (index error, terminated channel, custom).
-- `barter::engine::execution_tx::ExecutionTxMap` (Trait, pub) — Trait holding per-exchange `Tx<ExecutionRequest>` channels and looking them up by exchange key.
-- `barter::engine::execution_tx::MultiExchangeTxMap` (Struct, pub) — Concrete `ExecutionTxMap` impl backed by an `FnvIndexMap` keyed on `ExchangeId` with optional senders.
-- `barter::engine::state::EngineState` (Struct, pub) — Central engine state aggregating trading flag, global data, connectivity, assets, instruments, and orders.
-- `barter::engine::state::asset::AssetState` (Struct, pub) — Per-asset engine state slot (balance, last update).
-- `barter::engine::state::asset::AssetStates` (Struct, pub) — Indexed collection of `AssetState`s keyed by `AssetIndex` and ExchangeAsset.
-- `barter::engine::state::asset::filter::AssetFilter` (Enum, pub) — Predicate enum used to scope operations to a subset of assets (all/exchange/specific).
-- `barter::engine::state::builder::EngineStateBuilder` (Struct, pub) — Builder constructing a fully populated `EngineState` from instruments, executions, and seed data.
-- `barter::engine::state::connectivity::ConnectivityState` (Struct, pub) — Per-connection health record (market/account streams) used by the engine.
-- `barter::engine::state::connectivity::ConnectivityStates` (Struct, pub) — Indexed collection of `ConnectivityState` across all exchanges.
-- `barter::engine::state::connectivity::Health` (Enum, pub) — Health enum (Healthy/Reconnecting) for a connection slot.
-- `barter::engine::state::global::DefaultGlobalData` (Struct, pub) — Default no-op `GlobalData` payload (zero state) used in stock engine state.
-- `barter::engine::state::instrument::InstrumentState` (Struct, pub) — Per-instrument engine state (data, position manager, orders).
-- `barter::engine::state::instrument::InstrumentStates` (Struct, pub) — Indexed collection of `InstrumentState`s keyed by `InstrumentIndex`.
-- `barter::engine::state::instrument::data::DefaultInstrumentMarketData` (Struct, pub) — Default `InstrumentDataState` impl carrying L1 quote and recent trade summary.
-- `barter::engine::state::instrument::data::InstrumentDataState` (Trait, pub) — Trait the engine requires from per-instrument data so strategies can read latest market info.
-- `barter::engine::state::instrument::filter::InstrumentFilter` (Enum, pub) — Predicate enum scoping engine actions to a subset of instruments (all/exchange/asset/specific).
-- `barter::engine::state::order::Orders` (Struct, pub) — Per-instrument orders collection (in-flight + open) with helpers to upsert from snapshots.
-- `barter::engine::state::order::in_flight_recorder::InFlightRequestRecorder` (Trait, pub) — Trait recording outbound order requests so the engine can dedupe and time them out.
-- `barter::engine::state::order::manager::OrderManager` (Trait, pub) — Trait abstracting per-instrument order bookkeeping (used to plug in custom storage).
-- `barter::engine::state::position::Position` (Struct, pub) — Open-position record (instrument, side, size, entry, pnl bookkeeping).
-- `barter::engine::state::position::PositionExited` (Struct, pub) — Record of a closed position (entry/exit prices, qty, fees, realised pnl).
-- `barter::engine::state::position::PositionManager` (Struct, pub) — Per-instrument position bookkeeping driven by trades and used by strategies.
-- `barter::engine::state::trading::TradingState` (Enum, pub) — Top-level trading flag (Enabled/Disabled) toggled by commands.
-- `barter::engine::state::trading::TradingStateUpdateAudit` (Struct, pub) — Audit data describing a `TradingState` transition.
-- `barter::error::BarterError` (Enum, pub) — Top-level Barter error union spanning engine/execution/data/index errors.
-- `barter::error::RxDropped` (Struct, pub) — Marker error returned when an mpsc receiver was dropped (engine cannot continue using channel).
-- `barter::execution::AccountStreamEvent` (TypeAlias, pub) — Alias for the engine-facing account stream event type (snapshot + reconnect signals).
-- `barter::execution::Execution` (Struct, pub) — Bundled execution-client + execution-manager pair for one exchange.
-- `barter::execution::builder::ExecutionBuild` (Struct, pub) — Constructed-but-unstarted execution setup (managers + handles) ready to run.
-- `barter::execution::builder::ExecutionBuildFutures` (Struct, pub) — Per-execution-manager init futures awaited during execution startup.
-- `barter::execution::builder::ExecutionBuilder` (Struct, pub) — Builder constructing per-exchange execution managers and wiring up routing channels.
-- `barter::execution::builder::ExecutionHandles` (Struct, pub) — Bundle of join-handles + shutdown senders for the spawned execution tasks.
-- `barter::execution::builder::ExecutionInitFuture` (TypeAlias, pub(in barter::execution::builder)) — Internal alias for the per-execution init future the builder awaits.
-- `barter::execution::builder::RunFuture` (TypeAlias, pub(in barter::execution::builder)) — Internal alias for the long-running execution future spawned by the builder.
-- `barter::execution::error::ExecutionError` (Enum, pub) — Execution-layer error (used inside the engine wiring around `ExecutionManager`).
-- `barter::execution::manager::ExecutionManager` (Struct, pub) — Per-exchange manager: owns the `ExecutionClient`, drains `ExecutionRequest`s, and re-emits `AccountEvent`s.
-- `barter::execution::request::ExecutionRequest` (Enum, pub) — Request enum routed to an `ExecutionManager` (snapshot, stream init, open/cancel order).
-- `barter::execution::request::RequestFuture` (Struct, pub(in barter::execution)) — Internal pin-projected future tracking an in-flight execution request.
-- `barter::logging::AuditSpanFilter` (Struct, pub) — Tracing span filter that drops `audit_replica_state_update` spans to keep audit logs quiet.
-- `barter::risk::DefaultRiskManager` (Struct, pub) — Zero-config `RiskManager` impl that approves every order without checks.
-- `barter::risk::RiskApproved` (Struct, pub) — Wrapper marking an order request as approved by the risk manager.
-- `barter::risk::RiskManager` (Trait, pub) — Trait the engine consults before sending orders; returns approved/refused order partitions.
-- `barter::risk::RiskRefused` (Struct, pub) — Wrapper marking an order request as refused by the risk manager with reason.
-- `barter::risk::check::CheckFailHigherThan` (Struct, pub) — `RiskCheck` impl that fails when a measured value exceeds the configured limit.
-- `barter::risk::check::CheckHigherThan` (Struct, pub) — `RiskCheck` impl that passes when a measured value exceeds the configured threshold.
-- `barter::risk::check::RiskCheck` (Trait, pub) — Trait defining a single risk-check predicate evaluated by `RiskManager` impls.
-- `barter::shutdown::AsyncShutdown` (Trait, pub) — Trait for async-shutdownable components (returns a future).
-- `barter::shutdown::Shutdown` (Struct, pub) — Unit-style shutdown marker passed through audit/engine streams.
-- `barter::shutdown::SyncShutdown` (Trait, pub) — Trait for sync-shutdownable components used by `Engine` runners.
-- `barter::statistic::metric::calmar::CalmarRatio` (Struct, pub) — Calmar-ratio metric (annualised return divided by max drawdown).
-- `barter::statistic::metric::drawdown::Drawdown` (Struct, pub) — Single drawdown observation (start, end, peak/trough, magnitude).
-- `barter::statistic::metric::drawdown::DrawdownGenerator` (Struct, pub) — Streaming generator that emits `Drawdown` records from an equity curve.
-- `barter::statistic::metric::drawdown::max::MaxDrawdown` (Struct, pub) — Maximum-drawdown metric over a sample.
-- `barter::statistic::metric::drawdown::max::MaxDrawdownGenerator` (Struct, pub) — Streaming generator tracking the maximum `Drawdown` seen so far.
-- `barter::statistic::metric::drawdown::mean::MeanDrawdown` (Struct, pub) — Mean-drawdown summary metric.
-- `barter::statistic::metric::drawdown::mean::MeanDrawdownGenerator` (Struct, pub) — Streaming generator computing mean drawdown across a sample.
-- `barter::statistic::metric::profit_factor::ProfitFactor` (Struct, pub) — Profit-factor metric (gross profit / gross loss).
-- `barter::statistic::metric::rate_of_return::RateOfReturn` (Struct, pub) — Rate-of-return metric parameterised by interval.
-- `barter::statistic::metric::sharpe::SharpeRatio` (Struct, pub) — Sharpe-ratio metric (mean excess return / std dev).
-- `barter::statistic::metric::sortino::SortinoRatio` (Struct, pub) — Sortino-ratio metric (mean excess return / downside std dev).
-- `barter::statistic::metric::win_rate::WinRate` (Struct, pub) — Win-rate metric (winning trades / total trades).
-- `barter::statistic::summary::AssetTearSheetManager` (Trait, pub) — Trait wiring per-asset trade samples into the `TradingSummary` aggregation.
-- `barter::statistic::summary::InstrumentTearSheetManager` (Trait, pub) — Trait wiring per-instrument trade samples into the `TradingSummary` aggregation.
-- `barter::statistic::summary::TradingSummary` (Struct, pub) — Aggregate trading summary (per-instrument & per-asset `TearSheet`s, dataset stats).
-- `barter::statistic::summary::TradingSummaryGenerator` (Struct, pub) — Streaming generator building a `TradingSummary` from engine trade/position events.
-- `barter::statistic::summary::asset::TearSheetAsset` (Struct, pub) — Per-asset tear sheet (balances dataset + dispersion + drawdowns).
-- `barter::statistic::summary::asset::TearSheetAssetGenerator` (Struct, pub) — Generator producing a `TearSheetAsset` from a stream of balance snapshots.
-- `barter::statistic::summary::dataset::DataSetSummary` (Struct, pub) — Summary stats for a dataset of decimal returns (count, mean, dispersion, drawdown).
-- `barter::statistic::summary::dataset::dispersion::Dispersion` (Struct, pub) — Dispersion metric bundle (range, variance, std-dev) over a sample.
-- `barter::statistic::summary::dataset::dispersion::Range` (Struct, pub) — `{ min, max }` range pair used inside `Dispersion`.
-- `barter::statistic::summary::instrument::TearSheet` (Struct, pub) — Per-instrument tear sheet (PnL returns, sharpe, sortino, calmar, win-rate, profit-factor, drawdowns).
-- `barter::statistic::summary::instrument::TearSheetGenerator` (Struct, pub) — Generator producing a per-instrument `TearSheet` from streamed `PnLReturns`.
-- `barter::statistic::summary::pnl::PnLReturns` (Struct, pub) — Per-instrument PnL returns dataset feeding the `TearSheetGenerator`.
-- `barter::statistic::time::Annual252` (Struct, pub) — Time-interval marker for 252-day-annualised metrics (US trading calendar).
-- `barter::statistic::time::Annual365` (Struct, pub) — Time-interval marker for 365-day-annualised metrics (crypto-style).
-- `barter::statistic::time::Daily` (Struct, pub) — Time-interval marker indicating daily sampling for performance metrics.
-- `barter::statistic::time::TimeInterval` (Trait, pub) — Trait abstracting interval-annualisation factor used by Sharpe/Sortino/Calmar.
-- `barter::strategy::DefaultStrategy` (Struct, pub) — No-op `AlgoStrategy`/`ClosePositionsStrategy` implementation useful for skeleton systems.
-- `barter::strategy::algo::AlgoStrategy` (Trait, pub) — Trait implemented by user strategies to generate algorithmic open/cancel order requests each tick.
-- `barter::strategy::close_positions::ClosePositionsStrategy` (Trait, pub) — Trait deciding how positions are closed when the engine actions `ClosePositions`.
-- `barter::strategy::on_disconnect::OnDisconnectStrategy` (Trait, pub) — Trait the engine calls when an account or market stream disconnects, returning a strategy-defined output.
-- `barter::strategy::on_trading_disabled::OnTradingDisabled` (Trait, pub) — Trait the engine calls when `TradingState` transitions to `Disabled`.
-- `barter::system::System` (Struct, pub) — Top-level live trading system: composes engine, execution, streams, audit channel into one driver.
-- `barter::system::SystemAuxillaryHandles` (Struct, pub) — Auxiliary join handles for spawned tasks (audit, execution managers) owned by a `System`.
-- `barter::system::builder::AuditMode` (Enum, pub) — Builder mode toggling whether the system spawns an audit consumer.
-- `barter::system::builder::EngineFeedMode` (Enum, pub) — Builder mode choosing synchronous vs asynchronous engine event feeding.
-- `barter::system::builder::SystemArgs` (Struct, pub) — Inputs to a `SystemBuilder` (instruments, executions, market data, clock, strategy, risk).
-- `barter::system::builder::SystemBuild` (Struct, pub) — Constructed-but-unstarted `System` returned by `SystemBuilder::build` before `init`.
-- `barter::system::builder::SystemBuilder` (Struct, pub) — Builder that wires engine/execution/streams/audit into a runnable `System`.
-- `barter::system::config::ExecutionConfig` (Enum, pub) — User-facing execution-config enum (one variant per supported execution backend, e.g. Mock).
-- `barter::system::config::InstrumentConfig` (Struct, pub) — User-facing instrument-config row (exchange, base/quote, kind, optional spec).
-- `barter::system::config::SystemConfig` (Struct, pub) — Top-level config (instruments + executions) used to seed `SystemBuilder` from JSON/TOML.
+- `barter::EngineEvent` (Enum, pub) — Default tagged `Engine` input event enum carrying shutdown, command, trading-state, account-stream, and market-stream variants consumed by `Engine::process`.
+- `barter::Sequence` (Struct, pub) — Monotonic `u64` counter wrapper stored on `EngineMeta` to tag every processed event and resulting `AuditTick`.
+- `barter::Timed` (Struct, pub) — Generic `{ value, time }` wrapper pairing any value with a `DateTime<Utc>` timestamp, used widely for prices, balances, and snapshots.
+- `barter::backtest::BacktestArgsConstant` (Struct, pub) — Shared backtest-batch inputs (instruments, executions, market data, summary interval, seed `EngineState`) reused across every variant in `run_backtests`.
+- `barter::backtest::BacktestArgsDynamic` (Struct, pub) — Per-backtest variant inputs (id, risk-free return, strategy, risk) zipped with `BacktestArgsConstant` to drive a single backtest run.
+- `barter::backtest::market_data::BacktestMarketData` (Trait, pub) — Trait providing a backtest `MarketStreamEvent` `Stream` plus first-event timestamp used to seed `HistoricalClock` for backtests.
+- `barter::backtest::market_data::MarketDataInMemory` (Struct, pub) — `BacktestMarketData` impl that stores all `MarketStreamEvent`s in an `Arc<Vec<…>>` and lazily clones them into a stream.
+- `barter::backtest::stepper::BacktestAccountSample` (Enum, pub) — Enum capturing the two account-side samples (full `AccountSnapshot` or `Snapshot<AssetBalance>`) extracted per `BacktestStepper` step.
+- `barter::backtest::stepper::BacktestEngineAudit` (TypeAlias, pub) — Type alias for the indexed `EngineAudit<EngineEvent, EngineOutput<…>>` produced by Barter's backtest engine path.
+- `barter::backtest::stepper::BacktestEngineEventSink` (Struct, pub) — `BacktestEventSink` that accumulates per-step trades, position exits, account samples, and a final `TradingSummary` for downstream domain consumers.
+- `barter::backtest::stepper::BacktestEngineStep` (Struct, pub) — Domain-shaped record extracted from one engine audit tick: the audit plus trades, position exits, and account samples observed that step.
+- `barter::backtest::stepper::BacktestEventSink` (Trait, pub) — Trait implemented by step observers (UI replay buffers, samplers) — receives the engine and audit after each step and on finish.
+- `barter::backtest::stepper::BacktestStep` (Struct, pub) — Result of `BacktestStepper::step`: the produced `AuditTick` plus a `BacktestStepOutcome` signalling whether the engine is terminal.
+- `barter::backtest::stepper::BacktestStepOutcome` (Enum, pub) — Two-variant enum (`Continue` / `Terminal`) returned from each `BacktestStepper` step to indicate whether the engine has shut down.
+- `barter::backtest::stepper::BacktestStepper` (Struct, pub) — Step-wise backtest driver owning an `Engine + Sink`, exposing `step`/`run`/`finish` so callers can feed events one at a time and observe each tick.
+- `barter::backtest::stepper::BacktestStepperOutput` (Struct, pub) — Container returned by `BacktestStepper::finish` bundling the final engine, sink, terminal audit tick, and engine shutdown result.
+- `barter::backtest::stepper::NoopBacktestEventSink` (Struct, pub) — Zero-sized `BacktestEventSink` implementation that discards every step — the default sink for `BacktestStepper`.
+- `barter::backtest::stepper::VecBacktestEventSink` (Struct, pub) — `BacktestEventSink` that simply pushes every `AuditTick<Audit, EngineContext>` into an in-memory `Vec` for later inspection.
+- `barter::backtest::summary::BacktestSummary` (Struct, pub) — Output of a single `backtest` call carrying the dynamic id, `risk_free_return`, and resulting `TradingSummary<Interval>`.
+- `barter::backtest::summary::MultiBacktestSummary` (Struct, pub) — Aggregate output of `run_backtests` holding the batch count, total `Duration`, and a `Vec<BacktestSummary>` of all variants.
+- `barter::engine::Engine` (Struct, pub) — Algorithmic trading engine generic over `Clock/State/ExecutionTxs/Strategy/Risk` that processes input events, maintains `EngineState`, and emits orders.
+- `barter::engine::EngineMeta` (Struct, pub) — Running-engine metadata (start time, monotonic `Sequence`) tagged onto every produced `AuditTick`.
+- `barter::engine::EngineOutput` (Enum, pub) — Enum of side-effects an `Engine` produced for one event (commanded action, trading-disabled hook, disconnect hook, position exit, algo orders) — payload of `ProcessAudit`.
+- `barter::engine::Processor` (Trait, pub) — Core engine trait: `process(event) -> Audit`; implemented by `Engine` and by any custom event handler.
+- `barter::engine::UpdateFromAccountOutput` (Enum, pub) — Output of `Engine::update_from_account_stream` (`None`, `OnDisconnect`, or `PositionExit`) folded into the per-event `ProcessAudit`.
+- `barter::engine::UpdateFromMarketOutput` (Enum, pub) — Output of `Engine::update_from_market_stream` (`None` or `OnDisconnect`) folded into the per-event `ProcessAudit`.
+- `barter::engine::UpdateTradingStateOutput` (Enum, pub) — Output of `Engine::update_from_trading_state_update` (`None` or `OnTradingDisabled` payload from the strategy hook).
+- `barter::engine::action::ActionOutput` (Enum, pub) — Tagged enum of outputs from `Engine::action(Command)`: algo orders, cancel orders, open orders, or close-positions results.
+- `barter::engine::action::cancel_orders::CancelOrders` (Trait, pub) — Trait implemented on `Engine` that generates cancel-order requests filtered by an `InstrumentFilter`.
+- `barter::engine::action::close_positions::ClosePositions` (Trait, pub) — Trait implemented on `Engine` that generates and sends the cancel+open requests required to close open positions for a filter.
+- `barter::engine::action::generate_algo_orders::GenerateAlgoOrders` (Trait, pub) — Trait implemented on `Engine` that asks the `AlgoStrategy`+`RiskManager` to produce algo orders and dispatches the approved ones.
+- `barter::engine::action::generate_algo_orders::GenerateAlgoOrdersOutput` (Struct, pub) — Summary of `generate_algo_orders` work — sent cancels/opens plus risk-refused cancels and risk-refused opens.
+- `barter::engine::action::send_requests::SendCancelsAndOpensOutput` (Struct, pub) — Bundles paired `SendRequestsOutput<RequestCancel>` and `SendRequestsOutput<RequestOpen>` describing requests dispatched to `ExecutionManager`.
+- `barter::engine::action::send_requests::SendRequests` (Trait, pub) — Trait implemented on `Engine` that forwards `OrderEvent`s through the `ExecutionTxMap` to per-exchange `ExecutionManager`s.
+- `barter::engine::action::send_requests::SendRequestsOutput` (Struct, pub) — Per-kind summary of dispatched order requests, splitting successfully `sent` from `errors: (order, EngineError)`.
+- `barter::engine::audit::AuditTick` (Struct, pub) — Generic `{ event, context }` envelope wrapping any audit payload with an `EngineContext` — the unit sent on the `AuditStream`.
+- `barter::engine::audit::Auditor` (Trait, pub) — Trait implemented by `Engine` that builds `AuditTick`s — exposes `Snapshot`/`Context` associated types and `audit_snapshot`/`audit<Kind>`.
+- `barter::engine::audit::EngineAudit` (Enum, pub) — Top-level `AuditTick` payload variant: `FeedEnded` terminal sentinel or `Process(ProcessAudit)`.
+- `barter::engine::audit::ProcessAudit` (Struct, pub) — Per-event audit body holding the input `event`, `outputs` (`NoneOneOrMany`), and any `UnrecoverableEngineError`s collected.
+- `barter::engine::audit::context::EngineContext` (Struct, pub) — `AuditTick` context carrying the producing engine's `Sequence` and `DateTime<Utc>` time.
+- `barter::engine::audit::state_replica::StateReplicaManager` (Struct, pub) — Off-hot-path replica builder that consumes the `AuditStream` to maintain a mirrored `EngineState` for UIs and other observers.
+- `barter::engine::clock::EngineClock` (Trait, pub) — Trait defining `time() -> DateTime<Utc>` for the engine — implemented by `LiveClock` and `HistoricalClock`.
+- `barter::engine::clock::HistoricalClock` (Struct, pub) — Backtest clock backed by an `Arc<RwLock<HistoricalClockInner>>` that advances via processed event timestamps.
+- `barter::engine::clock::HistoricalClockInner` (Struct, pub(in barter::engine::clock)) — Module-private interior of `HistoricalClock` (last exchange timestamp) guarded by a `parking_lot::RwLock`.
+- `barter::engine::clock::LiveClock` (Struct, pub) — Zero-sized `EngineClock` impl returning `Utc::now()` for live and paper trading.
+- `barter::engine::clock::TimeExchange` (Trait, pub) — Trait used by `HistoricalClock` to extract an optional exchange timestamp from a processed event.
+- `barter::engine::command::Command` (Enum, pub) — External `Engine` command enum: send cancel/open requests, close positions, or cancel orders by `InstrumentFilter`.
+- `barter::engine::error::EngineError` (Enum, pub) — Top-level engine error splitting into `Recoverable` (transient, engine continues) and `Unrecoverable` (terminates engine).
+- `barter::engine::error::RecoverableEngineError` (Enum, pub) — Transient engine errors the `Engine` can continue from — currently just `ExecutionChannelUnhealthy(String)`.
+- `barter::engine::error::UnrecoverableEngineError` (Enum, pub) — Fatal engine errors that terminate the `Engine` (`IndexError`, `ExecutionChannelTerminated`, `Custom`).
+- `barter::engine::execution_tx::ExecutionTxMap` (Trait, pub) — Trait abstracting per-exchange `Tx<Item=ExecutionRequest>` lookup used by `Engine` to route order requests.
+- `barter::engine::execution_tx::MultiExchangeTxMap` (Struct, pub) — `ExecutionTxMap` impl backed by an `FnvIndexMap<ExchangeId, Option<Tx>>` keeping indices valid even when an exchange is not actively trading.
+- `barter::engine::state::EngineState` (Struct, pub) — Engine state aggregate containing `TradingState`, `GlobalData`, `ConnectivityStates`, `AssetStates`, and `InstrumentStates`.
+- `barter::engine::state::asset::AssetState` (Struct, pub) — Per-exchange asset record holding the `Asset` name, `TearSheetAssetGenerator`, and current `Timed<Balance>`.
+- `barter::engine::state::asset::AssetStates` (Struct, pub) — Newtype around `FnvIndexMap<ExchangeAsset<AssetNameInternal>, AssetState>` providing indexed and filtered access to assets.
+- `barter::engine::state::asset::filter::AssetFilter` (Enum, pub) — Filter (`None` or `Exchanges(OneOrMany<ExchangeId>)`) used to scope iteration over `AssetStates`.
+- `barter::engine::state::builder::EngineStateBuilder` (Struct, pub) — Fluent builder taking `IndexedInstruments` plus optional trading state, start time, balances, and instrument-data closure to produce an `EngineState`.
+- `barter::engine::state::connectivity::ConnectivityState` (Struct, pub) — Per-exchange connection record holding separate `Health` values for `market_data` and `account` channels.
+- `barter::engine::state::connectivity::ConnectivityStates` (Struct, pub) — Tracker holding global `Health` plus an `IndexMap<ExchangeId, ConnectivityState>` updated by account/market reconnect events.
+- `barter::engine::state::connectivity::Health` (Enum, pub) — Two-variant connection health enum (`Healthy` / `Reconnecting`), defaulting to `Reconnecting`.
+- `barter::engine::state::global::DefaultGlobalData` (Struct, pub) — Zero-sized default `GlobalData` for strategies/risk managers that need no global state.
+- `barter::engine::state::instrument::InstrumentState` (Struct, pub) — Per-instrument aggregate state — `key`, `instrument`, `TearSheetGenerator`, `PositionManager`, `Orders`, and user `InstrumentData`.
+- `barter::engine::state::instrument::InstrumentStates` (Struct, pub) — Newtype `FnvIndexMap<InstrumentNameInternal, InstrumentState<…>>` providing indexed and filtered access to instrument state.
+- `barter::engine::state::instrument::data::DefaultInstrumentMarketData` (Struct, pub) — Simple `InstrumentDataState` implementation tracking an `OrderBookL1` plus last-traded `Timed<Decimal>` price.
+- `barter::engine::state::instrument::data::InstrumentDataState` (Trait, pub) — Trait for user-defined per-instrument data state — processes market+account events, records in-flight requests, and exposes a `price()`.
+- `barter::engine::state::instrument::filter::InstrumentFilter` (Enum, pub) — Filter enum (`None` / `Exchanges` / `Instruments` / `Underlyings`) scoping any instrument-centric query or mutation.
+- `barter::engine::state::order::Orders` (Struct, pub) — Per-instrument active-order book — newtype `FnvHashMap<ClientOrderId, Order<…, ActiveOrderState>>` implementing `OrderManager` + `InFlightRequestRecorder`.
+- `barter::engine::state::order::in_flight_recorder::InFlightRequestRecorder` (Trait, pub) — Trait recording in-flight cancel and open order requests so duplicate dispatches are avoided.
+- `barter::engine::state::order::manager::OrderManager` (Trait, pub) — Trait managing the full active-order lifecycle (iterate, update from snapshot, update from cancel response); supertrait of `InFlightRequestRecorder`.
+- `barter::engine::state::position::Position` (Struct, pub) — Open position record with side, VWAP entry price, current/max quantity, realised/unrealised PnL, fees, timestamps, and trade ids.
+- `barter::engine::state::position::PositionExited` (Struct, pub) — Closed position record with final realised PnL, max quantity, entry/exit fees, entry+exit timestamps, and associated `TradeId`s.
+- `barter::engine::state::position::PositionManager` (Struct, pub) — Per-instrument wrapper holding `current: Option<Position<QuoteAsset, InstrumentKey>>` and folding new trades into it.
+- `barter::engine::state::trading::TradingState` (Enum, pub) — Two-variant engine trading toggle (`Enabled` / `Disabled`) — when disabled the engine still processes events and commands but emits no algo orders.
+- `barter::engine::state::trading::TradingStateUpdateAudit` (Struct, pub) — Audit record holding `prev`/`current` `TradingState` so observers can detect transitions (especially into `Disabled`).
+- `barter::error::BarterError` (Enum, pub) — Crate-level error enum unifying `IndexError`, `ExecutionBuilder`, `RxDropped`, `DataError`, `ExecutionError`, and `JoinError`.
+- `barter::error::RxDropped` (Struct, pub) — Unit error signalling that an `ExchangeManager` dropped its `ExecutionRequest` receiver, propagated through `BarterError::ExecutionRxDropped`.
+- `barter::execution::AccountStreamEvent` (TypeAlias, pub) — Type alias for `reconnect::Event<ExchangeId, AccountEvent<…>>` — items on the multi-exchange account stream consumed by `Engine`.
+- `barter::execution::Execution` (Struct, pub) — Initialised execution layer holding the `MultiExchangeTxMap`, account `Channel`, and `ExecutionHandles` task joiners.
+- `barter::execution::builder::ExecutionBuild` (Struct, pub) — Container of execution components ready to be initialised — exposes `init`/`init_with_runtime` to spawn the infrastructure.
+- `barter::execution::builder::ExecutionBuildFutures` (Struct, pub) — Holds the un-spawned `mock_exchange_run_futures` and `execution_init_futures` produced by `ExecutionBuilder::build`.
+- `barter::execution::builder::ExecutionBuilder` (Struct, pub) — Fluent builder that registers mock and live `ExecutionClient` configs and produces an `ExecutionBuild` with channels and merged account stream.
+- `barter::execution::builder::ExecutionHandles` (Struct, pub) — `JoinHandle`s for spawned mock exchanges, `ExecutionManager`s, and account-to-engine forwarders.
+- `barter::execution::builder::ExecutionInitFuture` (TypeAlias, pub(in barter::execution::builder)) — Module-private type alias for the boxed future returned when initialising a single `ExecutionManager` + AccountStream.
+- `barter::execution::builder::RunFuture` (TypeAlias, pub(in barter::execution::builder)) — Module-private type alias for the boxed future driving a `MockExchange::run` task.
+- `barter::execution::error::ExecutionError` (Enum, pub) — Error enum for the execution link: `Config(String)`, `Index(IndexError)`, `Client(ClientError)`.
+- `barter::execution::manager::ExecutionManager` (Struct, pub) — Per-exchange runner that consumes engine `ExecutionRequest`s, dispatches via an `ExecutionClient`, indexes responses, and forwards `AccountStreamEvent`s back.
+- `barter::execution::request::ExecutionRequest` (Enum, pub) — Engine→ExecutionManager request enum: `Shutdown`, `Cancel(OrderRequestCancel)`, `Open(OrderRequestOpen)`.
+- `barter::execution::request::RequestFuture` (Struct, pub(in barter::execution)) — Module-private struct representing an in-flight `ExecutionRequest` future tracked by `ExecutionManager` for timeout handling.
+- `barter::logging::AuditSpanFilter` (Struct, pub) — `tracing` filter installed by `init_logging`/`init_json_logging` that suppresses duplicate logs from `StateReplicaManager` state updates.
+- `barter::risk::DefaultRiskManager` (Struct, pub) — Naive demo `RiskManager` that approves every order with no checks — clearly marked as not for production use.
+- `barter::risk::RiskApproved` (Struct, pub) — Newtype wrapping an order request that has passed `RiskManager::check` and is therefore eligible for dispatch.
+- `barter::risk::RiskManager` (Trait, pub) — Trait reviewing strategy-generated cancel+open requests against `State`, returning approved and refused sets that feed `GenerateAlgoOrdersOutput`.
+- `barter::risk::RiskRefused` (Struct, pub) — Wrapper for an order request that failed `RiskManager` checks, carrying the rejected `item` and `reason`.
+- `barter::risk::check::CheckFailHigherThan` (Struct, pub) — Error returned by `CheckHigherThan` carrying the offending `input` and the `limit` it exceeded.
+- `barter::risk::check::CheckHigherThan` (Struct, pub) — Simple `RiskCheck` impl that passes when `input <= limit` — the canonical example check.
+- `barter::risk::check::RiskCheck` (Trait, pub) — Trait for small composable risk checks exposing `name()` and `check(&Input) -> Result<(), Error>`.
+- `barter::shutdown::AsyncShutdown` (Trait, pub) — Trait providing async `shutdown(&mut self) -> impl Future<Output = Result>` for async-shutdownable components.
+- `barter::shutdown::Shutdown` (Struct, pub) — Unit marker type embedded in `EngineEvent::Shutdown` to request graceful engine termination.
+- `barter::shutdown::SyncShutdown` (Trait, pub) — Trait providing synchronous `shutdown(&mut self) -> Result` — implemented by `Engine` and consumed by `sync_run`/`async_run`.
+- `barter::statistic::metric::calmar::CalmarRatio` (Struct, pub) — Calmar Ratio metric (excess return ÷ max drawdown) parameterised by `TimeInterval`, with `calculate` and `scale` constructors.
+- `barter::statistic::metric::drawdown::Drawdown` (Struct, pub) — Peak-to-trough decline record `{ value, time_start, time_end }` used as the unit of drawdown analysis.
+- `barter::statistic::metric::drawdown::DrawdownGenerator` (Struct, pub) — Online generator tracking running peak/time and emitting completed `Drawdown`s when equity recovers above the prior peak.
+- `barter::statistic::metric::drawdown::max::MaxDrawdown` (Struct, pub) — Newtype around `Drawdown` representing the largest peak-to-trough decline observed for a series.
+- `barter::statistic::metric::drawdown::max::MaxDrawdownGenerator` (Struct, pub) — Online generator that holds the current `MaxDrawdown` and supersedes it when a larger `Drawdown` arrives.
+- `barter::statistic::metric::drawdown::mean::MeanDrawdown` (Struct, pub) — Averaged drawdown record holding `mean_drawdown` value and `mean_drawdown_ms` duration over a series of `Drawdown`s.
+- `barter::statistic::metric::drawdown::mean::MeanDrawdownGenerator` (Struct, pub) — Online generator maintaining running count and mean (`MeanDrawdown`) as new `Drawdown`s are observed.
+- `barter::statistic::metric::profit_factor::ProfitFactor` (Struct, pub) — Wrapper around a `Decimal` profit-factor (gross profits ÷ gross losses) with `calculate` handling zero-loss/zero-profit edge cases.
+- `barter::statistic::metric::rate_of_return::RateOfReturn` (Struct, pub) — Rate-of-return value over a `TimeInterval`; scales linearly with time (simple interest) via `scale`.
+- `barter::statistic::metric::sharpe::SharpeRatio` (Struct, pub) — Sharpe Ratio metric over a `TimeInterval` (excess return ÷ stdev), with IID-assumption `scale` to another interval.
+- `barter::statistic::metric::sortino::SortinoRatio` (Struct, pub) — Sortino Ratio over a `TimeInterval` — like Sharpe but using downside deviation only.
+- `barter::statistic::metric::win_rate::WinRate` (Struct, pub) — `Decimal` win-rate (`wins / total`) between 0 and 1, with `calculate` returning `None` for zero total or overflow.
+- `barter::statistic::summary::AssetTearSheetManager` (Trait, pub) — Trait providing keyed `&TearSheetAssetGenerator` access — implemented by `TradingSummaryGenerator` for per-asset updates.
+- `barter::statistic::summary::InstrumentTearSheetManager` (Trait, pub) — Trait providing keyed `&TearSheetGenerator` access — implemented by `TradingSummaryGenerator` for per-instrument updates.
+- `barter::statistic::summary::TradingSummary` (Struct, pub) — Final per-session summary: engine start/end times plus per-instrument `TearSheet`s and per-`ExchangeAsset` `TearSheetAsset`s.
+- `barter::statistic::summary::TradingSummaryGenerator` (Struct, pub) — Running generator holding risk-free return, current engine times, and per-instrument/per-asset generators that produce a `TradingSummary` on demand.
+- `barter::statistic::summary::asset::TearSheetAsset` (Struct, pub) — Per-asset tear sheet summarising end-of-session `Balance` plus current/mean/max drawdown values.
+- `barter::statistic::summary::asset::TearSheetAssetGenerator` (Struct, pub) — Online generator owning balance-now and drawdown sub-generators, producing a `TearSheetAsset` on each `generate` call.
+- `barter::statistic::summary::dataset::DataSetSummary` (Struct, pub) — Welford-online running statistics (`count`, `sum`, `mean`, `Dispersion`) computed in O(1) memory per update.
+- `barter::statistic::summary::dataset::dispersion::Dispersion` (Struct, pub) — Dispersion bundle: `Range`, Welford `recurrence_relation_m`, `variance`, `std_dev` — updated incrementally with each new value.
+- `barter::statistic::summary::dataset::dispersion::Range` (Struct, pub) — Lazy high/low dataset range with `activated` flag, updated incrementally and emitted via `range()`.
+- `barter::statistic::summary::instrument::TearSheet` (Struct, pub) — Per-instrument tear sheet holding PnL, return, Sharpe/Sortino/Calmar, drawdown stats, win rate, and profit factor over an `Interval`.
+- `barter::statistic::summary::instrument::TearSheetGenerator` (Struct, pub) — Online instrument tear-sheet generator tracking engine times, `PnLReturns`, and the drawdown sub-generators.
+- `barter::statistic::summary::pnl::PnLReturns` (Struct, pub) — Per-instrument PnL record holding raw PnL plus `DataSetSummary`s for total returns and losses-only returns.
+- `barter::statistic::time::Annual252` (Struct, pub) — Zero-sized `TimeInterval` impl representing a 252-trading-day annualised interval for traditional markets.
+- `barter::statistic::time::Annual365` (Struct, pub) — Zero-sized `TimeInterval` impl representing a 365-day annualised interval for crypto-style 24/7 markets.
+- `barter::statistic::time::Daily` (Struct, pub) — Zero-sized `TimeInterval` impl representing a one-day interval.
+- `barter::statistic::time::TimeInterval` (Trait, pub) — Trait for time-interval markers providing `name() -> SmolStr` and `interval() -> TimeDelta` — used to scale risk/return metrics.
+- `barter::strategy::DefaultStrategy` (Struct, pub) — Demo strategy implementing all four strategy traits as no-ops (or naive market close) — explicitly not for production.
+- `barter::strategy::algo::AlgoStrategy` (Trait, pub) — Core trait whose `generate_algo_orders(&State)` returns the cancel+open `OrderRequest`s for `Engine::generate_algo_orders` to dispatch.
+- `barter::strategy::close_positions::ClosePositionsStrategy` (Trait, pub) — Trait producing the cancel+open `OrderRequest`s used by `Engine::close_positions` to neutralise positions matching an `InstrumentFilter`.
+- `barter::strategy::on_disconnect::OnDisconnectStrategy` (Trait, pub) — Trait whose `on_disconnect(&mut Engine, ExchangeId)` runs strategy logic when an exchange connection drops, returning an audited `OnDisconnect` payload.
+- `barter::strategy::on_trading_disabled::OnTradingDisabled` (Trait, pub) — Trait whose `on_trading_disabled(&mut Engine)` runs when `TradingState` transitions to `Disabled`, returning an audited `OnTradingDisabled` payload.
+- `barter::system::System` (Struct, pub) — Running trading system handle owning the `Engine` `JoinHandle`, auxiliary handles, `feed_tx`, and optional audit `SnapUpdates`; exposes shutdown/command/state APIs.
+- `barter::system::SystemAuxillaryHandles` (Struct, pub) — Holds the auxiliary task `JoinHandle`s — execution components, market-to-engine forwarder, account-to-engine forwarder.
+- `barter::system::builder::AuditMode` (Enum, pub) — Toggle (`Enabled`/`Disabled`, default Disabled) controlling whether the `Engine` publishes audits on the audit channel.
+- `barter::system::builder::EngineFeedMode` (Enum, pub) — Toggle (`Iterator` default, or `Stream`) selecting whether the engine consumes events synchronously or async via tokio.
+- `barter::system::builder::SystemArgs` (Struct, pub) — Bundle of all components required by `SystemBuilder` (instruments, executions, clock, strategy, risk, market stream, global data, instrument-data initialiser).
+- `barter::system::builder::SystemBuild` (Struct, pub) — Fully constructed but not-yet-spawned system — exposes `init`/`init_with_runtime` to start tasks and return a `System`.
+- `barter::system::builder::SystemBuilder` (Struct, pub) — Fluent builder layering optional `EngineFeedMode`/`AuditMode`/`TradingState`/balances on `SystemArgs` and producing a `SystemBuild`.
+- `barter::system::config::ExecutionConfig` (Enum, pub) — Tagged execution-link config enum (currently `Mock(MockExecutionConfig)`) consumed by `ExecutionBuilder` and `SystemArgs.executions`.
+- `barter::system::config::InstrumentConfig` (Struct, pub) — Minimal serde instrument config (exchange, exchange name, underlying, quote, kind, optional spec) used to build `Instrument`s at startup.
+- `barter::system::config::SystemConfig` (Struct, pub) — Top-level serde system config bundling `Vec<InstrumentConfig>` and `Vec<ExecutionConfig>` for one trading system.
+
+## barter_collector (3 types)
+
+- `barter_collector::config::CollectorConfig` (Struct, pub) — Central collector configuration bundling concurrency, optional cache dir, retry policy, and max trade pagination pages, consumed by bulk-download and pagination orchestrators.
+- `barter_collector::pagination::PageResult` (Enum, pub) — Non-exhaustive enum returned by one pagination step, signalling Continue (yield + keep going), Done (yield + stop), or Empty (stop without yielding) to the `stream::unfold` loop.
+- `barter_collector::pagination::PaginationStrategy` (Trait, pub) — Stateful per-exchange trait whose `fetch_page` future is driven in a loop by `stream_paginated`, replacing the 9 per-exchange `PaginationState` structs in barter-data.
+
+## barter_data (356 types)
+
+- `barter_data::Identifier` (Trait, pub) — Trait providing a generic `id(&self) -> T` method used to derive channel/market/subscription identifiers from arbitrary Barter types.
+- `barter_data::NoInitialSnapshots` (Struct, pub) — Zero-fetch `SnapshotFetcher` used by stateless `MarketStream`s (e.g. public trades) that do not require an initial REST snapshot.
+- `barter_data::SnapshotFetcher` (Trait, pub) — Trait that fetches initial REST snapshots for a batch of `Subscription`s before a `MarketStream` starts consuming WebSocket deltas.
+- `barter_data::WsSendRateLimiter` (TypeAlias, pub(crate)) — Internal `governor::RateLimiter` alias used to throttle outbound WebSocket frames per `Connector::send_rate_limit`.
+- `barter_data::books::Asks` (Struct, pub) — Unit marker tagging an `OrderBookSide` as the asks (sellers) side.
+- `barter_data::books::Bids` (Struct, pub) — Unit marker tagging an `OrderBookSide` as the bids (buyers) side.
+- `barter_data::books::Level` (Struct, pub) — Normalised price/amount pair representing one level on either side of an `OrderBook`.
+- `barter_data::books::OrderBook` (Struct, pub) — Normalised Barter L2 `OrderBook` snapshot with sequence, engine time, and sorted bid/ask sides.
+- `barter_data::books::OrderBookSide` (Struct, pub) — Sorted vector of `Level`s for one side (`Bids` or `Asks`) of an `OrderBook`, with upsert/best helpers.
+- `barter_data::books::manager::OrderBookL2Manager` (Struct, pub) — Driver that applies streamed `OrderBookEvent`s to local `OrderBook`s held in an `OrderBookMap`.
+- `barter_data::books::map::OrderBookMap` (Trait, pub) — Trait for cloneable shared-state maps keyed by instrument that hand out `Arc<RwLock<OrderBook>>` references.
+- `barter_data::books::map::OrderBookMapMulti` (Struct, pub) — Multi-instrument `OrderBookMap` implementation backed by `FnvHashMap<Key, Arc<RwLock<OrderBook>>>`.
+- `barter_data::books::map::OrderBookMapSingle` (Struct, pub) — Single-instrument `OrderBookMap` implementation wrapping one shared-state `OrderBook`.
+- `barter_data::bulk::BulkConfig` (Struct, pub) — Configuration knobs for bulk archive downloads (currently the checksum-verification flag).
+- `barter_data::bulk::BulkDayKlineFetcher` (Trait, pub) — Trait for fetching a single day's klines from an exchange's bulk archive, returning `None` on 404.
+- `barter_data::bulk::BulkDayTradeFetcher` (Trait, pub) — Trait for fetching/streaming a single day's trades from an exchange's bulk archive in batches.
+- `barter_data::bulk::BulkKlineRequest` (Struct, pub) — Date-range plus interval request used to drive bulk kline archive downloads.
+- `barter_data::bulk::BulkTradeRequest` (Struct, pub) — Date-range request (market symbol + start/end day) used to drive bulk trade archive downloads.
+- `barter_data::error::DataError` (Enum, pub) — Top-level error enum for `barter-data` covering subscription, socket, HTTP, parse, archive, and rate-limit failures.
+- `barter_data::event::DataKind` (Enum, pub) — Enum of normalised market-event payload variants (`Trade`, `OrderBookL1`, `OrderBook`, `Candle`, `Liquidation`) used as the `MarketEvent` kind for multi-stream pipelines.
+- `barter_data::event::MarketEvent` (Struct, pub) — Normalised wrapper carrying exchange/instrument/time metadata around a typed data payload `T` (often `DataKind`).
+- `barter_data::event::MarketIter` (Struct, pub) — New-type around `Vec<Result<MarketEvent, DataError>>` used as the batched output of stateless transformers.
+- `barter_data::exchange::Connector` (Trait, pub) — Primary exchange-integration trait defining channel/market/subscriber/validator types plus URL, ping, and subscription-request behaviour.
+- `barter_data::exchange::ExchangeServer` (Trait, pub) — Sub-trait of `Connector` used when one exchange exposes multiple WebSocket servers (e.g. Binance spot vs futures) to inject the per-server URL/ID.
+- `barter_data::exchange::PingInterval` (Struct, pub) — Pair of a `tokio::Interval` and `fn() -> WsMessage` describing custom application-level WS pings required by some exchanges.
+- `barter_data::exchange::RestExchangeServer` (Trait, pub) — Trait variant of `ExchangeServer` for REST endpoints, supplying base URL plus klines/trades paths per server.
+- `barter_data::exchange::StreamSelector` (Trait, pub) — Trait wiring an exchange `Connector` to a specific `SubscriptionKind`, selecting the `SnapFetcher`/`Transformer`/`Parser` triple.
+- `barter_data::exchange::binance::Binance` (Struct, pub) — Generic `Binance<Server>` exchange marker; specialised via `BinanceServerSpot`/`BinanceServerFuturesUsd` into concrete exchanges.
+- `barter_data::exchange::binance::book::BinanceLevel` (Struct, pub) — Single `[price, amount]` Binance orderbook level (both as `Decimal` deserialised from strings).
+- `barter_data::exchange::binance::book::l1::BinanceOrderBookL1` (Struct, pub) — Binance `bookTicker` WS payload carrying best bid/ask price+amount with subscription id and timestamp.
+- `barter_data::exchange::binance::book::l2::BinanceOrderBookL2Meta` (Struct, pub) — Per-instrument transformer metadata pairing the `InstrumentKey` with an optional spot/futures L2 sequencer.
+- `barter_data::exchange::binance::book::l2::BinanceOrderBookL2Snapshot` (Struct, pub) — Initial REST `depth` snapshot used to seed the local L2 book before applying WS deltas.
+- `barter_data::exchange::binance::bulk::BinanceBulkClient` (Struct, pub) — Generic Binance `data.binance.vision` bulk archive client, parameterised by spot/UM/CM `BulkArchiveServer`.
+- `barter_data::exchange::binance::bulk::BinanceServerFuturesCoin` (Struct, pub) — Marker server variant identifying Binance COIN-M futures bulk archives (path `futures/cm`).
+- `barter_data::exchange::binance::bulk::BulkArchiveServer` (Trait, pub) — Trait describing per-segment Binance bulk archive details (market segment, CSV header presence, microsecond-timestamp policy).
+- `barter_data::exchange::binance::bulk::klines::BinanceBulkKline` (Struct, pub) — CSV record for Binance klines bulk archives (12-column OHLCV row).
+- `barter_data::exchange::binance::bulk::trades::BinanceBulkAggTrade` (Struct, pub) — CSV record for Binance aggregate-trade bulk archives (handles both 7- and 8-column spot/futures schemas).
+- `barter_data::exchange::binance::candle::BinanceKline` (Struct, pub) — Binance real-time kline WS message envelope wrapping `BinanceKlineData` under the `k` field.
+- `barter_data::exchange::binance::candle::BinanceKlineData` (Struct, pub) — Inner kline payload from Binance `k` field (OHLCV, trade count, close flag, interval).
+- `barter_data::exchange::binance::channel::BinanceChannel` (Struct, pub) — `SmolStr` newtype defining Binance channel strings like `@trade`, `@depth@100ms`, `@bookTicker`, `@forceOrder`.
+- `barter_data::exchange::binance::futures::BinanceFuturesUsd` (TypeAlias, pub) — Type alias `Binance<BinanceServerFuturesUsd>` — the concrete Binance USDⓈ-M perpetuals exchange.
+- `barter_data::exchange::binance::futures::BinanceServerFuturesUsd` (Struct, pub) — Marker server for Binance USDⓈ-M futures WebSocket/REST endpoints.
+- `barter_data::exchange::binance::futures::l2::BinanceFuturesOrderBookL2Update` (Struct, pub) — Binance USDⓈ-M futures `depthUpdate` WS message with `U`/`u`/`pu` sequence ids and bid/ask deltas.
+- `barter_data::exchange::binance::futures::l2::BinanceFuturesUsdOrderBookL2Sequencer` (Struct, pub) — Sequencer enforcing the Binance futures "Manage A Local OrderBook" steps (snapshot gating, `pu == prev u` continuity).
+- `barter_data::exchange::binance::futures::l2::BinanceFuturesUsdOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` that pulls initial L2 snapshots from the Binance futures `/fapi/v1/depth` REST endpoint.
+- `barter_data::exchange::binance::futures::l2::BinanceFuturesUsdOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` that maintains per-instrument futures L2 sequencers and emits `OrderBookEvent`s.
+- `barter_data::exchange::binance::futures::liquidation::BinanceLiquidation` (Struct, pub) — Binance futures `forceOrder` WS envelope wrapping the inner liquidation order.
+- `barter_data::exchange::binance::futures::liquidation::BinanceLiquidationOrder` (Struct, pub) — Inner Binance futures liquidation order payload (side, price, quantity, time).
+- `barter_data::exchange::binance::market::BinanceMarket` (Struct, pub) — `SmolStr` newtype encoding a Binance market symbol (e.g. `btcusdt`) for subscription URL building.
+- `barter_data::exchange::binance::rest::BinanceApiError` (Struct, pub) — Deserialised Binance REST error body (`{code, msg}`).
+- `barter_data::exchange::binance::rest::BinanceHttpParser` (Struct, pub) — `HttpParser` implementation translating Binance REST responses into `DataError`/typed payloads.
+- `barter_data::exchange::binance::rest::BinanceRestClient` (Struct, pub) — Generic Binance REST client (spot or futures via `Server`) bundling `RestClient`, rate limiter, and helper methods.
+- `barter_data::exchange::binance::rest::klines::BinanceKlineRaw` (Struct, pub) — Positional-array kline row returned by Binance REST (`/api/v3/klines`, `/fapi/v1/klines`) with custom seq deserializer.
+- `barter_data::exchange::binance::rest::klines::GetKlines` (Struct, pub) — Binance REST kline request (`path` plus `GetKlinesParams`) used by `BinanceRestClient`.
+- `barter_data::exchange::binance::rest::klines::GetKlinesParams` (Struct, pub) — Query params for Binance kline REST requests (symbol, interval, start/end time, limit).
+- `barter_data::exchange::binance::rest::trades::BinanceAggTrade` (Struct, pub) — Raw Binance aggregate trade row (`a/p/q/T/m` fields) returned by `aggTrades` REST endpoints.
+- `barter_data::exchange::binance::rest::trades::GetAggTrades` (Struct, pub) — Binance REST aggTrades request (`path` + `GetAggTradesParams`).
+- `barter_data::exchange::binance::rest::trades::GetAggTradesParams` (Struct, pub) — Query params for Binance aggTrades REST request (symbol, time bounds, `fromId` cursor, limit).
+- `barter_data::exchange::binance::spot::BinanceServerSpot` (Struct, pub) — Marker server for Binance spot WebSocket/REST endpoints.
+- `barter_data::exchange::binance::spot::BinanceSpot` (TypeAlias, pub) — Type alias `Binance<BinanceServerSpot>` — the concrete Binance spot exchange.
+- `barter_data::exchange::binance::spot::l2::BinanceSpotOrderBookL2Sequencer` (Struct, pub) — Sequencer enforcing Binance spot's "Manage A Local OrderBook" steps (`U == prev u + 1` continuity).
+- `barter_data::exchange::binance::spot::l2::BinanceSpotOrderBookL2Update` (Struct, pub) — Binance spot `depthUpdate` WS message with `U`/`u` sequence ids and bid/ask deltas.
+- `barter_data::exchange::binance::spot::l2::BinanceSpotOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` that pulls initial L2 snapshots from the Binance spot `/api/v3/depth` REST endpoint.
+- `barter_data::exchange::binance::spot::l2::BinanceSpotOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` that maintains per-instrument spot L2 sequencers and emits `OrderBookEvent`s.
+- `barter_data::exchange::binance::subscription::BinanceSubResponse` (Struct, pub) — Binance WS subscription ACK (`{id, result}`) used by the `SubValidator`.
+- `barter_data::exchange::binance::trade::BinanceTrade` (Struct, pub) — Binance real-time `@trade` WS message (id, price, qty, time, taker side derived from `buyer_is_maker`).
+- `barter_data::exchange::bitfinex::Bitfinex` (Struct, pub) — Bitfinex exchange marker (single-server).
+- `barter_data::exchange::bitfinex::candle::BitfinexCandle` (Struct, pub) — Single Bitfinex candle row (MTS, OPEN, CLOSE, HIGH, LOW, VOLUME — non-standard close-before-HL ordering).
+- `barter_data::exchange::bitfinex::candle::BitfinexCandleMessage` (Struct, pub) — Bitfinex WS candles frame `[channel_id, payload]` with channel id and `BitfinexCandlePayload`.
+- `barter_data::exchange::bitfinex::candle::BitfinexCandlePayload` (Enum, pub) — Enum of Bitfinex candle WS payloads: `Heartbeat`, single `Candle`, or `Snapshot(Vec<Candle>)`.
+- `barter_data::exchange::bitfinex::channel::BitfinexChannel` (Struct, pub) — `SmolStr` newtype for Bitfinex channel strings (`trades`, `candles`).
+- `barter_data::exchange::bitfinex::market::BitfinexMarket` (Struct, pub) — `SmolStr` newtype for Bitfinex market symbols (e.g. `tBTCUSD`).
+- `barter_data::exchange::bitfinex::message::BitfinexMessage` (Struct, pub) — Generic Bitfinex data WS frame `[channel_id, payload]` carrying a `BitfinexPayload`.
+- `barter_data::exchange::bitfinex::message::BitfinexPayload` (Enum, pub) — Bitfinex data payload variants: `Heartbeat` or `Trade`.
+- `barter_data::exchange::bitfinex::subscription::BitfinexChannelId` (Struct, pub) — Bitfinex numeric channel id assigned at subscription time and used as the `SubscriptionId` for incoming frames.
+- `barter_data::exchange::bitfinex::subscription::BitfinexError` (Struct, pub) — Bitfinex subscription/error message body (`msg` + `code`, e.g. 10301 already subscribed).
+- `barter_data::exchange::bitfinex::subscription::BitfinexPlatformEvent` (Enum, pub) — Enum of Bitfinex connect/subscribe events: `PlatformStatus`, `Subscribed`, `Error`.
+- `barter_data::exchange::bitfinex::subscription::BitfinexPlatformStatus` (Struct, pub) — Bitfinex info/status message reporting API version, server id, and platform `Status`.
+- `barter_data::exchange::bitfinex::subscription::BitfinexSubResponse` (Struct, pub) — Bitfinex subscription success message carrying channel name, market, and assigned `BitfinexChannelId`.
+- `barter_data::exchange::bitfinex::subscription::Status` (Enum, pub) — Bitfinex platform status enum (`Maintenance` or `Operative`).
+- `barter_data::exchange::bitfinex::trade::BitfinexTrade` (Struct, pub) — Bitfinex `te` real-time trade record (id, time, side derived from amount sign, price, amount).
+- `barter_data::exchange::bitfinex::validator::BitfinexWebSocketSubValidator` (Struct, pub) — Custom `SubscriptionValidator` that rewrites the `SubscriptionId` to use `BitfinexChannelId` once subscriptions are confirmed.
+- `barter_data::exchange::bitmex::Bitmex` (Struct, pub) — BitMEX exchange marker (single-server).
+- `barter_data::exchange::bitmex::candle::BitmexKline` (TypeAlias, pub) — Type alias `BitmexMessage<BitmexKlineInner>` for BitMEX `tradeBinXX` WS kline messages.
+- `barter_data::exchange::bitmex::candle::BitmexKlineInner` (Struct, pub) — Inner BitMEX kline row (timestamp, symbol, OHLC, trades, volume, foreign notional).
+- `barter_data::exchange::bitmex::channel::BitmexChannel` (Struct, pub) — `SmolStr` newtype for BitMEX channel/topic strings (`trade`, etc.).
+- `barter_data::exchange::bitmex::market::BitmexMarket` (Struct, pub) — `SmolStr` newtype for BitMEX market symbols (e.g. `XBTUSD`).
+- `barter_data::exchange::bitmex::message::BitmexMessage` (Struct, pub) — Generic BitMEX WS data envelope `{table, data: Vec<T>}`.
+- `barter_data::exchange::bitmex::subscription::BitmexSubResponse` (Struct, pub) — BitMEX subscription ACK (`{success, subscribe, request}`).
+- `barter_data::exchange::bitmex::trade::BitmexTrade` (TypeAlias, pub) — Type alias `BitmexMessage<BitmexTradeInner>` for BitMEX real-time trade WS messages.
+- `barter_data::exchange::bitmex::trade::BitmexTradeInner` (Struct, pub) — Inner BitMEX trade row (timestamp, symbol, side, size, price, trdMatchID).
+- `barter_data::exchange::bybit::Bybit` (Struct, pub) — Generic `Bybit<Server>` exchange marker; specialised via `BybitServerSpot`/`BybitServerPerpetualsUsd`.
+- `barter_data::exchange::bybit::book::BybitLevel` (Struct, pub) — Bybit orderbook level `["price", "amount"]` deserialised as `Decimal`s.
+- `barter_data::exchange::bybit::book::BybitOrderBookInner` (Struct, pub) — Inner Bybit orderbook payload (`b`/`a` levels, `u` update id, `seq` sequence).
+- `barter_data::exchange::bybit::book::BybitOrderBookMessage` (TypeAlias, pub) — Type alias `BybitPayload<BybitOrderBookInner>` for Bybit orderbook WS messages.
+- `barter_data::exchange::bybit::book::l2::BybitOrderBookL2Meta` (Struct, pub) — Per-instrument transformer metadata pairing `InstrumentKey` with an optional Bybit L2 sequencer.
+- `barter_data::exchange::bybit::book::l2::BybitOrderBookL2Sequencer` (Struct, pub) — Internal Bybit L2 sequencer validating snapshot/delta `u`/`seq` continuity.
+- `barter_data::exchange::bybit::book::l2::BybitOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` for Bybit L2 streams; sequences `BybitOrderBookMessage` updates into `OrderBookEvent`s.
+- `barter_data::exchange::bybit::book::snapshot::BybitOrderBookL2Snapshot` (Struct, pub) — Inner DTO of the Bybit REST `orderbook` snapshot response used to seed L2 books.
+- `barter_data::exchange::bybit::book::snapshot::BybitOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` that pulls initial L2 snapshots from the Bybit REST orderbook endpoint.
+- `barter_data::exchange::bybit::book::snapshot::BybitRestResponse` (Struct, pub) — Top-level Bybit REST snapshot wrapper holding a `BybitOrderBookL2Snapshot` in `result`.
+- `barter_data::exchange::bybit::bulk::BybitBulkClient` (Struct, pub) — Generic Bybit bulk-archive client downloading daily GZ-compressed CSV trade files from `public.bybit.com`.
+- `barter_data::exchange::bybit::bulk::BybitBulkServer` (Trait, pub) — Trait describing Bybit bulk-archive variants (URL path prefix, filename separator, sync/async CSV parsers).
+- `barter_data::exchange::bybit::bulk::trades::BybitBulkTrade` (Struct, pub) — CSV record for Bybit perpetuals bulk trade archives (10 columns including tickDirection/notional fields).
+- `barter_data::exchange::bybit::bulk::trades::BybitSpotBulkTrade` (Struct, pub) — CSV record for Bybit spot bulk trade archives (id, ms timestamp, price, volume, side, optional `rpi`).
+- `barter_data::exchange::bybit::candle::BybitKline` (TypeAlias, pub) — Type alias `BybitPayload<Vec<BybitKlineData>>` for Bybit real-time kline WS messages.
+- `barter_data::exchange::bybit::candle::BybitKlineData` (Struct, pub) — Inner Bybit kline payload (start/end/timestamp, interval, OHLCV, turnover, confirm flag).
+- `barter_data::exchange::bybit::channel::BybitChannel` (Struct, pub) — `SmolStr` newtype for Bybit channel strings (`publicTrade`, `orderbook.1`, `orderbook.50`).
+- `barter_data::exchange::bybit::futures::BybitPerpetualsUsd` (TypeAlias, pub) — Type alias `Bybit<BybitServerPerpetualsUsd>` — the concrete Bybit USDT perpetuals exchange.
+- `barter_data::exchange::bybit::futures::BybitServerPerpetualsUsd` (Struct, pub) — Marker server for Bybit USDT perpetuals WebSocket/REST endpoints.
+- `barter_data::exchange::bybit::market::BybitMarket` (Struct, pub) — `SmolStr` newtype for Bybit market symbols (e.g. `BTCUSDT`).
+- `barter_data::exchange::bybit::message::BybitPayload` (Struct, pub) — Generic Bybit WS envelope (`topic`-derived `SubscriptionId`, snapshot/delta `kind`, timestamp, typed `data`).
+- `barter_data::exchange::bybit::message::BybitPayloadKind` (Enum, pub) — Bybit payload kind discriminator (`Snapshot` or `Delta`).
+- `barter_data::exchange::bybit::rest::BybitApiError` (Struct, pub) — Bybit REST error body (`{retCode, retMsg}`).
+- `barter_data::exchange::bybit::rest::BybitCategory` (Trait, pub) — Trait supplying the Bybit `category` parameter (`spot`/`linear`) for REST requests.
+- `barter_data::exchange::bybit::rest::BybitHttpParser` (Struct, pub) — `HttpParser` translating Bybit REST responses into `DataError`/typed payloads.
+- `barter_data::exchange::bybit::rest::BybitRestClient` (Struct, pub) — Generic Bybit REST client (spot or perpetuals via `Server`) with shared rate limiter.
+- `barter_data::exchange::bybit::rest::klines::BybitKlineRaw` (Struct, pub) — Positional-array kline row from Bybit REST (`[startTime, o, h, l, c, volume, turnover]`).
+- `barter_data::exchange::bybit::rest::klines::BybitKlinesResponse` (Struct, pub) — Top-level Bybit klines REST wrapper (`{retCode, retMsg, result}`).
+- `barter_data::exchange::bybit::rest::klines::BybitKlinesResult` (Struct, pub) — Inner `result` body containing `list: Vec<BybitKlineRaw>`.
+- `barter_data::exchange::bybit::rest::klines::GetBybitKlines` (Struct, pub) — Bybit klines REST request (`/v5/market/kline` path + params).
+- `barter_data::exchange::bybit::rest::klines::GetBybitKlinesParams` (Struct, pub) — Query params for Bybit klines REST request (category, symbol, interval, start/end ms, limit).
+- `barter_data::exchange::bybit::rest::trades::BybitRestTrade` (Struct, pub) — Single trade row from Bybit `recent-trade` REST endpoint (execId, price, size, side, time-ms-string).
+- `barter_data::exchange::bybit::rest::trades::BybitTradesResponse` (Struct, pub) — Top-level Bybit recent-trades REST wrapper (`{retCode, retMsg, result}`).
+- `barter_data::exchange::bybit::rest::trades::BybitTradesResult` (Struct, pub) — Inner `result` body containing `list: Vec<BybitRestTrade>`.
+- `barter_data::exchange::bybit::rest::trades::GetBybitTrades` (Struct, pub) — Bybit recent-trades REST request (`/v5/market/recent-trade` path + params).
+- `barter_data::exchange::bybit::rest::trades::GetBybitTradesParams` (Struct, pub) — Query params for Bybit recent-trades REST request (category, symbol, limit).
+- `barter_data::exchange::bybit::spot::BybitServerSpot` (Struct, pub) — Marker server for Bybit spot WebSocket/REST endpoints.
+- `barter_data::exchange::bybit::spot::BybitSpot` (TypeAlias, pub) — Type alias `Bybit<BybitServerSpot>` — the concrete Bybit spot exchange.
+- `barter_data::exchange::bybit::subscription::BybitResponse` (Struct, pub) — Bybit WS subscription/pong response (`success` flag + `ret_msg`).
+- `barter_data::exchange::bybit::subscription::BybitReturnMessage` (Enum, pub) — Bybit `ret_msg` enum (`None`, `Pong`, `Subscribe`).
+- `barter_data::exchange::bybit::trade::BybitTrade` (TypeAlias, pub) — Type alias `BybitPayload<Vec<BybitTradeInner>>` for Bybit real-time trades WS messages.
+- `barter_data::exchange::bybit::trade::BybitTradeInner` (Struct, pub) — Single Bybit trade row (time, market, side, amount, price, id).
+- `barter_data::exchange::coinbase::Coinbase` (Struct, pub) — Coinbase exchange marker (single-server).
+- `barter_data::exchange::coinbase::book::l2::CoinbaseL2Message` (Enum, pub) — Tagged-enum Coinbase L2 WS message: `Snapshot`, `L2Update`, or `Other` (subscriptions/heartbeats).
+- `barter_data::exchange::coinbase::book::l2::CoinbaseL2Snapshot` (Struct, pub) — Coinbase WS `snapshot` payload carrying full bid/ask string-array levels for a product.
+- `barter_data::exchange::coinbase::book::l2::CoinbaseL2Update` (Struct, pub) — Coinbase WS `l2update` payload with `[side, price, size]` change triples and event time.
+- `barter_data::exchange::coinbase::book::l2::CoinbaseOrderBookL2Meta` (Struct, pub) — Per-instrument transformer metadata pairing `InstrumentKey` with an `initialized` flag.
+- `barter_data::exchange::coinbase::book::l2::CoinbaseOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` driving Coinbase L2 streams (snapshot then delta application).
+- `barter_data::exchange::coinbase::book::snapshot::CoinbaseOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` that pulls initial L2 snapshots from the Coinbase REST orderbook endpoint.
+- `barter_data::exchange::coinbase::book::snapshot::CoinbaseRestBook` (Struct, pub) — Internal Coinbase REST orderbook DTO holding bid/ask `CoinbaseRestLevel` arrays.
+- `barter_data::exchange::coinbase::book::snapshot::CoinbaseRestLevel` (Struct, pub) — Internal Coinbase REST orderbook level DTO (price/size strings + num_orders).
+- `barter_data::exchange::coinbase::candle::CoinbaseKline` (Struct, pub) — Coinbase Advanced Trade `candles` WS message wrapping a vector of `CoinbaseKlineEvent`s.
+- `barter_data::exchange::coinbase::candle::CoinbaseKlineData` (Struct, pub) — Single Coinbase candle row (unix-seconds start, OHLCV, product_id).
+- `barter_data::exchange::coinbase::candle::CoinbaseKlineEvent` (Struct, pub) — Inner Coinbase candles event (`snapshot`/`update` event type + array of `CoinbaseKlineData`).
+- `barter_data::exchange::coinbase::channel::CoinbaseChannel` (Struct, pub) — `SmolStr` newtype for Coinbase channel names (`matches`, `candles`, `level2`).
+- `barter_data::exchange::coinbase::market::CoinbaseMarket` (Struct, pub) — `SmolStr` newtype for Coinbase product ids (e.g. `BTC-USD`).
+- `barter_data::exchange::coinbase::rest::CoinbaseApiError` (Struct, pub) — Coinbase REST error body (`{error, message}`).
+- `barter_data::exchange::coinbase::rest::CoinbaseHttpParser` (Struct, pub) — `HttpParser` translating Coinbase REST responses into `DataError`/typed payloads.
+- `barter_data::exchange::coinbase::rest::CoinbaseRestClient` (Struct, pub) — REST client for Coinbase exchange (single-variant) with built-in rate limiter.
+- `barter_data::exchange::coinbase::rest::klines::CoinbaseKlineRaw` (Struct, pub) — Raw Coinbase candles REST row (all fields as strings, unix-seconds start).
+- `barter_data::exchange::coinbase::rest::klines::CoinbaseKlinesResponse` (Struct, pub) — Wrapper around Coinbase candles REST response (`{candles: Vec<CoinbaseKlineRaw>}`).
+- `barter_data::exchange::coinbase::rest::klines::GetCoinbaseKlines` (Struct, pub) — Coinbase klines REST request (dynamic per-product path + `GetCoinbaseKlinesParams`).
+- `barter_data::exchange::coinbase::rest::klines::GetCoinbaseKlinesParams` (Struct, pub) — Query params for Coinbase klines REST request (start, end, granularity).
+- `barter_data::exchange::coinbase::rest::trades::CoinbaseRestTrade` (Struct, pub) — Single trade row from Coinbase ticker endpoint (trade_id, price, size, side, ISO time).
+- `barter_data::exchange::coinbase::rest::trades::CoinbaseTradesResponse` (Struct, pub) — Top-level Coinbase ticker REST response carrying a `trades: Vec<CoinbaseRestTrade>`.
+- `barter_data::exchange::coinbase::rest::trades::GetCoinbaseTrades` (Struct, pub) — Coinbase trades REST request (dynamic per-product ticker path + params).
+- `barter_data::exchange::coinbase::rest::trades::GetCoinbaseTradesParams` (Struct, pub) — Query params for Coinbase trades REST request (start/end unix-seconds, limit).
+- `barter_data::exchange::coinbase::subscription::CoinbaseChannels` (Struct, pub) — Coinbase channel-confirmation entry (`name` + `product_ids`) carried inside `CoinbaseSubResponse::Subscribed`.
+- `barter_data::exchange::coinbase::subscription::CoinbaseSubResponse` (Enum, pub) — Tagged-enum Coinbase WS subscription response (`Subscribed` with channels, or `Error` with reason).
+- `barter_data::exchange::coinbase::trade::CoinbaseTrade` (Struct, pub) — Coinbase `match` WS trade message (subscription id derived from product_id, plus id/time/amount/price/side).
+- `barter_data::exchange::gateio::Gateio` (Struct, pub) — Generic `Gateio<Server>` exchange marker; specialised for spot/perpetuals/futures/options.
+- `barter_data::exchange::gateio::candle::GateioKline` (TypeAlias, pub) — Type alias `GateioMessage<GateioKlineInner>` for Gate.io kline WS messages (all server variants).
+- `barter_data::exchange::gateio::candle::GateioKlineInner` (Struct, pub) — Inner Gate.io candle payload (`t/o/h/l/c/v/n/a` short-field schema).
+- `barter_data::exchange::gateio::channel::GateioChannel` (Struct, pub) — `SmolStr` newtype for Gate.io channel strings (`spot.trades`, `futures.trades`, `options.trades`).
+- `barter_data::exchange::gateio::future::GateioFuturesBtc` (TypeAlias, pub) — Type alias `Gateio<GateioServerFuturesBtc>` — Gate.io BTC-margined dated futures.
+- `barter_data::exchange::gateio::future::GateioFuturesUsd` (TypeAlias, pub) — Type alias `Gateio<GateioServerFuturesUsd>` — Gate.io USD-margined dated futures.
+- `barter_data::exchange::gateio::future::GateioServerFuturesBtc` (Struct, pub) — Marker server for Gate.io BTC-margined dated futures endpoints.
+- `barter_data::exchange::gateio::future::GateioServerFuturesUsd` (Struct, pub) — Marker server for Gate.io USD-margined dated futures endpoints.
+- `barter_data::exchange::gateio::market::GateioMarket` (Struct, pub) — `SmolStr` newtype for Gate.io market symbols (e.g. `BTC_USDT`).
+- `barter_data::exchange::gateio::message::GateioError` (Struct, pub) — Gate.io WS error body (`code` + `message`) embedded in `GateioMessage`.
+- `barter_data::exchange::gateio::message::GateioMessage` (Struct, pub) — Generic Gate.io WS envelope (`channel`, optional `error`, typed `result` data).
+- `barter_data::exchange::gateio::option::GateioOptions` (TypeAlias, pub) — Type alias `Gateio<GateioServerOptions>` — Gate.io options exchange.
+- `barter_data::exchange::gateio::option::GateioServerOptions` (Struct, pub) — Marker server for Gate.io options endpoints.
+- `barter_data::exchange::gateio::perpetual::GateioPerpetualsBtc` (TypeAlias, pub) — Type alias `Gateio<GateioServerPerpetualsBtc>` — Gate.io BTC-margined perpetuals.
+- `barter_data::exchange::gateio::perpetual::GateioPerpetualsUsd` (TypeAlias, pub) — Type alias `Gateio<GateioServerPerpetualsUsd>` — Gate.io USDT-margined perpetuals.
+- `barter_data::exchange::gateio::perpetual::GateioServerPerpetualsBtc` (Struct, pub) — Marker server for Gate.io BTC-margined perpetuals endpoints.
+- `barter_data::exchange::gateio::perpetual::GateioServerPerpetualsUsd` (Struct, pub) — Marker server for Gate.io USDT-margined perpetuals endpoints.
+- `barter_data::exchange::gateio::perpetual::trade::GateioFuturesTradeInner` (Struct, pub) — Inner Gate.io futures/perpetuals trade row (contract, ms time, id, price, signed size).
+- `barter_data::exchange::gateio::perpetual::trade::GateioFuturesTrades` (TypeAlias, pub) — Type alias `GateioMessage<Vec<GateioFuturesTradeInner>>` for Gate.io futures/perpetuals trade WS messages.
+- `barter_data::exchange::gateio::spot::GateioServerSpot` (Struct, pub) — Marker server for Gate.io spot endpoints.
+- `barter_data::exchange::gateio::spot::GateioSpot` (TypeAlias, pub) — Type alias `Gateio<GateioServerSpot>` — Gate.io spot exchange.
+- `barter_data::exchange::gateio::spot::trade::GateioSpotTrade` (TypeAlias, pub) — Type alias `GateioMessage<GateioSpotTradeInner>` for Gate.io spot trade WS messages.
+- `barter_data::exchange::gateio::spot::trade::GateioSpotTradeInner` (Struct, pub) — Inner Gate.io spot trade row (currency_pair, ms time, id, price, amount, side).
+- `barter_data::exchange::gateio::subscription::GateioSubResponse` (TypeAlias, pub) — Type alias `GateioMessage<GateioSubResult>` for Gate.io WS subscription responses.
+- `barter_data::exchange::gateio::subscription::GateioSubResult` (Struct, pub) — Gate.io subscription result body containing the `status` string.
+- `barter_data::exchange::hyperliquid::Hyperliquid` (Struct, pub) — Hyperliquid exchange marker (single-server perpetuals DEX).
+- `barter_data::exchange::hyperliquid::book::HyperliquidBookData` (Struct, pub) — Inner Hyperliquid L2 book payload (coin, ms time, `levels[0]=bids`, `levels[1]=asks`).
+- `barter_data::exchange::hyperliquid::book::HyperliquidLevel` (Struct, pub) — Single Hyperliquid book level (`px`, `sz` decimals + `n` order count).
+- `barter_data::exchange::hyperliquid::book::HyperliquidOrderBooks` (Struct, pub) — Hyperliquid `l2Book` WS message wrapping `HyperliquidBookData` with derived `SubscriptionId`.
+- `barter_data::exchange::hyperliquid::bulk::HyperliquidBulkClient` (Struct, pub) — Bulk archive client downloading hourly LZ4-compressed fill JSON from Hyperliquid's requester-pays S3 bucket (SigV4 signed).
+- `barter_data::exchange::hyperliquid::bulk::s3_signer::AwsCredentials` (Struct, pub) — AWS credentials (access key, secret, optional session token) loaded from env or `~/.aws/credentials` for S3 SigV4 signing.
+- `barter_data::exchange::hyperliquid::bulk::s3_signer::HmacSha256` (TypeAlias, pub) — Private `Hmac<Sha256>` type alias used internally during SigV4 signing.
+- `barter_data::exchange::hyperliquid::bulk::s3_signer::SignedHeaders` (Struct, pub) — Output of `sign_s3_get`: the `Authorization`/`x-amz-date`/`x-amz-content-sha256`/optional security-token headers.
+- `barter_data::exchange::hyperliquid::bulk::trades::BlockWrapper` (Struct, pub) — Internal wrapper for parsing the `{"events": [...]}` form of a Hyperliquid hourly fill block.
+- `barter_data::exchange::hyperliquid::bulk::trades::HyperliquidFillEvent` (Struct, pub) — Single fill event from the Hyperliquid hourly archive (coin, px, sz, side, ms time, trade id).
+- `barter_data::exchange::hyperliquid::candle::HyperliquidCandle` (Struct, pub) — Inner Hyperliquid candle payload (open/close ms times, coin, interval, OHLCV strings, trade count).
+- `barter_data::exchange::hyperliquid::candle::HyperliquidKline` (Struct, pub) — Hyperliquid `candle` WS message wrapping `HyperliquidCandle` with derived `SubscriptionId`.
+- `barter_data::exchange::hyperliquid::channel::HyperliquidChannel` (Struct, pub) — `SmolStr` newtype for Hyperliquid channel strings (`trades`, `l2Book`, `candle:<interval>`).
+- `barter_data::exchange::hyperliquid::market::HyperliquidMarket` (Struct, pub) — `SmolStr` newtype for Hyperliquid coin symbols (e.g. `BTC`, `ETH`).
+- `barter_data::exchange::hyperliquid::rest::HyperliquidApiError` (Struct, pub) — Hyperliquid REST error payload (single `error` string).
+- `barter_data::exchange::hyperliquid::rest::HyperliquidHttpParser` (Struct, pub) — `HttpParser` translating Hyperliquid REST responses into `DataError`/typed payloads.
+- `barter_data::exchange::hyperliquid::rest::HyperliquidRestClient` (Struct, pub) — REST client for Hyperliquid (POST `/info` with JSON body) bundling rate limiter and HTTP client.
+- `barter_data::exchange::hyperliquid::rest::klines::GetHyperliquidKlines` (Struct, pub) — Hyperliquid REST kline request wrapper carrying the JSON `PostHyperliquidKlines` body.
+- `barter_data::exchange::hyperliquid::rest::klines::HyperliquidKlineRaw` (Struct, pub) — Raw Hyperliquid REST kline row (short field names, string OHLCV, both open/close times).
+- `barter_data::exchange::hyperliquid::rest::klines::HyperliquidKlineReq` (Struct, pub) — Inner JSON body for Hyperliquid `candleSnapshot` (coin, interval, start/end ms).
+- `barter_data::exchange::hyperliquid::rest::klines::PostHyperliquidKlines` (Struct, pub) — Outer JSON body for Hyperliquid `/info` candleSnapshot POST (`type` + `req`).
+- `barter_data::exchange::hyperliquid::subscription::HyperliquidSubResponse` (Struct, pub) — Hyperliquid WS subscription ACK carrying the `channel` name.
+- `barter_data::exchange::hyperliquid::trade::HyperliquidTrade` (Struct, pub) — Single Hyperliquid trade record (coin, side, px, sz, ms time, trade id).
+- `barter_data::exchange::hyperliquid::trade::HyperliquidTrades` (Struct, pub) — Hyperliquid `trades` WS message bundling a batch of `HyperliquidTrade`s and the derived `SubscriptionId`.
+- `barter_data::exchange::kraken::Kraken` (Struct, pub) — Kraken exchange marker (single-server, WebSocket v2).
+- `barter_data::exchange::kraken::book::l1::KrakenOrderBookL1` (TypeAlias, pub) — Type alias `KrakenMessage<KrakenTickerPayload>` for Kraken v2 ticker (L1) WS messages.
+- `barter_data::exchange::kraken::book::l1::KrakenTickerData` (Struct, pub) — Single Kraken v2 ticker snapshot (symbol, bid/ask price+qty, last, timestamp).
+- `barter_data::exchange::kraken::book::l1::KrakenTickerPayload` (Struct, pub) — Kraken v2 ticker data message envelope (channel, type, `data: Vec<KrakenTickerData>`).
+- `barter_data::exchange::kraken::book::l2::KrakenBookData` (Struct, pub) — Single Kraken v2 book snapshot/update body (symbol, bids, asks, checksum, timestamp).
+- `barter_data::exchange::kraken::book::l2::KrakenBookLevel` (Struct, pub) — Kraken v2 book level with numeric `price` and `qty`.
+- `barter_data::exchange::kraken::book::l2::KrakenBookPayload` (Struct, pub) — Kraken v2 book data envelope (channel, type, `data: Vec<KrakenBookData>`).
+- `barter_data::exchange::kraken::book::l2::KrakenOrderBookL2` (TypeAlias, pub) — Type alias `KrakenMessage<KrakenBookPayload>` for Kraken v2 book WS messages.
+- `barter_data::exchange::kraken::book::l2::KrakenOrderBookL2Meta` (Struct, pub) — Per-instrument transformer metadata pairing `InstrumentKey` with an `initialized` flag.
+- `barter_data::exchange::kraken::book::l2::KrakenOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` driving Kraken v2 L2 streams (snapshot + delta application).
+- `barter_data::exchange::kraken::book::snapshot::KrakenOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` that pulls initial L2 snapshots from the Kraken REST `Depth` endpoint.
+- `barter_data::exchange::kraken::book::snapshot::KrakenRestBook` (Struct, pub) — Internal Kraken REST orderbook body holding bid/ask `KrakenRestLevel` arrays.
+- `barter_data::exchange::kraken::book::snapshot::KrakenRestLevel` (Struct, pub) — Internal Kraken REST orderbook level (price/qty strings).
+- `barter_data::exchange::kraken::book::snapshot::KrakenRestResponse` (Struct, pub) — Top-level Kraken REST depth response wrapper with dynamic pair-keyed result.
+- `barter_data::exchange::kraken::bulk::KrakenArchiveParser` (Struct, pub) — Standalone parser for Kraken-published trade ZIP archives (downloaded manually); extracts per-pair CSV trade data.
+- `barter_data::exchange::kraken::bulk::trades::KrakenBulkTrade` (Struct, pub) — CSV record for Kraken bulk trade archives (price, volume, time, buy/sell, market/limit, misc, trade_id).
+- `barter_data::exchange::kraken::candle::KrakenKline` (TypeAlias, pub) — Type alias `KrakenMessage<KrakenKlinePayload>` for Kraken v2 OHLC WS messages.
+- `barter_data::exchange::kraken::candle::KrakenKlineData` (Struct, pub) — Single Kraken v2 OHLC candle (symbol, OHLC, vwap, volume, trades, `interval_begin`, `interval`).
+- `barter_data::exchange::kraken::candle::KrakenKlinePayload` (Struct, pub) — Kraken v2 OHLC data envelope (channel, type, `data: Vec<KrakenKlineData>`).
+- `barter_data::exchange::kraken::channel::KrakenChannel` (Struct, pub) — `SmolStr` newtype for Kraken v2 channel strings (`trade`, `ticker`, `book`, `ohlc-<minutes>`).
+- `barter_data::exchange::kraken::market::KrakenMarket` (Struct, pub) — `SmolStr` newtype for Kraken v2 market symbols (slash-separated, e.g. `BTC/USD`).
+- `barter_data::exchange::kraken::message::KrakenError` (Struct, pub) — Generic Kraken error body (single `message` string, also accepts `errorMessage`).
+- `barter_data::exchange::kraken::message::KrakenEvent` (Enum, pub) — Kraken non-data WS event enum (`Heartbeat` or `Status`).
+- `barter_data::exchange::kraken::message::KrakenMessage` (Enum, pub) — Untagged Kraken v2 WS envelope: either typed `Data(T)` or non-data `Event`.
+- `barter_data::exchange::kraken::message::KrakenStatus` (Struct, pub) — Kraken system status event (api_version, system, version).
+- `barter_data::exchange::kraken::rest::KrakenApiError` (Struct, pub) — Kraken REST error payload (array-of-strings `error` field).
+- `barter_data::exchange::kraken::rest::KrakenHttpParser` (Struct, pub) — `HttpParser` translating Kraken REST responses into `DataError`/typed payloads.
+- `barter_data::exchange::kraken::rest::KrakenRestClient` (Struct, pub) — REST client for Kraken (single-variant) with conservative ~60 req/min rate limiter.
+- `barter_data::exchange::kraken::rest::klines::GetKrakenOhlc` (Struct, pub) — Kraken OHLC REST request (`GET /0/public/OHLC` + `GetKrakenOhlcParams`).
+- `barter_data::exchange::kraken::rest::klines::GetKrakenOhlcParams` (Struct, pub) — Query params for Kraken OHLC REST request (pair, integer-minutes interval, optional `since` cursor).
+- `barter_data::exchange::kraken::rest::klines::KrakenKlineRaw` (Struct, pub) — Positional-array OHLC row from Kraken REST (`[time, o, h, l, c, vwap, volume, count]`).
+- `barter_data::exchange::kraken::rest::klines::KrakenOhlcResponse` (Struct, pub) — Top-level Kraken OHLC REST response with dynamic pair key plus `last` pagination cursor in `result`.
+- `barter_data::exchange::kraken::rest::trades::GetKrakenTrades` (Struct, pub) — Kraken Trades REST request (`GET /0/public/Trades` + `GetKrakenTradesParams`).
+- `barter_data::exchange::kraken::rest::trades::GetKrakenTradesParams` (Struct, pub) — Query params for Kraken Trades REST request (pair, optional nanosecond `since` cursor, count).
+- `barter_data::exchange::kraken::rest::trades::KrakenTradeRaw` (Struct, pub) — Positional-array trade row from Kraken REST (`[price, volume, time, b/s, m/l, misc, trade_id]`).
+- `barter_data::exchange::kraken::rest::trades::KrakenTradesResponse` (Struct, pub) — Top-level Kraken Trades REST response with dynamic pair key plus nanosecond-nonce `last` cursor.
+- `barter_data::exchange::kraken::subscription::KrakenSubResponse` (Struct, pub) — Kraken v2 WS subscription response (`method`, `success`, optional `error`/`result`).
+- `barter_data::exchange::kraken::subscription::KrakenSubResult` (Struct, pub) — Successful Kraken v2 subscription result body (`channel`, optional `symbol`).
+- `barter_data::exchange::kraken::trade::KrakenSide` (Enum, pub) — Kraken v2 side enum (`Buy`/`Sell`, lowercase serde).
+- `barter_data::exchange::kraken::trade::KrakenTrade` (Struct, pub) — Single Kraken v2 trade record (symbol, side, price, qty, ord_type, trade_id, timestamp).
+- `barter_data::exchange::kraken::trade::KrakenTrades` (TypeAlias, pub) — Type alias `KrakenMessage<KrakenTradesPayload>` for Kraken v2 trades WS messages.
+- `barter_data::exchange::kraken::trade::KrakenTradesPayload` (Struct, pub) — Kraken v2 trades data envelope (channel, type, `data: Vec<KrakenTrade>`).
+- `barter_data::exchange::okx::Okx` (Struct, pub) — Generic `Okx<Server>` exchange marker; specialised via `OkxServerSpot`/`OkxServerPerpetualsUsd`.
+- `barter_data::exchange::okx::book::OkxBookAction` (Enum, pub) — OKX `books` channel action discriminator (`Snapshot` or `Update`).
+- `barter_data::exchange::okx::book::OkxBookMessage` (Struct, pub) — OKX `books` (stateful) WS message with action and `OkxOrderBookUpdate` data, used by the sequencing L2 transformer.
+- `barter_data::exchange::okx::book::OkxLevel` (Struct, pub) — OKX 4-element book level keeping only `price`/`amount` decimals (deprecated and num_orders fields dropped).
+- `barter_data::exchange::okx::book::OkxOrderBookMessage` (TypeAlias, pub) — Type alias `OkxMessage<OkxOrderBookSnapshot>` for the legacy `books5` stateless WS message.
+- `barter_data::exchange::okx::book::OkxOrderBookSnapshot` (Struct, pub) — OKX `books5` snapshot payload (asks/bids, ts, seqId) used by the legacy stateless path.
+- `barter_data::exchange::okx::book::OkxOrderBookUpdate` (Struct, pub) — OKX `books` snapshot/update payload with `seqId`/`prevSeqId` gap detection and checksum.
+- `barter_data::exchange::okx::book::l2::OkxOrderBookL2Meta` (Struct, pub) — Per-instrument transformer metadata pairing `InstrumentKey` with an optional `OkxOrderBookL2Sequencer`.
+- `barter_data::exchange::okx::book::l2::OkxOrderBookL2Sequencer` (Struct, pub) — Sequencer tracking `last_seq_id` to validate OKX `books` update continuity and trigger re-sync on gaps.
+- `barter_data::exchange::okx::book::l2::OkxOrderBooksL2Transformer` (Struct, pub) — `ExchangeTransformer` for OKX L2 streams; sequences `OkxBookMessage`s and emits `OrderBookEvent`s.
+- `barter_data::exchange::okx::book::snapshot::OkxOrderBooksL2SnapshotFetcher` (Struct, pub) — `SnapshotFetcher` that pulls initial L2 snapshots from the OKX REST `books` endpoint.
+- `barter_data::exchange::okx::book::snapshot::OkxRestResponse` (Struct, pub) — Top-level OKX REST snapshot wrapper (`{code, msg, data: Vec<OkxRestSnapshot>}`).
+- `barter_data::exchange::okx::book::snapshot::OkxRestSnapshot` (Struct, pub) — Inner OKX REST orderbook snapshot row used to seed local L2 books.
+- `barter_data::exchange::okx::bulk::OkxBulkClient` (Struct, pub) — Bulk archive client downloading daily/monthly ZIP-compressed CSV trade archives from OKX's CDN.
+- `barter_data::exchange::okx::bulk::trades::OkxBulkTrade` (Struct, pub) — CSV record for OKX bulk trade archives (instrument_name, trade_id, side, price, size, created_time).
+- `barter_data::exchange::okx::candle::OkxKline` (Struct, pub) — OKX real-time kline WS message (`arg` + `data: Vec<Vec<String>>` positional candle arrays).
+- `barter_data::exchange::okx::candle::OkxKlineArg` (Struct, pub) — OKX kline `arg` field carrying `channel` (e.g. `candle1m`) and `instId`.
+- `barter_data::exchange::okx::channel::OkxChannel` (Struct, pub) — `SmolStr` newtype for OKX channel strings (`trades`, `books`, etc.).
+- `barter_data::exchange::okx::market::OkxMarket` (Struct, pub) — `SmolStr` newtype for OKX instrument ids (e.g. `BTC-USDT`).
+- `barter_data::exchange::okx::perpetual::OkxPerpetualsUsd` (TypeAlias, pub) — Type alias `Okx<OkxServerPerpetualsUsd>` — the concrete OKX USDT perpetuals exchange.
+- `barter_data::exchange::okx::perpetual::OkxServerPerpetualsUsd` (Struct, pub) — Marker server for OKX perpetuals WebSocket/REST endpoints.
+- `barter_data::exchange::okx::rest::OkxApiError` (Struct, pub) — OKX REST error body (`{code: String, msg}`).
+- `barter_data::exchange::okx::rest::OkxHttpParser` (Struct, pub) — `HttpParser` translating OKX REST responses into `DataError`/typed payloads.
+- `barter_data::exchange::okx::rest::OkxRestClient` (Struct, pub) — REST client for OKX (single-variant) with rate limiter sized for the history-trades/history-candles limits.
+- `barter_data::exchange::okx::rest::klines::GetOkxKlines` (Struct, pub) — OKX klines REST request (`/api/v5/market/candles` or `/history-candles` path + params).
+- `barter_data::exchange::okx::rest::klines::GetOkxKlinesParams` (Struct, pub) — Query params for OKX klines REST request (instId, bar interval, before/after cursors, limit).
+- `barter_data::exchange::okx::rest::klines::OkxKlineRaw` (Struct, pub) — Positional-array kline row from OKX REST (`[ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]`).
+- `barter_data::exchange::okx::rest::klines::OkxKlinesResponse` (Struct, pub) — Top-level OKX klines REST wrapper (`{code, msg, data: Vec<OkxKlineRaw>}`).
+- `barter_data::exchange::okx::rest::trades::GetOkxTrades` (Struct, pub) — OKX history-trades REST request wrapper (`GetOkxTradesParams`).
+- `barter_data::exchange::okx::rest::trades::GetOkxTradesParams` (Struct, pub) — Query params for OKX history-trades REST request (instId, before/after tradeId cursors, limit).
+- `barter_data::exchange::okx::rest::trades::OkxRestTrade` (Struct, pub) — Single OKX REST history-trade record (tradeId, px, sz, side, ts).
+- `barter_data::exchange::okx::rest::trades::OkxTradesResponse` (Struct, pub) — Top-level OKX history-trades REST wrapper (`{code, msg, data: Vec<OkxRestTrade>}`).
+- `barter_data::exchange::okx::spot::OkxServerSpot` (Struct, pub) — Marker server for OKX spot WebSocket/REST endpoints.
+- `barter_data::exchange::okx::spot::OkxSpot` (TypeAlias, pub) — Type alias `Okx<OkxServerSpot>` — the concrete OKX spot exchange.
+- `barter_data::exchange::okx::subscription::OkxSubResponse` (Enum, pub) — OKX WS subscription response enum (`Subscribed` or `Error{code,msg}`).
+- `barter_data::exchange::okx::trade::OkxMessage` (Struct, pub) — Generic OKX WS envelope (`arg` deserialised into `SubscriptionId` plus typed `data` vec).
+- `barter_data::exchange::okx::trade::OkxTrade` (Struct, pub) — Single OKX real-time trade record (tradeId, price, size, side, ms timestamp).
+- `barter_data::exchange::okx::trade::OkxTrades` (TypeAlias, pub) — Type alias `OkxMessage<OkxTrade>` for OKX real-time trades WS messages.
+- `barter_data::exchange::subscription::ExchangeSub` (Struct, pub) — Channel+market pair derived from a Barter `Subscription` and used by `Connector::requests` to build WS subscribe payloads.
+- `barter_data::instrument::InstrumentData` (Trait, pub) — Trait describing the data an exchange needs to resolve a market plus the unique `Key` used to tag downstream events.
+- `barter_data::instrument::MarketInput` (Enum, pub) — Borrowed input passed to `Connector::resolve_market`: either base/quote/kind components or a precomputed exchange name.
+- `barter_data::instrument::MarketInstrumentData` (Struct, pub) — Concrete `InstrumentData` impl carrying an `InstrumentKey`, pre-resolved exchange name, and `MarketDataInstrumentKind`.
+- `barter_data::rest::ExchangeRateLimiter` (TypeAlias, pub) — `governor::RateLimiter` alias shared across REST clients via `Arc` so multiple clients can pull from one token bucket.
+- `barter_data::rest::KlineFetcher` (Trait, pub) — Trait implemented by exchange REST clients to fetch one batch of historical klines and declare supported intervals.
+- `barter_data::rest::KlineRequest` (Struct, pub) — Generic kline-fetch request (market, interval, optional start/end/limit) consumed by `KlineFetcher`.
+- `barter_data::rest::TradeFetcher` (Trait, pub) — Trait implemented by exchange REST clients to fetch one batch of historical trades and wait for the per-exchange rate limiter.
+- `barter_data::rest::TradeRequest` (Struct, pub) — Generic trade-fetch request (market, optional time bounds, limit, initial cursor) consumed by `TradeFetcher`.
+- `barter_data::retry::RetryPolicy` (Struct, pub) — Configuration for exponential-backoff retries (initial/max backoff, multiplier, max attempts).
+- `barter_data::streams::Streams` (Struct, pub) — `FnvHashMap<ExchangeId, UnboundedRx<T>>` of per-exchange market-event receivers with select/select_all helpers.
+- `barter_data::streams::builder::StreamBuilder` (Struct, pub) — Fluent builder that accumulates per-exchange `Subscription` batches and `init`s a `Streams<MarketStreamResult>`.
+- `barter_data::streams::builder::SubscribeFuture` (TypeAlias, pub) — Boxed `Future<Output = Result<(), DataError>>` returned by `StreamBuilder::subscribe` per-batch.
+- `barter_data::streams::builder::dynamic::Channels` (Struct, pub) — Internal bundle of per-`SubKind` `Txs`/`Rxs` channel maps that drive `DynamicStreams` event routing.
+- `barter_data::streams::builder::dynamic::DynamicStreamHandles` (Struct, pub) — Cloneable map of type-erased `DynHandle`s keyed by `(ExchangeId, SubKindVariant)` for runtime subscribe/unsubscribe.
+- `barter_data::streams::builder::dynamic::DynamicStreams` (Struct, pub) — Multi-exchange per-`SubKind` stream collection (`trades`, `l1s`, `l2s`, `liquidations`, `candles`) with selector helpers.
+- `barter_data::streams::builder::dynamic::HandleKey` (Struct, pub) — Internal `(ExchangeId, SubKindVariant)` key used to look up handles in `DynamicStreamHandles`.
+- `barter_data::streams::builder::dynamic::OutputSelector` (Trait, pub) — Internal trait mapping each `SubscriptionKind` to its matching `Txs` channel for event routing.
+- `barter_data::streams::builder::dynamic::Rxs` (Struct, pub) — Internal per-`SubKind` receiver bundle held by `Channels` and split out into `DynamicStreams`.
+- `barter_data::streams::builder::dynamic::StreamFactory` (Trait, pub) — Internal trait that erases `(Exchange, Kind)` so the registry can spawn arbitrary connection tasks at runtime.
+- `barter_data::streams::builder::dynamic::StreamRegistry` (Struct, pub) — Internal `(ExchangeId, SubKindVariant) → Box<dyn StreamFactory>` registry built by the `stream_registry!` macro.
+- `barter_data::streams::builder::dynamic::SubKindVariant` (Enum, pub) — Discriminant-only `SubKind` variant (strips `Interval` from `Candles`) used as the registry lookup key.
+- `barter_data::streams::builder::dynamic::Txs` (Struct, pub) — Internal per-`SubKind` sender bundle held by `Channels` and shared with `OutputSelector` routing.
+- `barter_data::streams::builder::dynamic::TypedStreamFactory` (Struct, pub) — Concrete `StreamFactory<Exchange, Kind>` zero-sized impl registered against `(Exchange::ID, Kind::VARIANT)`.
+- `barter_data::streams::builder::multi::BuilderInitFuture` (TypeAlias, pub) — Boxed `Future<Output = Result<(), DataError>>` returned by `MultiStreamBuilder::add` per added builder.
+- `barter_data::streams::builder::multi::MultiStreamBuilder` (Struct, pub) — Builder that combines several `StreamBuilder<Kind>`s into a unified `Streams<Output>` (`Output: From<MarketStreamResult>`).
+- `barter_data::streams::consumer::MarketStreamEvent` (TypeAlias, pub) — Type alias `reconnect::Event<ExchangeId, MarketEvent<...>>` — a market event delivered through the reconnecting-stream wrapper.
+- `barter_data::streams::consumer::MarketStreamResult` (TypeAlias, pub) — Type alias `reconnect::Event<ExchangeId, Result<MarketEvent<...>, DataError>>` — fallible market event delivered through the reconnecting-stream wrapper.
+- `barter_data::streams::consumer::StreamKey` (Struct, pub) — Static identifier `(stream, exchange, optional kind)` used to tag log/trace spans of reconnecting streams.
+- `barter_data::streams::handle::Command` (Enum, pub) — Connection-task command enum (`Subscribe { entries }` / `Unsubscribe { subscription_ids }`) sent from a `TypedHandle`.
+- `barter_data::streams::handle::DynHandle` (Trait, pub) — Type-erased handle trait providing `subscribe_erased`/`unsubscribe_erased` for storing heterogeneous handles in `DynamicStreamHandles`.
+- `barter_data::streams::handle::SubEntry` (Struct, pub) — Resolved subscription entry (subscription id + `ExchangeSub` + instrument key) sent to the connection task.
+- `barter_data::streams::handle::TypedHandle` (Struct, pub) — Type-safe `(Exchange, InstrumentKey, Kind)` handle wrapping an `mpsc::UnboundedSender<Command>` for live subscribe/unsubscribe.
+- `barter_data::streams::reconnect::Event` (Enum, pub) — Reconnecting-stream event enum: either an inner `Item(T)` or a `Reconnecting(Origin)` notification.
+- `barter_data::streams::reconnect::stream::ReconnectingStream` (Trait, pub) — Trait adding backoff, termination-on-error, reconnect-event wrapping, and channel forwarding to a `Stream`.
+- `barter_data::streams::reconnect::stream::ReconnectionBackoffPolicy` (Struct, pub) — Exponential-backoff policy (initial ms, multiplier, max ms, stable-after-ms) used by `with_reconnect_backoff`.
+- `barter_data::streams::reconnect::stream::ReconnectionState` (Struct, pub) — Internal state tracker for the current backoff attempt and last-stable timestamp during reconnects.
+- `barter_data::streams::task::ActiveSubs` (Struct, pub) — Internal per-connection store of currently-active subscriptions used by the connection task to handle subscribe/unsubscribe.
+- `barter_data::subscriber::Subscribed` (Struct, pub) — Result of `Subscriber::subscribe`: the open WebSocket, `Map<InstrumentKey>`, and any buffered pre-validation messages.
+- `barter_data::subscriber::Subscriber` (Trait, pub) — Trait describing how to connect to a socket and action a batch of `Subscription`s, returning a `Subscribed`.
+- `barter_data::subscriber::WebSocketSubscriber` (Struct, pub) — Standard WebSocket-based `Subscriber` implementation used by most exchanges.
+- `barter_data::subscriber::mapper::SubscriptionMapper` (Trait, pub) — Trait converting a batch of Barter `Subscription`s into exchange-specific `SubscriptionMeta` (instrument map + WS payloads).
+- `barter_data::subscriber::mapper::WebSocketSubMapper` (Struct, pub) — Standard `SubscriptionMapper` implementation suitable for most WebSocket exchanges.
+- `barter_data::subscriber::validator::SubscriptionValidator` (Trait, pub) — Trait describing how to consume server responses from the WebSocket and confirm subscription success.
+- `barter_data::subscriber::validator::WebSocketSubValidator` (Struct, pub) — Standard `SubscriptionValidator` implementation suitable for most WebSocket exchanges.
+- `barter_data::subscription::Map` (Struct, pub) — `FnvHashMap<SubscriptionId, T>` newtype used by transformers to look up the instrument associated with incoming exchange messages.
+- `barter_data::subscription::SubKind` (Enum, pub) — Discriminant enum of available subscription kinds (`PublicTrades`, `OrderBooksL1/2/3`, `Liquidations`, `Candles(Interval)`).
+- `barter_data::subscription::Subscription` (Struct, pub) — `(Exchange, Instrument, Kind)` triple describing a single market-data subscription request.
+- `barter_data::subscription::SubscriptionKind` (Trait, pub) — Trait associating a typed `Event` payload, str name, and `SubKind` discriminant with each subscription kind.
+- `barter_data::subscription::SubscriptionMeta` (Struct, pub) — Output of `SubscriptionMapper::map`: the per-id instrument map plus the WS payloads to send to the exchange.
+- `barter_data::subscription::book::OrderBookEvent` (Enum, pub) — Non-exhaustive enum carried by L2/L3 streams: `Snapshot(OrderBook)` or `Update(OrderBook)`.
+- `barter_data::subscription::book::OrderBookL1` (Struct, pub) — Normalised L1 snapshot containing last-update time plus optional best bid/ask `Level`s.
+- `barter_data::subscription::book::OrderBooksL1` (Struct, pub) — `SubscriptionKind` marker yielding `MarketEvent<OrderBookL1>` events.
+- `barter_data::subscription::book::OrderBooksL2` (Struct, pub) — `SubscriptionKind` marker yielding `MarketEvent<OrderBookEvent>` events (price-aggregated L2 book).
+- `barter_data::subscription::book::OrderBooksL3` (Struct, pub) — `SubscriptionKind` marker yielding `MarketEvent<OrderBookEvent>` events (non-aggregated L3 book).
+- `barter_data::subscription::candle::Candle` (Struct, pub) — Normalised OHLCV candle (open/close time, OHLC, base/quote volume, trade count, closed flag).
+- `barter_data::subscription::candle::Candles` (Struct, pub) — `SubscriptionKind` marker (parameterised by `Interval`) yielding `MarketEvent<Candle>` events.
+- `barter_data::subscription::candle::Interval` (Enum, pub) — Normalised candlestick interval enum (M1, M3, M5, M15, M30, H1, H2, H4, H6, H12, D1, D3, W1, Month1).
+- `barter_data::subscription::candle::ParseIntervalError` (Struct, pub) — Error type returned when parsing an interval string fails (holds the offending input).
+- `barter_data::subscription::liquidation::Liquidation` (Struct, pub) — Normalised liquidation event (side, price, quantity, time).
+- `barter_data::subscription::liquidation::Liquidations` (Struct, pub) — `SubscriptionKind` marker yielding `MarketEvent<Liquidation>` events.
+- `barter_data::subscription::trade::PublicTrade` (Struct, pub) — Normalised public trade (id, price, amount, side); `time` lives on the wrapping `MarketEvent`.
+- `barter_data::subscription::trade::PublicTrades` (Struct, pub) — `SubscriptionKind` marker yielding `MarketEvent<PublicTrade>` events.
+- `barter_data::trade::RestTrade` (Struct, pub) — Single REST/bulk-archive trade (id, time, price, amount, side); distinct from `PublicTrade` because REST responses carry explicit timestamps.
+- `barter_data::transformer::ExchangeTransformer` (Trait, pub) — Trait describing how to construct a `Transformer` for a `(Exchange, InstrumentKey, Kind)` triple, including snapshot init and dynamic map mutation.
+- `barter_data::transformer::stateless::StatelessTransformer` (Struct, pub) — Standard generic stateless `ExchangeTransformer` (no sequencing state) used by trade/L1 streams across exchanges.
+
+## barter_execution (57 types)
+
+- `barter_execution::AccountEvent` (Struct, pub) — Indexed account update from an exchange (balances, orders, trades) flowing through ExecutionClient streams, tagged with exchange and AccountEventKind payload.
+- `barter_execution::AccountEventKind` (Enum, pub) — Enum payload of an AccountEvent: full Snapshot, single BalanceSnapshot, OrderSnapshot upsert, OrderCancelled response, or partial/full Trade fill.
+- `barter_execution::AccountSnapshot` (Struct, pub) — Full indexed point-in-time view of an exchange account: all balances plus per-instrument open orders, used to replace engine-side state.
+- `barter_execution::InstrumentAccountSnapshot` (Struct, pub) — Per-instrument slice of an AccountSnapshot carrying the open OrderSnapshot list for one indexed instrument.
+- `barter_execution::UnindexedAccountEvent` (TypeAlias, pub) — Type alias for AccountEvent keyed by ExchangeId/AssetNameExchange/InstrumentNameExchange as emitted by ExecutionClient before AccountEventIndexer resolves indices.
+- `barter_execution::UnindexedAccountSnapshot` (TypeAlias, pub) — Type alias for AccountSnapshot keyed by exchange-native names, as produced by ExecutionClient::account_snapshot and MockExchange prior to indexing.
+- `barter_execution::balance::AssetBalance` (Struct, pub) — Indexed-or-named asset balance with exchange timestamp; flows through ExecutionClient::fetch_balances and AccountEventIndexer::asset_balance.
+- `barter_execution::balance::Balance` (Struct, pub) — Free/total decimal balance pair with derived `used()`, the inner numeric payload of every AssetBalance.
+- `barter_execution::client::ExecutionClient` (Trait, pub) — Trait every venue integration implements to fetch snapshots/streams, open/cancel orders, and read balances/trades using unindexed exchange-native keys.
+- `barter_execution::client::mock::MockExecution` (Struct, pub) — ExecutionClient implementation that talks to an in-process MockExchange via mpsc request/broadcast event channels and a pluggable clock.
+- `barter_execution::client::mock::MockExecutionClientConfig` (Struct, pub) — Per-client construction config for MockExecution carrying the mocked exchange id, clock fn, request sender, and account event receiver.
+- `barter_execution::client::mock::MockExecutionConfig` (Struct, pub) — Top-level config for spinning up a MockExchange: exchange id, initial UnindexedAccountSnapshot, simulated latency, and fees percent.
+- `barter_execution::error::ApiError` (Enum, pub) — Exchange-rejected API failures (asset/instrument invalid, rate limit, insufficient balance, order rejected/already-cancelled/already-filled) wrapped inside ClientError/OrderError.
+- `barter_execution::error::ClientError` (Enum, pub) — Top-level ExecutionClient error wrapping ConnectivityError, ApiError, or AccountSnapshot/AccountStream initialisation failures returned from venue integrations.
+- `barter_execution::error::ConnectivityError` (Enum, pub) — Intermittent transport failures from an ExecutionClient: ExchangeOffline, request Timeout, or underlying SocketError from the WebSocket/HTTP layer.
+- `barter_execution::error::KeyError` (Enum, pub) — Index lookup failure raised by ExecutionInstrumentMap when an ExchangeId/AssetNameExchange/InstrumentNameExchange is not present in the indexed registry.
+- `barter_execution::error::OrderError` (Enum, pub) — Open/cancel order failure wrapping either a ConnectivityError or an exchange-side ApiError rejection.
+- `barter_execution::error::UnindexedApiError` (TypeAlias, pub) — Type alias for ApiError keyed by AssetNameExchange/InstrumentNameExchange as returned by ExecutionClient before AccountEventIndexer resolves it.
+- `barter_execution::error::UnindexedClientError` (TypeAlias, pub) — Type alias for ClientError keyed by exchange-native asset/instrument names, the error surface of every ExecutionClient method.
+- `barter_execution::error::UnindexedOrderError` (TypeAlias, pub) — Type alias for OrderError keyed by exchange-native names, returned from ExecutionClient open/cancel and MockExchange order responses.
+- `barter_execution::exchange::mock::MockExchange` (Struct, pub) — In-process simulated exchange consuming MockExchangeRequest, mutating AccountState, and broadcasting UnindexedAccountEvent with simulated latency and fees.
+- `barter_execution::exchange::mock::OpenOrderNotifications` (Struct, pub) — Pair of post-open notifications (updated AssetBalance snapshot plus generated Trade) the MockExchange broadcasts after a successful OpenOrder.
+- `barter_execution::exchange::mock::account::AccountState` (Struct, pub) — Internal MockExchange ledger storing balances, open and cancelled orders, and trades keyed by exchange-native names with mutation helpers.
+- `barter_execution::exchange::mock::request::MockExchangeRequest` (Struct, pub) — Time-stamped envelope sent from MockExecution to MockExchange wrapping a MockExchangeRequestKind variant for a single client RPC.
+- `barter_execution::exchange::mock::request::MockExchangeRequestKind` (Enum, pub) — Enum of mock RPCs (FetchAccountSnapshot/Balances/OrdersOpen/Trades, CancelOrder, OpenOrder) each carrying a oneshot response channel.
+- `barter_execution::indexer::AccountEventIndexer` (Struct, pub) — ExecutionInstrumentMap-backed translator that converts every Unindexed* account payload (events, snapshots, orders, errors, trades) into Indexed* form for the engine.
+- `barter_execution::indexer::IndexedAccountStream` (TypeAlias, pub) — Type alias `IndexedStream<AccountEventIndexer, St>` wrapping an UnindexedAccountEvent stream so each item is rewritten into a fully indexed AccountEvent.
+- `barter_execution::map::ExecutionInstrumentMap` (Struct, pub) — Bidirectional registry mapping ExchangeId/AssetNameExchange/InstrumentNameExchange to ExchangeIndex/AssetIndex/InstrumentIndex for ExecutionClient↔engine translation.
+- `barter_execution::order::Order` (Struct, pub) — Indexed-or-unindexed order record carrying OrderKey plus side/price/quantity/kind/time-in-force and a generic State (typically OrderState).
+- `barter_execution::order::OrderEvent` (Struct, pub) — Generic `(OrderKey, State)` envelope reused as OrderRequestOpen/Cancel and OrderResponseCancel by parametrising the State type.
+- `barter_execution::order::OrderKey` (Struct, pub) — Composite primary key for an order: exchange, instrument, StrategyId, and ClientOrderId, used everywhere orders are addressed.
+- `barter_execution::order::OrderKind` (Enum, pub) — Order type discriminator: `Market` or `Limit`.
+- `barter_execution::order::OrderSnapshot` (TypeAlias, pub) — Type alias for `Order<…, OrderState<…>>`, the AccountEventKind::OrderSnapshot payload upserted into engine state.
+- `barter_execution::order::TimeInForce` (Enum, pub) — Order lifetime policy: GoodUntilCancelled (post_only), GoodUntilEndOfDay, FillOrKill, or ImmediateOrCancel.
+- `barter_execution::order::UnindexedOrder` (TypeAlias, pub) — Type alias for an Order keyed by ExchangeId/InstrumentNameExchange with an UnindexedOrderState, used on the ExecutionClient/MockExchange wire.
+- `barter_execution::order::UnindexedOrderKey` (TypeAlias, pub) — Type alias for OrderKey keyed by exchange-native names before AccountEventIndexer resolves it via ExecutionInstrumentMap.
+- `barter_execution::order::UnindexedOrderSnapshot` (TypeAlias, pub) — Type alias for an OrderSnapshot keyed by ExchangeId/AssetNameExchange/InstrumentNameExchange as emitted by ExecutionClient before indexing.
+- `barter_execution::order::id::ClientOrderId` (Struct, pub) — Caller-generated stack-allocated SmolStr identifier the engine assigns to each order; constructable via `new` or random 23-byte `random`.
+- `barter_execution::order::id::OrderId` (Struct, pub) — Exchange-assigned order identifier (SmolStr-backed) populated on Open/Cancelled states once the venue acknowledges the order.
+- `barter_execution::order::id::StrategyId` (Struct, pub) — SmolStr-backed identifier tagging which trading strategy issued an order; supports `unknown()` sentinel.
+- `barter_execution::order::request::OrderRequestCancel` (TypeAlias, pub) — Type alias `OrderEvent<RequestCancel, …>` sent through ExecutionClient::cancel_order(s) to cancel a previously opened order.
+- `barter_execution::order::request::OrderRequestOpen` (TypeAlias, pub) — Type alias `OrderEvent<RequestOpen, …>` sent through ExecutionClient::open_order(s) to submit a new order to the venue.
+- `barter_execution::order::request::OrderResponseCancel` (TypeAlias, pub) — Type alias for the indexed cancel response: `OrderEvent<Result<Cancelled, OrderError>, …>` emitted as AccountEventKind::OrderCancelled.
+- `barter_execution::order::request::RequestCancel` (Struct, pub) — Cancel-request payload carrying an optional exchange OrderId (falls back to ClientOrderId on the key when None).
+- `barter_execution::order::request::RequestOpen` (Struct, pub) — Open-request payload: side, price, quantity, OrderKind, TimeInForce — the State portion of an OrderRequestOpen.
+- `barter_execution::order::request::UnindexedOrderResponseCancel` (TypeAlias, pub) — Type alias for OrderResponseCancel keyed by ExchangeId/AssetNameExchange/InstrumentNameExchange returned by ExecutionClient::cancel_order before indexing.
+- `barter_execution::order::state::ActiveOrderState` (Enum, pub) — Order lifecycle enum for live orders: OpenInFlight (sent), Open (acknowledged resting), or CancelInFlight (cancel in progress).
+- `barter_execution::order::state::CancelInFlight` (Struct, pub) — Active phase: a cancel request has been sent for an order still optionally carrying its prior Open metadata pending the venue's response.
+- `barter_execution::order::state::Cancelled` (Struct, pub) — Inactive terminal phase: order successfully cancelled by the venue, recording the exchange OrderId and cancellation time.
+- `barter_execution::order::state::InactiveOrderState` (Enum, pub) — Order lifecycle enum for terminated orders: Cancelled, FullyFilled, OpenFailed(OrderError), or Expired.
+- `barter_execution::order::state::Open` (Struct, pub) — Active phase: order is acknowledged and resting on the book, tracking exchange OrderId, exchange timestamp, and filled_quantity.
+- `barter_execution::order::state::OpenInFlight` (Struct, pub) — Active phase: open request has been dispatched to the venue but no acknowledgement (or OrderId) has yet been received.
+- `barter_execution::order::state::OrderState` (Enum, pub) — Top-level lifecycle enum splitting an order into Active(ActiveOrderState) or Inactive(InactiveOrderState) branches.
+- `barter_execution::order::state::UnindexedOrderState` (TypeAlias, pub) — Type alias for OrderState keyed by AssetNameExchange/InstrumentNameExchange, used on the wire before AccountEventIndexer maps indices.
+- `barter_execution::trade::AssetFees` (Struct, pub) — Pairing of an asset key (indexed or QuoteAsset) with a Decimal fee amount; the `fees` field of every Trade.
+- `barter_execution::trade::Trade` (Struct, pub) — Indexed-or-unindexed fill record emitted on partial/full Order execution carrying TradeId, OrderId, StrategyId, side, price, quantity, and AssetFees.
+- `barter_execution::trade::TradeId` (Struct, pub) — SmolStr-backed exchange-assigned identifier for an individual Trade fill.
+
+## barter_instrument (38 types)
+
+- `barter_instrument::Keyed` (Struct, pub) — Generic `{ key, value }` pair used to bind an index/key to its value inside the indexed lookup vectors (e.g. `Keyed<InstrumentIndex, Instrument>`).
+- `barter_instrument::Side` (Enum, pub) — Trade or position side enum with variants `Buy` and `Sell`, accepting case-insensitive serde aliases ("buy"/"BUY"/"b", "sell"/"SELL"/"s").
+- `barter_instrument::Underlying` (Struct, pub) — Generic `{ base, quote }` pair of `AssetKey`s describing an instrument's underlying market (e.g. `Underlying { base: "btc", quote: "usdt" }`).
+- `barter_instrument::asset::Asset` (Struct, pub) — Canonical asset record holding both its lowercase internal name (`AssetNameInternal`) and the exchange-native name (`AssetNameExchange`).
+- `barter_instrument::asset::AssetId` (Struct, pub) — Unique `u64` identifier newtype for an `Asset`, intended as a stable, hashable handle (not a vector index).
+- `barter_instrument::asset::AssetIndex` (Struct, pub) — `usize` newtype that indexes into the `IndexedInstruments::assets` lookup table for O(1) asset retrieval.
+- `barter_instrument::asset::AssetKind` (Enum, pub) — Classification enum for an asset's nature with two variants: `Crypto` and `Fiat`.
+- `barter_instrument::asset::BaseAsset` (Struct, pub) — Zero-sized marker type denoting the "base" side of an underlying pair (e.g. btc in btc_usdt_spot).
+- `barter_instrument::asset::ExchangeAsset` (Struct, pub) — Pairs an `ExchangeId` with a generic `Asset` value so the same symbol on different venues is treated as a distinct entity.
+- `barter_instrument::asset::QuoteAsset` (Struct, pub) — Zero-sized marker type denoting the "quote" side of an underlying pair (e.g. usdt in btc_usdt_spot).
+- `barter_instrument::asset::name::AssetNameExchange` (Struct, pub) — `SmolStr` newtype holding the exchange-native (often uppercase) asset symbol such as "XBT"; not unique across exchanges.
+- `barter_instrument::asset::name::AssetNameInternal` (Struct, pub) — `SmolStr` newtype holding Barter's lowercase internal asset symbol such as "btc"; not unique across exchanges.
+- `barter_instrument::exchange::ExchangeId` (Enum, pub) — Enum of every supported execution venue (Other, Simulated, Mock, BinanceSpot, BinanceFuturesUsd, Bybit*, Coinbase, Deribit, Kraken, Okx*, etc.), where instrument-kind-specific endpoints get their own variant.
+- `barter_instrument::exchange::ExchangeIndex` (Struct, pub) — `usize` newtype that indexes into the `IndexedInstruments::exchanges` lookup table for O(1) exchange retrieval.
+- `barter_instrument::index::IndexedInstruments` (Struct, pub) — Immutable lookup-table bundle storing three parallel `Vec<Keyed<…>>`s (exchanges, exchange-assets, instruments) so any entity can be resolved in O(1) by its index.
+- `barter_instrument::index::builder::IndexedInstrumentsBuilder` (Struct, pub) — Incremental builder that accumulates raw exchanges/assets/instruments and produces a frozen `IndexedInstruments` via `build`.
+- `barter_instrument::index::error::IndexError` (Enum, pub) — Lookup error enum returned by `IndexedInstruments` finders with variants `ExchangeIndex(String)`, `AssetIndex(String)`, and `InstrumentIndex(String)` describing the failed query.
+- `barter_instrument::instrument::Instrument` (Struct, pub) — Full instrument model generic over `ExchangeKey`/`AssetKey` carrying exchange, internal/exchange names, underlying pair, quote-asset choice, `InstrumentKind` and optional `InstrumentSpec`.
+- `barter_instrument::instrument::InstrumentId` (Struct, pub) — Unique `u64` identifier newtype for an instrument on a venue, used as a memory-efficient stable key for event streams.
+- `barter_instrument::instrument::InstrumentIndex` (Struct, pub) — `usize` newtype that indexes into the `IndexedInstruments::instruments` lookup table for O(1) instrument retrieval.
+- `barter_instrument::instrument::kind::InstrumentKind` (Enum, pub) — Instrument-kind enum with variants `Spot`, `Perpetual(PerpetualContract)`, `Future(FutureContract)`, and `Option(OptionContract)`, generic over the settlement `AssetKey`.
+- `barter_instrument::instrument::kind::future::FutureContract` (Struct, pub) — Future-contract spec carrying `contract_size: Decimal`, settlement `AssetKey`, and expiry `DateTime<Utc>`.
+- `barter_instrument::instrument::kind::option::OptionContract` (Struct, pub) — Option-contract spec carrying `contract_size`, settlement asset, `OptionKind`, `OptionExercise`, expiry, and `strike` price.
+- `barter_instrument::instrument::kind::option::OptionExercise` (Enum, pub) — Option exercise-style enum with variants `American`, `Bermudan`, and `European`.
+- `barter_instrument::instrument::kind::option::OptionKind` (Enum, pub) — Option-payoff-type enum with variants `Call` (right to buy) and `Put` (right to sell).
+- `barter_instrument::instrument::kind::perpetual::PerpetualContract` (Struct, pub) — Perpetual-swap spec carrying `contract_size: Decimal` and the settlement `AssetKey`.
+- `barter_instrument::instrument::market_data::MarketDataInstrument` (Struct, pub) — Lightweight market-data identifier of an instrument as `{ base, quote, kind }` using string asset names, suitable for subscribing to feeds without full spec data.
+- `barter_instrument::instrument::market_data::kind::MarketDataFutureContract` (Struct, pub) — Market-data view of a future contract carrying only `expiry: DateTime<Utc>` (no settlement asset or contract size).
+- `barter_instrument::instrument::market_data::kind::MarketDataInstrumentKind` (Enum, pub) — Market-data flavour of `InstrumentKind` with variants `Spot` (default), `Perpetual`, `Future(MarketDataFutureContract)`, and `Option(MarketDataOptionContract)`.
+- `barter_instrument::instrument::market_data::kind::MarketDataOptionContract` (Struct, pub) — Market-data view of an option contract holding `OptionKind`, `OptionExercise`, expiry, and strike (omits settlement asset and contract size).
+- `barter_instrument::instrument::name::InstrumentNameExchange` (Struct, pub) — `SmolStr` newtype holding the exchange-native instrument symbol (e.g. "XBT-USDT"); typically not unique across exchanges.
+- `barter_instrument::instrument::name::InstrumentNameInternal` (Struct, pub) — `SmolStr` newtype holding Barter's lowercase internal instrument name (e.g. "binance_spot_btc_usdt"), constructed to be unique across exchanges.
+- `barter_instrument::instrument::quote::InstrumentQuoteAsset` (Enum, pub) — Selector enum for which side of the underlying prices the instrument: `UnderlyingQuote` (standard) or `UnderlyingBase` (in-kind, e.g. a btc_usdt derivative quoted in btc).
+- `barter_instrument::instrument::spec::InstrumentSpec` (Struct, pub) — Aggregate trading-rules spec bundling `InstrumentSpecPrice`, `InstrumentSpecQuantity<AssetKey>`, and `InstrumentSpecNotional` for one instrument.
+- `barter_instrument::instrument::spec::InstrumentSpecNotional` (Struct, pub) — Notional-value constraint with `min: Decimal` (minimum order notional allowed by the venue).
+- `barter_instrument::instrument::spec::InstrumentSpecPrice` (Struct, pub) — Price-axis constraint with `min: Decimal` and `tick_size: Decimal` defining minimum price and price increment.
+- `barter_instrument::instrument::spec::InstrumentSpecQuantity` (Struct, pub) — Quantity-axis constraint with `unit: OrderQuantityUnits<AssetKey>`, `min: Decimal`, and `increment: Decimal` for minimum size and step.
+- `barter_instrument::instrument::spec::OrderQuantityUnits` (Enum, pub) — Enum describing the units quantities are expressed in: `Asset(AssetKey)` (units of a specific asset), `Contract` (contract count), or `Quote` (quote-asset notional).
+
+## barter_integration (44 types)
+
+- `barter_integration::FeedEnded` (Struct, pub) — Zero-sized marker struct returned by streams/iterators (e.g. engine audit feeds) to signal the underlying feed produced no further items.
+- `barter_integration::Terminal` (Trait, pub) — Trait with `fn is_terminal(&self) -> bool` for types signaling a shutdown/restart condition; implemented by engine stepper states.
+- `barter_integration::Transformer` (Trait, pub) — Trait with associated `Input`/`Output`/`Error`/`OutputIter` and `fn transform(&mut self, Input) -> OutputIter`; implemented by every barter-data exchange book/trade transformer driving `ExchangeStream`.
+- `barter_integration::Unrecoverable` (Trait, pub) — Trait with `fn is_unrecoverable(&self) -> bool` distinguishing fatal errors; implemented by channel/engine error enums so callers can decide whether to retry or abort.
+- `barter_integration::Validator` (Trait, pub) — Trait with `fn validate(self) -> Result<Self, SocketError>` used post-deserialise to assert subscription/response payloads conform to expectations.
+- `barter_integration::channel::Channel` (Struct, pub) — Convenience struct bundling the `UnboundedTx<T>` and `UnboundedRx<T>` halves produced by `Channel::new()` so callers receive both sides in one value.
+- `barter_integration::channel::ChannelState` (Enum, pub) — Enum `Active(Tx) | Disabled` used inside `ChannelTxDroppable` to toggle a channel between live forwarding and silent drop modes.
+- `barter_integration::channel::ChannelTxDroppable` (Struct, pub) — Wrapper around `ChannelState<ChannelTx>` whose `send` becomes a no-op once `disable()` is called, used to detach optional downstream subscribers without unwiring code.
+- `barter_integration::channel::Tx` (Trait, pub) — Trait abstracting any sending half (`Item`, `Error: Unrecoverable`, `fn send`) so engine/streaming code can target unbounded mpsc, broadcasters, or droppable channels uniformly.
+- `barter_integration::channel::UnboundedRx` (Struct, pub) — Newtype wrapping `tokio::sync::mpsc::UnboundedReceiver<T>` with `into_stream()` to bridge into `tokio_stream::wrappers::UnboundedReceiverStream`.
+- `barter_integration::channel::UnboundedTx` (Struct, pub) — Cloneable newtype around `tokio::sync::mpsc::UnboundedSender<T>` providing the canonical `Tx` impl returned alongside `UnboundedRx` from `mpsc_unbounded`.
+- `barter_integration::collection::FnvIndexMap` (TypeAlias, pub) — Type alias `IndexMap<K, V, FnvBuildHasher>` for order-preserving maps with the cheap FNV hash, used pervasively for instrument/asset index lookups.
+- `barter_integration::collection::FnvIndexSet` (TypeAlias, pub) — Type alias `IndexSet<T, FnvBuildHasher>` for order-preserving sets with FNV hashing, the dedup-friendly companion to `FnvIndexMap`.
+- `barter_integration::collection::none_one_or_many::NoneOneOrMany` (Enum, pub) — Default-able enum `None | One(T) | Many(Vec<T>)` with map/extend/iter helpers, used for serde fields where exchange payloads may omit, single-wrap, or array-wrap a value.
+- `barter_integration::collection::one_or_many::OneOrMany` (Enum, pub) — Non-empty variant `One(T) | Many(Vec<T>)` mirroring `NoneOneOrMany` for fields guaranteed to have at least one element.
+- `barter_integration::error::SocketError` (Enum, pub) — Top-level `thiserror` error enum aggregating WebSocket, HTTP, serde, signing, subscription, and exchange protocol failures emitted across barter-integration.
+- `barter_integration::metric::Field` (Struct, pub) — Key + typed `Value` pair attached to a `Metric`, constructed via `Field::new(key, value)` for observation samples.
+- `barter_integration::metric::Metric` (Struct, pub) — Time-stamped measurement struct (`name`, `time`, `tags: Vec<Tag>`, `fields: Vec<Field>`) produced by `RestClient::execute` to record per-request latency.
+- `barter_integration::metric::Tag` (Struct, pub) — Key + `String` value pair categorising a `Metric`, built via `Tag::new(key, value)` for dimensions like endpoint or exchange.
+- `barter_integration::metric::Value` (Enum, pub) — Tagged-union (`Float | Int | UInt | Bool | String`) carried by `Field`, providing a serde-friendly dynamic numeric/text value.
+- `barter_integration::protocol::StreamParser` (Trait, pub) — Trait parameterised by `Output` with associated `Stream`/`Message`/`Error` and pure `fn parse` that turns raw protocol messages into `Option<Result<Output, SocketError>>`; implemented by `WebSocketSerdeParser` and `WebSocketProtobufParser`.
+- `barter_integration::protocol::http::BuildStrategy` (Trait, pub) — Trait with `fn build<Request: RestRequest>(&self, request, RequestBuilder) -> Result<reqwest::Request, SocketError>` plugged into `RestClient`; impls are `PublicNoHeaders` and `RequestSigner`.
+- `barter_integration::protocol::http::HttpParser` (Trait, pub) — Trait owning a `Self::ApiError: DeserializeOwned` + `Self::OutputError: From<SocketError>` with `parse`/`parse_api_error`, used by `RestClient` to decode success or API-error bodies.
+- `barter_integration::protocol::http::private::RequestSigner` (Struct, pub) — Struct `{ signer: Sig, mac: Hmac, encoder: SigEncoder }` constructed via `new`, implementing `BuildStrategy` by delegating signing to a `Signer` and encoding the resulting MAC digest.
+- `barter_integration::protocol::http::private::Signer` (Trait, pub) — Trait describing API-specific signing with a GAT `Config<'a>`, `fn config`, `fn add_bytes_to_sign<M: Mac>`, and `fn build_signed_request`; implemented per-exchange (e.g. FTX-style examples).
+- `barter_integration::protocol::http::private::encoder::Base64Encoder` (Struct, pub) — Zero-sized `Encoder` impl returning standard base64 strings for HMAC digests (used by exchanges that expect base64 signatures).
+- `barter_integration::protocol::http::private::encoder::Encoder` (Trait, pub) — Trait with `fn encode<Bytes: AsRef<[u8]>>(&self, data) -> String` selecting how `RequestSigner` stringifies signature bytes; impls are `HexEncoder` and `Base64Encoder`.
+- `barter_integration::protocol::http::private::encoder::HexEncoder` (Struct, pub) — Zero-sized `Encoder` impl returning lowercase hex strings for HMAC digests (used by exchanges that expect hex signatures).
+- `barter_integration::protocol::http::public::PublicNoHeaders` (Struct, pub) — Zero-sized `BuildStrategy` that finalises a `reqwest::RequestBuilder` for unauthenticated public APIs without injecting auth headers.
+- `barter_integration::protocol::http::rest::RestRequest` (Trait, pub) — Trait describing an HTTP REST call: associated `Response: DeserializeOwned`, `QueryParams: Serialize`, `Body: Serialize`, plus `path`, `method`, `query_params`, `body`, `timeout` methods consumed by `RestClient`.
+- `barter_integration::protocol::http::rest::client::RestClient` (Struct, pub) — Generic `<'a, Strategy, Parser>` struct holding `reqwest::Client`, base URL, `BuildStrategy`, and `HttpParser`; `execute` returns `(Request::Response, Metric)` and `with_http_client` swaps in a custom client.
+- `barter_integration::protocol::websocket::WebSocket` (TypeAlias, pub) — Type alias `tokio_tungstenite::WebSocketStream<MaybeTlsStream<TcpStream>>`, the connected stream returned by `connect`.
+- `barter_integration::protocol::websocket::WebSocketProtobufParser` (Struct, pub) — Zero-sized `StreamParser` impl that decodes binary `WsMessage` frames as protobuf payloads into the target exchange message type.
+- `barter_integration::protocol::websocket::WebSocketSerdeParser` (Struct, pub) — Default zero-sized `StreamParser` impl that deserialises text/binary `WsMessage`s as JSON into the target exchange message type via serde.
+- `barter_integration::protocol::websocket::WsError` (TypeAlias, pub) — Type alias for `tokio_tungstenite::tungstenite::Error`, the error variant carried by `WebSocket` stream items and inspected by `is_websocket_disconnected`.
+- `barter_integration::protocol::websocket::WsMessage` (TypeAlias, pub) — Type alias for `tokio_tungstenite::tungstenite::Message`, the per-frame payload type produced/consumed by the WebSocket halves.
+- `barter_integration::protocol::websocket::WsSink` (TypeAlias, pub) — Type alias for `SplitSink<WebSocket, WsMessage>`, the send half obtained from `WebSocket::split()`.
+- `barter_integration::protocol::websocket::WsStream` (TypeAlias, pub) — Type alias for `SplitStream<WebSocket>`, the receive half obtained from `WebSocket::split()`.
+- `barter_integration::snapshot::SnapUpdates` (Struct, pub) — Constructor-derive struct pairing an initial `snapshot` with a subsequent `updates` stream/collection, used to seed deltaed feeds (order books, balances).
+- `barter_integration::snapshot::Snapshot` (Struct, pub) — Single-field newtype `Snapshot<T>(pub T)` with `value`/`as_ref`/`map` helpers tagging a payload as a full point-in-time snapshot rather than a delta.
+- `barter_integration::stream::ExchangeStream` (Struct, pub) — `pin_project` struct wrapping `<Protocol: StreamParser, InnerStream: Stream, StreamTransformer: Transformer>` with an output buffer; polls the inner stream, parses, and yields `Result<Output, Error>` items.
+- `barter_integration::stream::indexed::IndexedStream` (Struct, pub) — `pin_project` struct pairing an inner `Stream` with an `Indexer`, lifting each yielded `Unindexed` item to `Result<Indexed, IndexError>` as it flows downstream.
+- `barter_integration::stream::indexed::Indexer` (Trait, pub) — Trait with associated `Unindexed`/`Indexed` and `fn index(&self, Unindexed) -> Result<Indexed, IndexError>`, used by `IndexedStream` to attach instrument/asset indices to streamed payloads.
+- `barter_integration::subscription::SubscriptionId` (Struct, pub) — `SmolStr` newtype identifying a subscribed stream (e.g. "BTC/USDT" or "btcusdt@trade") so received messages can be routed back to their originating `Subscription`.
