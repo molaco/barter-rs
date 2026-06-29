@@ -124,9 +124,24 @@ impl<Server> Default for BinanceBulkClient<Server> {
 // URL construction
 // ---------------------------------------------------------------------------
 
+/// Build the URL for the **aggregated** `aggTrades` dataset.
+///
+/// Retained for reference and test coverage; trade downloads now use the raw
+/// `trades` dataset via [`trades_url`] so archive trades match the live
+/// `@trade` stream (individual, non-aggregated).
+#[allow(dead_code)]
 fn agg_trades_url(segment: &str, market: &str, date: NaiveDate) -> String {
     format!(
         "https://data.binance.vision/data/{segment}/daily/aggTrades/{market}/{market}-aggTrades-{date}.zip",
+        segment = segment,
+        market = market,
+        date = date.format("%Y-%m-%d"),
+    )
+}
+
+fn trades_url(segment: &str, market: &str, date: NaiveDate) -> String {
+    format!(
+        "https://data.binance.vision/data/{segment}/daily/trades/{market}/{market}-trades-{date}.zip",
         segment = segment,
         market = market,
         date = date.format("%Y-%m-%d"),
@@ -366,7 +381,7 @@ async fn download_and_parse_trades<Server: BulkArchiveServer>(
 ) -> Result<Option<Vec<RestTrade>>, DataError> {
     static CHECKSUM_SKIP_WARNED: AtomicBool = AtomicBool::new(false);
 
-    let url = agg_trades_url(Server::market_segment(), market, date);
+    let url = trades_url(Server::market_segment(), market, date);
 
     if config.verify_checksum && !CHECKSUM_SKIP_WARNED.swap(true, Ordering::Relaxed) {
         tracing::warn!(
@@ -395,11 +410,11 @@ async fn download_and_parse_trades<Server: BulkArchiveServer>(
         }
 
         let buf_reader = response_to_async_read(resp);
-        let trades = parse_zip_csv_stream::<_, trades::BinanceBulkAggTrade, _>(
+        let trades = parse_zip_csv_stream::<_, trades::BinanceBulkTrade, _>(
             buf_reader,
             Server::csv_has_headers(),
             true,
-            |r| trades::convert_trade(r, Server::may_use_microsecond_timestamps()),
+            |r| trades::convert_raw_trade(r, Server::may_use_microsecond_timestamps()),
         )
         .await?;
 
@@ -483,7 +498,7 @@ impl<Server: BulkArchiveServer> BulkDayTradeFetcher for BinanceBulkClient<Server
     ) -> Pin<Box<dyn Future<Output = Result<bool, DataError>> + Send + 'a>> {
         static CHECKSUM_SKIP_WARNED: AtomicBool = AtomicBool::new(false);
 
-        let url = agg_trades_url(Server::market_segment(), market, date);
+        let url = trades_url(Server::market_segment(), market, date);
 
         if self.config.verify_checksum && !CHECKSUM_SKIP_WARNED.swap(true, Ordering::Relaxed) {
             tracing::warn!(
@@ -518,11 +533,11 @@ impl<Server: BulkArchiveServer> BulkDayTradeFetcher for BinanceBulkClient<Server
                 }
 
                 let buf_reader = response_to_async_read(resp);
-                parse_zip_csv_into_sender::<_, trades::BinanceBulkAggTrade, _>(
+                parse_zip_csv_into_sender::<_, trades::BinanceBulkTrade, _>(
                     buf_reader,
                     Server::csv_has_headers(),
                     true,
-                    |r| trades::convert_trade(r, Server::may_use_microsecond_timestamps()),
+                    |r| trades::convert_raw_trade(r, Server::may_use_microsecond_timestamps()),
                     tx,
                     DEFAULT_BATCH_SIZE,
                 )
